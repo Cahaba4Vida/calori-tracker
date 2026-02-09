@@ -28,11 +28,43 @@
   
   <main id="app" class="hidden">
     <div id="panelDashboard">
+    <section class="card" id="todayCard">
+      <h2>Today</h2>
+      <div class="todayGrid">
+        <div><strong>Calories:</strong> <span id="todayCalories">—</span> / <span id="todayGoal">—</span></div>
+        <div><strong>Protein:</strong> <span id="todayProtein">—</span> / <span id="todayProteinGoal">—</span></div>
+        <div><strong>Carbs:</strong> <span id="todayCarbs">—</span> / <span id="todayCarbsGoal">—</span></div>
+        <div><strong>Fat:</strong> <span id="todayFat">—</span> / <span id="todayFatGoal">—</span></div>
+      </div>
+      <div class="progress" title="Calories progress">
+        <div id="progressBar"></div>
+      </div>
+      <h3>Entries</h3>
+      <ul id="entriesList"></ul>
+    </section>
+
 <section class="card">
-      <h2>Daily Calorie Goal</h2>
-      <div class="row">
-        <input type="number" id="goalInput" placeholder="e.g. 2200" min="0" />
-        <button id="saveGoalBtn">Save Goal</button>
+      <h2>Daily Goals</h2>
+      <div class="grid2">
+        <div>
+          <label>Calories</label>
+          <input type="number" id="goalInput" placeholder="e.g. 2200" min="0" />
+        </div>
+        <div>
+          <label>Protein goal (g, optional)</label>
+          <input type="number" id="proteinGoalInput" placeholder="optional" min="0" />
+        </div>
+        <div>
+          <label>Carbs goal (g, optional)</label>
+          <input type="number" id="carbsGoalInput" placeholder="optional" min="0" />
+        </div>
+        <div>
+          <label>Fat goal (g, optional)</label>
+          <input type="number" id="fatGoalInput" placeholder="optional" min="0" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="saveGoalBtn">Save Goals</button>
       </div>
       <div id="goalDisplay" class="muted"></div>
     </section>
@@ -85,18 +117,6 @@
 </section>
 
 
-    <section class="card">
-      <h2>Today</h2>
-      <div class="row">
-        <div><strong>Total calories:</strong> <span id="todayCalories">—</span></div>
-        <div><strong>Goal:</strong> <span id="todayGoal">—</span></div>
-      </div>
-      <div class="progress">
-        <div id="progressBar"></div>
-      </div>
-      <h3>Entries</h3>
-      <ul id="entriesList"></ul>
-    </section>
 
     <section class="card">
       <h2>Weight</h2>
@@ -134,6 +154,12 @@
       <div class="row">
         <input id="chatInput" placeholder="Ask about today's log…" />
         <button id="sendChatBtn">Send</button>
+      </div>
+      <div id="aiThinking" class="thinking hidden" aria-live="polite">
+        <span class="thinkingDots" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </span>
+        <span>AI is thinking…</span>
       </div>
       <pre id="chatOutput" class="pre"></pre>
     </section>

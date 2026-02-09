@@ -19,10 +19,35 @@ function inputToLbs(val) {
 
 function unitSuffix() { return weightUnit === 'kg' ? 'kg' : 'lbs'; }
 
+function loadMacroGoals() {
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem('macroGoals') || '{}') || {};
+  } catch {}
+  return {
+    protein_g: Number.isFinite(Number(saved.protein_g)) ? Number(saved.protein_g) : null,
+    carbs_g: Number.isFinite(Number(saved.carbs_g)) ? Number(saved.carbs_g) : null,
+    fat_g: Number.isFinite(Number(saved.fat_g)) ? Number(saved.fat_g) : null
+  };
+}
+
+function saveMacroGoals(goals) {
+  localStorage.setItem('macroGoals', JSON.stringify(goals));
+}
+
+function fmtGoal(v) {
+  return v == null ? '—' : String(v);
+}
+
 
 const el = (id) => document.getElementById(id);
 
 function setStatus(msg) { el('status').innerText = msg || ''; }
+function setThinking(isThinking) {
+  const thinking = el('aiThinking');
+  if (!thinking) return;
+  thinking.classList.toggle('hidden', !isThinking);
+}
 function showApp(isAuthed) { el('app').classList.toggle('hidden', !isAuthed); el('tabs').classList.toggle('hidden', !isAuthed); }
 
 function authHeaders() {
@@ -332,19 +357,52 @@ function drawLineChart(canvasId, labels, values) {
 
 async function loadGoal() {
   const j = await api('goal-get');
-  el('goalDisplay').innerText = j.daily_calories ? ('Goal: ' + j.daily_calories) : 'No goal set';
+  const macroGoals = loadMacroGoals();
+
   el('todayGoal').innerText = j.daily_calories ?? '—';
+  el('todayProteinGoal').innerText = fmtGoal(macroGoals.protein_g);
+  el('todayCarbsGoal').innerText = fmtGoal(macroGoals.carbs_g);
+  el('todayFatGoal').innerText = fmtGoal(macroGoals.fat_g);
+
+  el('goalInput').value = j.daily_calories ?? '';
+  el('proteinGoalInput').value = macroGoals.protein_g ?? '';
+  el('carbsGoalInput').value = macroGoals.carbs_g ?? '';
+  el('fatGoalInput').value = macroGoals.fat_g ?? '';
+
+  const parts = [`Calories: ${j.daily_calories ?? '—'}`];
+  if (macroGoals.protein_g != null) parts.push(`Protein: ${macroGoals.protein_g}g`);
+  if (macroGoals.carbs_g != null) parts.push(`Carbs: ${macroGoals.carbs_g}g`);
+  if (macroGoals.fat_g != null) parts.push(`Fat: ${macroGoals.fat_g}g`);
+  el('goalDisplay').innerText = parts.join(' • ');
+
   return j.daily_calories ?? null;
 }
 
 async function saveGoal() {
-  const v = Number(el('goalInput').value || 0);
+  const vRaw = el('goalInput').value;
+  const v = Number(vRaw);
+  if (!vRaw || !Number.isFinite(v) || v < 0) throw new Error('Calories goal must be a number >= 0.');
+
+  const asOptional = (id) => {
+    const raw = (el(id).value || '').trim();
+    if (raw === '') return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) throw new Error('Macro goals must be numbers >= 0.');
+    return Math.round(n);
+  };
+
   await api('goal-set', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ daily_calories: v })
+    body: JSON.stringify({ daily_calories: Math.round(v) })
   });
-  el('weightInput').value = '';
+
+  saveMacroGoals({
+    protein_g: asOptional('proteinGoalInput'),
+    carbs_g: asOptional('carbsGoalInput'),
+    fat_g: asOptional('fatGoalInput')
+  });
+
   await refresh();
 }
 
@@ -517,13 +575,22 @@ function renderEntries(entries) {
 
 async function loadToday() {
   const j = await api('entries-list-day');
+  const entries = j.entries || [];
+
+  const totalProtein = entries.reduce((sum, e) => sum + (Number(e.protein_g) || 0), 0);
+  const totalCarbs = entries.reduce((sum, e) => sum + (Number(e.carbs_g) || 0), 0);
+  const totalFat = entries.reduce((sum, e) => sum + (Number(e.fat_g) || 0), 0);
+
   el('todayCalories').innerText = j.total_calories ?? 0;
+  el('todayProtein').innerText = Math.round(totalProtein);
+  el('todayCarbs').innerText = Math.round(totalCarbs);
+  el('todayFat').innerText = Math.round(totalFat);
 
   const goal = Number(el('todayGoal').innerText);
   const p = pct(j.total_calories ?? 0, isFinite(goal) ? goal : 0);
   el('progressBar').style.width = p + '%';
 
-  renderEntries(j.entries);
+  renderEntries(entries);
 }
 
 async function loadWeight() {
@@ -569,14 +636,20 @@ async function finishDay() {
 async function sendChat() {
   const msg = el('chatInput').value.trim();
   if (!msg) return;
-  setStatus('Thinking…');
-  const j = await api('chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: msg })
-  });
-  el('chatOutput').innerText = j.reply;
-  setStatus('');
+
+  try {
+    setThinking(true);
+    setStatus('Thinking…');
+    const j = await api('chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg })
+    });
+    el('chatOutput').innerText = j.reply;
+  } finally {
+    setThinking(false);
+    setStatus('');
+  }
 }
 
 
