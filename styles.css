@@ -158,9 +158,11 @@ label {
 }
 
 
-/* --- Fix: ensure modal buttons receive clicks even if an overlay layer exists --- */
-#estimateOverlay { pointer-events: none; }
-#estimateOverlay .sheet, #estimateOverlay .estimate-sheet { pointer-events: auto; }
-/* If any legacy overlay div exists, don't let it intercept clicks */
-.overlay { pointer-events: none; }
-.sheet { pointer-events: auto; }
+/* Plate estimate sheet layering: overlay blocks background, sheet stays clickable */
+#estimateOverlay {
+  z-index: 1000;
+  pointer-events: auto;
+}
+#plateEstimateSheet {
+  z-index: 1001;
+}

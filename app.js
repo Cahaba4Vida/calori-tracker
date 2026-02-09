@@ -1,4 +1,4 @@
-console.log("APP_VERSION v7");
+console.log("APP_VERSION v8");
 let currentUser = null;
 
 let weightUnit = (localStorage.getItem('weightUnit') || 'lbs'); // 'lbs' or 'kg'
@@ -66,10 +66,30 @@ function openEstimateSheet() {
   el('estimateError').innerText = '';
   el('estimateOverlay').classList.remove('hidden');
   el('plateEstimateSheet').classList.remove('hidden');
+
+  // Bind handlers after the estimate sheet is rendered/visible.
+  const overlay = el('estimateOverlay');
+  const closeBtn = el('estimateCloseBtn');
+  const cancelBtn = el('estimateCancelBtn');
+  const saveBtn = el('estimateSaveBtn');
+
+  if (overlay) {
+    overlay.onclick = () => closeEstimateSheet();
+  }
+  if (closeBtn) {
+    closeBtn.onclick = () => closeEstimateSheet();
+  }
+  if (cancelBtn) {
+    cancelBtn.onclick = () => closeEstimateSheet();
+  }
+  if (saveBtn) {
+    saveBtn.onclick = () => savePlateEstimateFromSheet();
+  }
 }
 function closeEstimateSheet() {
   el('estimateOverlay').classList.add('hidden');
   el('plateEstimateSheet').classList.add('hidden');
+  el('estimateOverlay').onclick = null;
   pendingPlateEstimate = null;
 }
 function setBadge(conf) {
@@ -82,7 +102,13 @@ function setBadge(conf) {
 }
 
 async function savePlateEstimateFromSheet() {
+  const saveBtn = el('estimateSaveBtn');
+  const prevText = saveBtn ? saveBtn.innerText : '';
   try {
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerText = 'Saving...';
+    }
     el('estimateError').innerText = '';
     if (!pendingPlateEstimate) throw new Error('No estimate available.');
 
@@ -608,7 +634,11 @@ async function saveManualEntry() {
     };
 
     el('manualSaveBtn').disabled = true;
-    await api('entries-add', { method: 'POST', body: JSON.stringify(payload) });
+    await api('entries-add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
 
     // Clear inputs
     el('manualCaloriesInput').value = '';
@@ -691,12 +721,6 @@ function bindUI() {
   bindClick('sheetCancelBtn', () => closeSheet());
   bindClick('sheetSaveBtn', () => saveFromSheet());
 
-  // Plate estimate sheet
-  bindClick('estimateOverlay', () => closeEstimateSheet());
-  bindClick('estimateCloseBtn', () => closeEstimateSheet());
-  bindClick('estimateCancelBtn', () => closeEstimateSheet());
-  bindClick('estimateSaveBtn', () => savePlateEstimateFromSheet());
-
   // Manual entry
   bindClick('manualSaveBtn', () => saveManualEntry());
 }
@@ -720,152 +744,3 @@ netlifyIdentity.on('logout', () => {
 
 bindUI();
 netlifyIdentity.init();
-
-function escapeHtml(s) {
-  return String(s ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-
-async function saveEstimateEntryFromModal(estimate) {
-  const servings = parseFloat((document.getElementById("estimateServings") || {}).value || "1") || 1;
-  const calories = parseFloat((document.getElementById("estimateCalories") || {}).value || "");
-  const protein_g = parseFloat((document.getElementById("estimateProtein") || {}).value || "");
-  const carbs_g = parseFloat((document.getElementById("estimateCarbs") || {}).value || "");
-  const fat_g = parseFloat((document.getElementById("estimateFat") || {}).value || "");
-  if (!Number.isFinite(calories) || calories <= 0) throw new Error("Please enter calories (total).");
-
-  const raw_extraction_meta = {
-    source: "plate_photo",
-    estimated: true,
-    confidence: estimate?.confidence || "low",
-    assumptions: Array.isArray(estimate?.assumptions) ? estimate.assumptions : [],
-    notes: estimate?.notes || null,
-    servings_eaten: servings
-  };
-
-  await api("/api/entries-add", {
-    method: "POST",
-    body: JSON.stringify({
-      calories: Math.round(calories),
-      protein_g: Number.isFinite(protein_g) ? protein_g : null,
-      carbs_g: Number.isFinite(carbs_g) ? carbs_g : null,
-      fat_g: Number.isFinite(fat_g) ? fat_g : null,
-      raw_extraction_meta
-    })
-  });
-}
-
-
-
-function showEstimateModal(estimate) {
-  const overlay = document.getElementById("estimateOverlay");
-  if (!overlay) return;
-
-  // Click outside sheet closes
-  overlay.onclick = (e) => {
-    if (e.target === overlay) hideEstimateModal();
-  };
-
-  const conf = estimate?.confidence || "low";
-  const assumptions = Array.isArray(estimate?.assumptions) ? estimate.assumptions : [];
-  const notes = estimate?.notes || "";
-
-  overlay.innerHTML = `
-    <div class="estimate-sheet" role="dialog" aria-modal="true">
-      <div class="estimate-header">
-        <div class="estimate-title">
-          <div>Confirm estimate</div>
-          <span class="estimate-pill">${escapeHtml(conf)}</span>
-        </div>
-        <button id="estimateCloseBtn" class="estimate-close" aria-label="Close">×</button>
-      </div>
-
-      <div class="muted" style="margin-bottom:10px;">
-        Plate photo entries are estimates. For accuracy, use Nutrition Facts labels.
-      </div>
-
-      <div class="estimate-grid">
-        <div>
-          <label for="estimateServings">Servings eaten</label>
-          <input id="estimateServings" type="number" step="0.1" value="1" />
-        </div>
-        <div>
-          <label for="estimateCalories">Calories (total)</label>
-          <input id="estimateCalories" type="number" step="1" value="${estimate?.calories ?? ""}" />
-        </div>
-        <div>
-          <label for="estimateProtein">Protein (g)</label>
-          <input id="estimateProtein" type="number" step="0.1" value="${estimate?.protein_g ?? ""}" />
-        </div>
-        <div>
-          <label for="estimateCarbs">Carbs (g)</label>
-          <input id="estimateCarbs" type="number" step="0.1" value="${estimate?.carbs_g ?? ""}" />
-        </div>
-        <div>
-          <label for="estimateFat">Fat (g)</label>
-          <input id="estimateFat" type="number" step="0.1" value="${estimate?.fat_g ?? ""}" />
-        </div>
-      </div>
-
-      <div class="estimate-assumptions">
-        <div class="muted" style="margin-bottom:6px;">Assumptions</div>
-        <ul style="margin:0 0 6px 18px;">
-          ${assumptions.map(a => `<li>${escapeHtml(a)}</li>`).join("")}
-        </ul>
-        ${notes ? `<div class="muted">${escapeHtml(notes)}</div>` : ""}
-      </div>
-
-      <div class="estimate-footer">
-        <button id="estimateCancelBtn" class="btn secondary">Cancel</button>
-        <button id="estimateSaveBtn" class="btn">Save Entry</button>
-      </div>
-    </div>
-  `;
-
-  overlay.style.display = "block";
-
-  // Bind buttons immediately (no race conditions)
-  document.getElementById("estimateCloseBtn")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    hideEstimateModal();
-  });
-  document.getElementById("estimateCancelBtn")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    hideEstimateModal();
-  });
-  document.getElementById("estimateSaveBtn")?.addEventListener("click", async (e) => {
-    e.preventDefault();
-    const btn = e.currentTarget;
-    btn.disabled = true;
-    btn.textContent = "Saving...";
-    try {
-      await saveEstimateEntryFromModal(estimate);
-      hideEstimateModal();
-      await refreshAll();
-      setStatus("Saved entry.", false);
-    } catch (err) {
-      setStatus(err?.message || String(err), true);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "Save Entry";
-    }
-  });
-}
-
-
-function hideEstimateModal() {
-
-  const overlay = document.getElementById("estimateOverlay");
-  if (!overlay) return;
-  overlay.style.display = "none";
-  overlay.innerHTML = "";
-  overlay.onclick = null;
-}
-
-
-async function refreshAll(){ return await refresh(); }
