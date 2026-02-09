@@ -30,6 +30,16 @@
     <div id="panelDashboard">
     <section class="card" id="todayCard">
       <h2>Today</h2>
+      <div class="statStrip">
+        <div class="statTile">
+          <div class="statLabel">Remaining</div>
+          <div class="statValue" id="todayRemaining">—</div>
+        </div>
+        <div class="statTile">
+          <div class="statLabel">Entries</div>
+          <div class="statValue" id="todayEntriesCount">0</div>
+        </div>
+      </div>
       <div class="todayGrid">
         <div><strong>Calories:</strong> <span id="todayCalories">—</span> / <span id="todayGoal">—</span></div>
         <div><strong>Protein:</strong> <span id="todayProtein">—</span> / <span id="todayProteinGoal">—</span></div>
@@ -39,12 +49,33 @@
       <div class="progress" title="Calories progress">
         <div id="progressBar"></div>
       </div>
+      <div class="macroProgressList">
+        <div class="macroProgressRow">
+          <div>Protein</div>
+          <div class="muted" id="proteinProgressText">—</div>
+          <div class="microProgress"><div id="proteinProgressBar"></div></div>
+        </div>
+        <div class="macroProgressRow">
+          <div>Carbs</div>
+          <div class="muted" id="carbsProgressText">—</div>
+          <div class="microProgress"><div id="carbsProgressBar"></div></div>
+        </div>
+        <div class="macroProgressRow">
+          <div>Fat</div>
+          <div class="muted" id="fatProgressText">—</div>
+          <div class="microProgress"><div id="fatProgressBar"></div></div>
+        </div>
+      </div>
       <h3>Entries</h3>
       <ul id="entriesList"></ul>
     </section>
 
-<section class="card">
-      <h2>Daily Goals</h2>
+<section class="card" id="dailyGoalsCard">
+      <div class="cardHeaderRow">
+        <h2>Daily Goals</h2>
+        <button type="button" class="sectionToggleBtn" id="toggleDailyGoalsBtn" aria-expanded="true" aria-controls="dailyGoalsBody">Collapse</button>
+      </div>
+      <div id="dailyGoalsBody" class="collapsibleBody">
       <div class="grid2">
         <div>
           <label>Calories</label>
@@ -67,10 +98,15 @@
         <button id="saveGoalBtn">Save Goals</button>
       </div>
       <div id="goalDisplay" class="muted"></div>
+      </div>
     </section>
 
-    <section class="card">
-      <h2>Add Food (Photo of nutrition label)</h2>
+    <section class="card" id="addFoodCard">
+      <div class="cardHeaderRow">
+        <h2>Add Food (Photo of nutrition label)</h2>
+        <button type="button" class="sectionToggleBtn" id="toggleAddFoodBtn" aria-expanded="true" aria-controls="addFoodBody">Collapse</button>
+      </div>
+      <div id="addFoodBody" class="collapsibleBody">
       <div class="row">
         <div class="pill">Nutrition Label (accurate)</div>
       </div>
@@ -110,9 +146,18 @@
       </div>
       <label>Notes (optional)</label>
       <input id="manualNotesInput" type="text" placeholder="e.g. homemade chicken bowl" />
+      <div class="quickAdds">
+        <div class="muted">Quick fills</div>
+        <div class="row">
+          <button type="button" class="quickFillBtn" data-preset="light">Light snack</button>
+          <button type="button" class="quickFillBtn" data-preset="meal">Balanced meal</button>
+          <button type="button" class="quickFillBtn" data-preset="post">Post-workout</button>
+        </div>
+      </div>
 
       <div class="row end" style="margin-top:10px">
         <button id="manualSaveBtn">Save Manual Entry</button>
+      </div>
       </div>
 </section>
 
@@ -149,8 +194,12 @@
       <pre id="scoreOutput" class="pre"></pre>
     </section>
 
-    <section class="card">
-      <h2>Coach Chat</h2>
+    <section class="card floatingChat" id="coachChatCard">
+      <div class="chatHeaderRow">
+        <h2>Coach Chat</h2>
+        <button type="button" class="sectionToggleBtn" id="chatToggleBtn" aria-expanded="true" aria-controls="coachChatBody">Hide</button>
+      </div>
+      <div id="coachChatBody">
       <div class="row">
         <input id="chatInput" placeholder="Ask about today's log…" />
         <button id="sendChatBtn">Send</button>
@@ -162,6 +211,7 @@
         <span>AI is thinking…</span>
       </div>
       <pre id="chatOutput" class="pre"></pre>
+      </div>
     </section>
   
     </div>
