@@ -1,0 +1,166 @@
+:root { --border:#e7e7e7; --muted:#666; --bg:#fafafa; }
+* { box-sizing: border-box; }
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 820px; margin: auto; padding: 16px; background: var(--bg); }
+h1 { margin: 0; font-size: 20px; }
+header.row { align-items: center; justify-content: space-between; gap: 12px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.card { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin: 12px 0; }
+button { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: white; cursor: pointer; }
+input { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); min-width: 220px; }
+.muted { color: var(--muted); font-size: 13px; margin-top: 6px; }
+.hidden { display: none; }
+.pre { white-space: pre-wrap; background: #f6f6f6; padding: 10px; border-radius: 10px; border: 1px solid var(--border); }
+.progress { height: 10px; background: #f0f0f0; border-radius: 999px; overflow: hidden; margin: 10px 0; border: 1px solid var(--border); }
+#progressBar { height: 100%; width: 0%; background: #111; }
+ul { margin: 8px 0 0 18px; }
+.auth button { min-width: 120px; }
+
+.tabs { display: flex; gap: 8px; margin: 10px 0 14px; }
+.tabbtn { padding: 8px 10px; border-radius: 999px; border: 1px solid var(--border); background: white; }
+.tabbtn.active { background: #111; color: white; border-color: #111; }
+
+.switch { position: relative; display: inline-block; width: 48px; height: 28px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #ddd; transition: .2s; border-radius: 999px; border: 1px solid var(--border); }
+.slider:before { position: absolute; content: ""; height: 22px; width: 22px; left: 3px; bottom: 2px;
+  background-color: white; transition: .2s; border-radius: 50%; border: 1px solid var(--border); }
+.switch input:checked + .slider { background-color: #111; border-color: #111; }
+.switch input:checked + .slider:before { transform: translateX(18px); }
+
+
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 1000;
+}
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  background: #fff;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  border: 1px solid var(--border);
+  z-index: 1001;
+  max-width: 820px;
+  margin: 0 auto;
+  box-shadow: 0 -8px 24px rgba(0,0,0,0.15);
+}
+.sheetHeader {
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 12px 12px 6px;
+}
+.sheetBody { padding: 8px 12px 14px; }
+.field { display:block; margin: 10px 0; }
+.label { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.computed { background:#f6f6f6; border:1px solid var(--border); border-radius: 12px; padding: 10px; margin-top: 10px; }
+.sheetActions { justify-content: flex-end; margin-top: 12px; }
+.ghost { border: none; background: transparent; font-size: 18px; padding: 6px 8px; }
+
+
+.pill { display:inline-block; padding: 4px 10px; border-radius: 999px; border:1px solid var(--border); background:#fff; font-size: 12px; color: #111; }
+.badge { display:inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; border:1px solid var(--border); font-size: 12px; text-transform: lowercase; }
+.badge.high { background:#eaffea; }
+.badge.medium { background:#fff7e6; }
+.badge.low { background:#ffecec; }
+
+
+/* Manual entry form */
+label {
+  display: block;
+  font-size: 12px;
+  color: #555;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 640px) {
+  .grid2 { grid-template-columns: 1fr; }
+}
+
+
+/* --- Plate estimate modal overlay (robust click handling) --- */
+.estimate-overlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.25);
+  z-index: 9999;
+  display: none;
+  padding: 16px;
+  overflow: auto;
+}
+.estimate-sheet{
+  background: #fff;
+  max-width: 720px;
+  margin: 40px auto;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.20);
+  padding: 18px 18px 14px;
+  position: relative;
+}
+.estimate-sheet .estimate-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.estimate-sheet .estimate-title{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-weight:700;
+}
+.estimate-pill{
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #ddd;
+  background: #f7f7f7;
+}
+.estimate-close{
+  border: none;
+  background: transparent;
+  font-size: 22px;
+  line-height: 22px;
+  cursor: pointer;
+}
+.estimate-grid{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+.estimate-grid label{
+  font-size: 12px;
+  color: #444;
+}
+.estimate-grid input{
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+}
+.estimate-assumptions{
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid #eee;
+  border-radius: 12px;
+  background: #fafafa;
+}
+.estimate-footer{
+  display:flex;
+  justify-content:flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+
+/* --- Fix: ensure modal buttons receive clicks even if an overlay layer exists --- */
+#estimateOverlay { pointer-events: none; }
+#estimateOverlay .sheet, #estimateOverlay .estimate-sheet { pointer-events: auto; }
+/* If any legacy overlay div exists, don't let it intercept clicks */
+.overlay { pointer-events: none; }
+.sheet { pointer-events: auto; }

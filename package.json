@@ -1,0 +1,8 @@
+{
+  "name": "calorie-tracker-netlify",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "pg": "^8.12.0"
+  }
+}
