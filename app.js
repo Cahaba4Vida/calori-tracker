@@ -1,4 +1,4 @@
-console.log("APP_VERSION v8");
+console.log("APP_VERSION v10");
 let currentUser = null;
 
 let weightUnit = (localStorage.getItem('weightUnit') || 'lbs'); // 'lbs' or 'kg'
@@ -19,20 +19,20 @@ function inputToLbs(val) {
 
 function unitSuffix() { return weightUnit === 'kg' ? 'kg' : 'lbs'; }
 
-function loadMacroGoals() {
-  let saved = {};
-  try {
-    saved = JSON.parse(localStorage.getItem('macroGoals') || '{}') || {};
-  } catch {}
-  return {
-    protein_g: Number.isFinite(Number(saved.protein_g)) ? Number(saved.protein_g) : null,
-    carbs_g: Number.isFinite(Number(saved.carbs_g)) ? Number(saved.carbs_g) : null,
-    fat_g: Number.isFinite(Number(saved.fat_g)) ? Number(saved.fat_g) : null
-  };
-}
+let profileState = {
+  onboarding_completed: false,
+  macro_protein_g: null,
+  macro_carbs_g: null,
+  macro_fat_g: null,
+  goal_weight_lbs: null,
+  activity_level: null,
+  goal_date: null
+};
+let aiGoalFlowMode = null;
+let aiGoalSuggestion = null;
 
-function saveMacroGoals(goals) {
-  localStorage.setItem('macroGoals', JSON.stringify(goals));
+function isoToday() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function fmtGoal(v) {
@@ -49,6 +49,99 @@ function setThinking(isThinking) {
   thinking.classList.toggle('hidden', !isThinking);
 }
 function showApp(isAuthed) { el('app').classList.toggle('hidden', !isAuthed); el('tabs').classList.toggle('hidden', !isAuthed); }
+function setOnboardingVisible(visible) {
+  const overlay = el('onboardingOverlay');
+  if (!overlay) return;
+  overlay.classList.toggle('hidden', !visible);
+}
+
+function showOnboardingScreen(which) {
+  el('onboardingWelcomeScreen').classList.toggle('hidden', which !== 'welcome');
+  el('onboardingInputScreen').classList.toggle('hidden', which !== 'inputs');
+  el('onboardingSuggestScreen').classList.toggle('hidden', which !== 'suggestion');
+  const step = which === 'welcome' ? '1' : (which === 'inputs' ? '2' : '3');
+  const stepEl = el('onboardingStepNum');
+  if (stepEl) stepEl.innerText = step;
+}
+
+function setAiGoalLoading(isLoading) {
+  const btn = el('aiGetPlanBtn');
+  const loading = el('aiGoalLoading');
+  if (btn) {
+    btn.disabled = isLoading;
+    btn.innerText = isLoading ? 'Generating…' : 'Get AI Plan';
+  }
+  if (loading) loading.classList.toggle('hidden', !isLoading);
+}
+
+function clearAiInputErrors() {
+  ['aiCurrentWeightError','aiGoalWeightError','aiGoalDateError'].forEach((id) => {
+    const n = el(id);
+    if (n) n.innerText = '';
+  });
+}
+
+function validateAiGoalFields() {
+  clearAiInputErrors();
+  const current = Number(el('aiCurrentWeightInput').value);
+  const goalWeightInput = Number(el('aiGoalWeightInput').value);
+  const goalDate = el('aiGoalDateInput').value;
+  const currentLbs = weightUnit === 'kg' ? kgToLbs(current) : current;
+  const goalLbs = weightUnit === 'kg' ? kgToLbs(goalWeightInput) : goalWeightInput;
+
+  let ok = true;
+  if (!Number.isFinite(currentLbs) || currentLbs <= 0) {
+    el('aiCurrentWeightError').innerText = 'Enter a valid current weight greater than 0.';
+    ok = false;
+  }
+  if (!Number.isFinite(goalLbs) || goalLbs <= 0) {
+    el('aiGoalWeightError').innerText = 'Enter a valid goal weight greater than 0.';
+    ok = false;
+  }
+  if (!goalDate || goalDate <= isoToday()) {
+    el('aiGoalDateError').innerText = 'Date must be after today.';
+    ok = false;
+  }
+  return { ok, currentLbs, goalLbs, goalDate };
+}
+
+function renderAiPlanSummary() {
+  const cals = el('todayGoal')?.innerText;
+  const calories = (cals && cals !== '—') ? cals : 'Not set';
+  el('aiPlanSummaryCalories').innerText = calories === 'Not set' ? calories : `${calories} cal/day`;
+
+  const p = profileState.macro_protein_g;
+  const c = profileState.macro_carbs_g;
+  const f = profileState.macro_fat_g;
+  const macroBits = [];
+  if (p != null) macroBits.push(`Protein ${p}g`);
+  if (c != null) macroBits.push(`Carbs ${c}g`);
+  if (f != null) macroBits.push(`Fat ${f}g`);
+  el('aiPlanSummaryMacros').innerText = `Macros: ${macroBits.length ? macroBits.join(' • ') : '—'}`;
+
+  el('aiPlanSummaryMeta').innerText = `Goal date: ${profileState.goal_date || '—'} • Activity: ${profileState.activity_level || '—'}`;
+}
+
+function resetAiGoalFlowForm() {
+  el('aiCurrentWeightInput').value = '';
+  el('aiGoalWeightInput').value = '';
+  el('aiActivityLevelInput').value = 'moderate';
+  el('aiGoalDateInput').value = '';
+  el('aiGoalFlowError').innerText = '';
+  el('aiSuggestionError').innerText = '';
+  el('aiDeclineHint').innerText = '';
+  el('aiRationaleList').innerHTML = '';
+  clearAiInputErrors();
+  setAiGoalLoading(false);
+  aiGoalSuggestion = null;
+}
+
+async function loadProfile() {
+  const p = await api('profile-get');
+  profileState = p;
+  return p;
+}
+
 
 function authHeaders() {
   if (!currentUser) return {};
@@ -357,7 +450,11 @@ function drawLineChart(canvasId, labels, values) {
 
 async function loadGoal() {
   const j = await api('goal-get');
-  const macroGoals = loadMacroGoals();
+  const macroGoals = {
+    protein_g: profileState.macro_protein_g,
+    carbs_g: profileState.macro_carbs_g,
+    fat_g: profileState.macro_fat_g
+  };
 
   el('todayGoal').innerText = j.daily_calories ?? '—';
   el('todayProteinGoal').innerText = fmtGoal(macroGoals.protein_g);
@@ -374,6 +471,7 @@ async function loadGoal() {
   if (macroGoals.carbs_g != null) parts.push(`Carbs: ${macroGoals.carbs_g}g`);
   if (macroGoals.fat_g != null) parts.push(`Fat: ${macroGoals.fat_g}g`);
   el('goalDisplay').innerText = parts.join(' • ');
+  renderAiPlanSummary();
 
   return j.daily_calories ?? null;
 }
@@ -397,15 +495,114 @@ async function saveGoal() {
     body: JSON.stringify({ daily_calories: Math.round(v) })
   });
 
-  saveMacroGoals({
-    protein_g: asOptional('proteinGoalInput'),
-    carbs_g: asOptional('carbsGoalInput'),
-    fat_g: asOptional('fatGoalInput')
+  await api('profile-set', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      macro_protein_g: asOptional('proteinGoalInput'),
+      macro_carbs_g: asOptional('carbsGoalInput'),
+      macro_fat_g: asOptional('fatGoalInput')
+    })
   });
 
+  await loadProfile();
   await refresh();
 }
 
+
+
+async function submitAiGoalInputs() {
+  const activity = el('aiActivityLevelInput').value;
+  const validation = validateAiGoalFields();
+  if (!validation.ok) throw new Error('Please fix the highlighted fields.');
+
+  setAiGoalLoading(true);
+  el('aiGoalFlowError').innerText = '';
+  try {
+    const result = await api('ai-goals-suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        current_weight_lbs: validation.currentLbs,
+        goal_weight_lbs: validation.goalLbs,
+        activity_level: activity,
+        goal_date: validation.goalDate
+      })
+    });
+
+    aiGoalSuggestion = { ...result, goal_weight_lbs: validation.goalLbs, activity_level: activity, goal_date: validation.goalDate };
+    el('aiSuggestedCalories').innerText = String(result.daily_calories);
+    el('aiSuggestedProtein').innerText = String(result.protein_g);
+    el('aiSuggestedCarbs').innerText = String(result.carbs_g);
+    el('aiSuggestedFat').innerText = String(result.fat_g);
+
+    const ul = el('aiRationaleList');
+    ul.innerHTML = '';
+    (result.rationale_bullets || []).forEach(b => {
+      const li = document.createElement('li');
+      li.innerText = b;
+      ul.appendChild(li);
+    });
+    showOnboardingScreen('suggestion');
+  } finally {
+    setAiGoalLoading(false);
+  }
+}
+
+async function acceptAiPlan() {
+  if (!aiGoalSuggestion) throw new Error('No suggestion available.');
+  await api('goal-set', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ daily_calories: aiGoalSuggestion.daily_calories })
+  });
+
+  const payload = {
+    macro_protein_g: aiGoalSuggestion.protein_g,
+    macro_carbs_g: aiGoalSuggestion.carbs_g,
+    macro_fat_g: aiGoalSuggestion.fat_g,
+    goal_weight_lbs: aiGoalSuggestion.goal_weight_lbs,
+    activity_level: aiGoalSuggestion.activity_level,
+    goal_date: aiGoalSuggestion.goal_date
+  };
+  if (aiGoalFlowMode === 'onboarding') payload.onboarding_completed = true;
+
+  await api('profile-set', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  await loadProfile();
+  setOnboardingVisible(false);
+  await refresh();
+}
+
+async function declineAiPlan() {
+  if (aiGoalFlowMode === 'onboarding') {
+    await api('profile-set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ onboarding_completed: true })
+    });
+    await loadProfile();
+    await refresh();
+  }
+  setOnboardingVisible(false);
+}
+
+function openAiGoalFlow(mode) {
+  aiGoalFlowMode = mode;
+  resetAiGoalFlowForm();
+  document.querySelectorAll('.aiInputUnitText').forEach(n => { n.innerText = unitSuffix(); });
+  el('aiGoalDateInput').min = isoToday();
+  const showWelcome = mode === 'onboarding';
+  el('onboardingTitle').innerText = showWelcome ? 'Welcome to Fitflow Calorie Tracker' : 'Generate AI calorie & macro goals';
+  el('onboardingContinueBtn').classList.toggle('hidden', !showWelcome);
+  el('aiDeclineHint').innerText = showWelcome ? 'If you decline, onboarding will be marked complete. You can still set goals later in Settings.' : 'Decline keeps your current goals unchanged.';
+  showOnboardingScreen(showWelcome ? 'welcome' : 'inputs');
+  setOnboardingVisible(true);
+}
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -497,7 +694,7 @@ function renderEntries(entries) {
   list.innerHTML = '';
   if (!entries || entries.length === 0) {
     const li = document.createElement('li');
-    li.innerText = 'No entries yet.';
+    li.innerText = 'No entries yet. Start by adding your first meal below to build momentum.';
     list.appendChild(li);
     return;
   }
@@ -778,6 +975,17 @@ function bindUI() {
     applyUnitUI();
   };
 
+  el('onboardingContinueBtn').onclick = () => showOnboardingScreen('inputs');
+  ['aiCurrentWeightInput','aiGoalWeightInput','aiGoalDateInput'].forEach((id) => {
+    const node = el(id);
+    if (!node) return;
+    node.onblur = () => { validateAiGoalFields(); };
+  });
+  el('aiGetPlanBtn').onclick = () => submitAiGoalInputs().catch(e => { el('aiGoalFlowError').innerText = e.message + ' Try again.'; });
+  el('aiAcceptPlanBtn').onclick = () => acceptAiPlan().catch(e => { el('aiSuggestionError').innerText = e.message; });
+  el('aiDeclinePlanBtn').onclick = () => declineAiPlan().catch(e => { el('aiSuggestionError').innerText = e.message; });
+  el('settingsAiGoalBtn').onclick = () => openAiGoalFlow('settings');
+
   // Initialize UI state
   el('weightInput').placeholder = unitSuffix();
   activateTab('dashboard');
@@ -798,20 +1006,32 @@ function bindUI() {
   bindClick('manualSaveBtn', () => saveManualEntry());
 }
 
+async function initAuthedSession() {
+  showApp(true);
+  await loadProfile();
+  if (!profileState.onboarding_completed) {
+    openAiGoalFlow('onboarding');
+    return;
+  }
+  setOnboardingVisible(false);
+  await refresh();
+}
+
 netlifyIdentity.on('init', user => {
   currentUser = user;
   showApp(!!user);
-  if (user) refresh().catch(e => setStatus(e.message));
+  if (user) initAuthedSession().catch(e => setStatus(e.message));
 });
 netlifyIdentity.on('login', user => {
   currentUser = user;
   netlifyIdentity.close();
   showApp(true);
-  refresh().catch(e => setStatus(e.message));
+  initAuthedSession().catch(e => setStatus(e.message));
 });
 netlifyIdentity.on('logout', () => {
   currentUser = null;
   showApp(false);
+  setOnboardingVisible(false);
   setStatus('Logged out.');
 });
 
