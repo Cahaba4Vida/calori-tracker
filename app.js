@@ -39,6 +39,11 @@ function fmtGoal(v) {
   return v == null ? '—' : String(v);
 }
 
+function macroPct(total, goal) {
+  if (!Number.isFinite(goal) || goal <= 0) return null;
+  return Math.max(0, Math.min(100, Math.round((total / goal) * 100)));
+}
+
 
 const el = (id) => document.getElementById(id);
 
@@ -49,6 +54,16 @@ function setThinking(isThinking) {
   thinking.classList.toggle('hidden', !isThinking);
 }
 function showApp(isAuthed) { el('app').classList.toggle('hidden', !isAuthed); el('tabs').classList.toggle('hidden', !isAuthed); }
+
+function toggleSection(bodyId, buttonId, collapseText = 'Collapse', expandText = 'Expand') {
+  const body = el(bodyId);
+  const btn = el(buttonId);
+  if (!body || !btn) return;
+  const willCollapse = !body.classList.contains('hidden');
+  body.classList.toggle('hidden', willCollapse);
+  btn.innerText = willCollapse ? expandText : collapseText;
+  btn.setAttribute('aria-expanded', willCollapse ? 'false' : 'true');
+}
 function setOnboardingVisible(visible) {
   const overlay = el('onboardingOverlay');
   if (!overlay) return;
@@ -782,12 +797,51 @@ async function loadToday() {
   el('todayProtein').innerText = Math.round(totalProtein);
   el('todayCarbs').innerText = Math.round(totalCarbs);
   el('todayFat').innerText = Math.round(totalFat);
+  el('todayEntriesCount').innerText = String(entries.length);
 
   const goal = Number(el('todayGoal').innerText);
   const p = pct(j.total_calories ?? 0, isFinite(goal) ? goal : 0);
   el('progressBar').style.width = p + '%';
 
+  const totalCalories = Number(j.total_calories ?? 0);
+  if (Number.isFinite(goal) && goal > 0) {
+    const remaining = Math.round(goal - totalCalories);
+    el('todayRemaining').innerText = remaining >= 0 ? `${remaining} cal left` : `${Math.abs(remaining)} cal over`;
+  } else {
+    el('todayRemaining').innerText = 'Set a goal';
+  }
+
+  const pGoal = Number(el('todayProteinGoal').innerText);
+  const cGoal = Number(el('todayCarbsGoal').innerText);
+  const fGoal = Number(el('todayFatGoal').innerText);
+
+  const proteinPercent = macroPct(totalProtein, pGoal);
+  const carbsPercent = macroPct(totalCarbs, cGoal);
+  const fatPercent = macroPct(totalFat, fGoal);
+
+  el('proteinProgressText').innerText = proteinPercent == null ? 'No goal set' : `${Math.round(totalProtein)} / ${Math.round(pGoal)}g`;
+  el('carbsProgressText').innerText = carbsPercent == null ? 'No goal set' : `${Math.round(totalCarbs)} / ${Math.round(cGoal)}g`;
+  el('fatProgressText').innerText = fatPercent == null ? 'No goal set' : `${Math.round(totalFat)} / ${Math.round(fGoal)}g`;
+
+  el('proteinProgressBar').style.width = `${proteinPercent ?? 0}%`;
+  el('carbsProgressBar').style.width = `${carbsPercent ?? 0}%`;
+  el('fatProgressBar').style.width = `${fatPercent ?? 0}%`;
+
   renderEntries(entries);
+}
+
+function applyManualPreset(preset) {
+  const presets = {
+    light: { calories: 220, protein: 10, carbs: 26, fat: 9 },
+    meal: { calories: 550, protein: 35, carbs: 55, fat: 20 },
+    post: { calories: 320, protein: 30, carbs: 35, fat: 6 }
+  };
+  const p = presets[preset];
+  if (!p) return;
+  el('manualCaloriesInput').value = p.calories;
+  el('manualProteinInput').value = p.protein;
+  el('manualCarbsInput').value = p.carbs;
+  el('manualFatInput').value = p.fat;
 }
 
 async function loadWeight() {
@@ -1004,6 +1058,13 @@ function bindUI() {
 
   // Manual entry
   bindClick('manualSaveBtn', () => saveManualEntry());
+  document.querySelectorAll('.quickFillBtn').forEach((btn) => {
+    btn.onclick = () => applyManualPreset(btn.dataset.preset);
+  });
+
+  bindClick('toggleDailyGoalsBtn', () => toggleSection('dailyGoalsBody', 'toggleDailyGoalsBtn'));
+  bindClick('toggleAddFoodBtn', () => toggleSection('addFoodBody', 'toggleAddFoodBtn'));
+  bindClick('chatToggleBtn', () => toggleSection('coachChatBody', 'chatToggleBtn', 'Hide', 'Show'));
 }
 
 async function initAuthedSession() {
