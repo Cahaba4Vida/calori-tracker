@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Calorie & Weight Tracker</title>
   <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
-  <link rel="stylesheet" href="styles.css?v=8" />
+  <link rel="stylesheet" href="styles.css?v=10" />
 </head>
 <body>
   <header class="row">
@@ -180,13 +180,79 @@
           <div class="muted">Toggle to display weight in kilograms. Values are stored in lbs in the database.</div>
         </div>
       </div>
+      <div class="row" style="margin-top:12px;">
+        <button id="settingsAiGoalBtn">Generate AI calorie & macro goals</button>
+      </div>
+      <div id="aiPlanSummaryCard" class="computed" style="margin-top:12px;">
+        <div><strong>Current AI plan:</strong> <span id="aiPlanSummaryCalories">Not set</span></div>
+        <div id="aiPlanSummaryMacros" class="muted">Macros: —</div>
+        <div id="aiPlanSummaryMeta" class="muted">Goal date: — • Activity: —</div>
+      </div>
     </section>
 
     </div>
   </main>
 
 
-  <script src="app.js?v=8"></script>
+  <div id="onboardingOverlay" class="onboardingOverlay hidden">
+    <div class="onboardingModal">
+      <div class="onboardingStep">Step <span id="onboardingStepNum">1</span> of 3</div>
+      <h2 id="onboardingTitle">Welcome to Fitflow Calorie Tracker</h2>
+
+      <div id="onboardingWelcomeScreen">
+        <p>Welcome to Fitflow Calorie Tracker</p>
+        <p class="muted">We’ll use a few quick inputs to set a calorie and macro target tailored to your timeline.</p>
+        <button id="onboardingContinueBtn">Press to continue</button>
+      </div>
+
+      <div id="onboardingInputScreen" class="hidden">
+        <div class="grid2">
+          <div>
+            <label>Current weight (<span class="aiInputUnitText">lbs</span>)</label>
+            <input id="aiCurrentWeightInput" type="number" min="0" step="0.1" />
+            <div id="aiCurrentWeightError" class="fieldError"></div>
+          </div>
+          <div>
+            <label>Weight goal (<span class="aiInputUnitText">lbs</span>)</label>
+            <input id="aiGoalWeightInput" type="number" min="0" step="0.1" />
+            <div id="aiGoalWeightError" class="fieldError"></div>
+          </div>
+          <div>
+            <label>Activity level</label>
+            <select id="aiActivityLevelInput">
+              <option value="sedentary">sedentary</option>
+              <option value="light">light</option>
+              <option value="moderate" selected>moderate</option>
+              <option value="very_active">very active</option>
+            </select>
+          </div>
+          <div>
+            <label>Hit goal by</label>
+            <input id="aiGoalDateInput" type="date" />
+            <div id="aiGoalDateError" class="fieldError"></div>
+          </div>
+        </div>
+        <p class="muted">Your weight is stored in lbs internally and converted automatically if you use kg display.</p>
+        <button id="aiGetPlanBtn" style="margin-top:12px;">Get AI Plan</button>
+        <div id="aiGoalLoading" class="muted hidden">Generating your plan…</div>
+        <div id="aiGoalFlowError" class="muted" style="color:#b00020;"></div>
+      </div>
+
+      <div id="onboardingSuggestScreen" class="hidden">
+        <p><strong>Daily calories:</strong> <span id="aiSuggestedCalories">—</span></p>
+        <p><strong>Protein:</strong> <span id="aiSuggestedProtein">—</span>g &nbsp; <strong>Carbs:</strong> <span id="aiSuggestedCarbs">—</span>g &nbsp; <strong>Fat:</strong> <span id="aiSuggestedFat">—</span>g</p>
+        <ul id="aiRationaleList"></ul>
+        <div class="row">
+          <button id="aiAcceptPlanBtn">Accept plan</button>
+          <button id="aiDeclinePlanBtn">Decline</button>
+        </div>
+        <div id="aiDeclineHint" class="muted"></div>
+        <div id="aiSuggestionError" class="muted" style="color:#b00020;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js?v=10"></script>
 
   <!-- Servings confirmation sheet -->
   <div id="sheetOverlay" class="overlay hidden"></div>
