@@ -2,6 +2,7 @@ console.log("APP_VERSION v10");
 let currentUser = null;
 
 let weightUnit = (localStorage.getItem('weightUnit') || 'lbs'); // 'lbs' or 'kg'
+let darkModeEnabled = localStorage.getItem('darkMode') === 'true';
 
 function lbsToKg(lbs) { return lbs / 2.2046226218; }
 function kgToLbs(kg) { return kg * 2.2046226218; }
@@ -54,6 +55,12 @@ function setThinking(isThinking) {
   thinking.classList.toggle('hidden', !isThinking);
 }
 function showApp(isAuthed) { el('app').classList.toggle('hidden', !isAuthed); el('tabs').classList.toggle('hidden', !isAuthed); }
+
+function applyDarkModeUI() {
+  document.body.classList.toggle('invertedTheme', darkModeEnabled);
+  const darkModeLabel = el('darkModeLabel');
+  if (darkModeLabel) darkModeLabel.innerText = darkModeEnabled ? 'On' : 'Off';
+}
 
 function toggleSection(bodyId, buttonId, collapseText = 'Collapse', expandText = 'Expand') {
   const body = el(bodyId);
@@ -982,6 +989,7 @@ async function saveManualEntry() {
 }
 
 function bindUI() {
+  setThinking(false);
   el('loginBtn').onclick = () => netlifyIdentity.open();
   el('logoutBtn').onclick = () => netlifyIdentity.logout();
   el('saveGoalBtn').onclick = () => saveGoal().catch(e => setStatus(e.message));
@@ -1015,6 +1023,10 @@ function bindUI() {
   unitToggle.checked = (weightUnit === 'kg');
   unitLabel.innerText = unitSuffix();
 
+  const darkModeToggle = el('darkModeToggle');
+  if (darkModeToggle) darkModeToggle.checked = darkModeEnabled;
+  applyDarkModeUI();
+
   function applyUnitUI() {
     unitLabel.innerText = unitSuffix();
     el('weightInput').placeholder = unitSuffix();
@@ -1028,6 +1040,14 @@ function bindUI() {
     localStorage.setItem('weightUnit', weightUnit);
     applyUnitUI();
   };
+
+  if (darkModeToggle) {
+    darkModeToggle.onchange = () => {
+      darkModeEnabled = darkModeToggle.checked;
+      localStorage.setItem('darkMode', String(darkModeEnabled));
+      applyDarkModeUI();
+    };
+  }
 
   el('onboardingContinueBtn').onclick = () => showOnboardingScreen('inputs');
   ['aiCurrentWeightInput','aiGoalWeightInput','aiGoalDateInput'].forEach((id) => {
@@ -1096,5 +1116,6 @@ netlifyIdentity.on('logout', () => {
   setStatus('Logged out.');
 });
 
+applyDarkModeUI();
 bindUI();
 netlifyIdentity.init();

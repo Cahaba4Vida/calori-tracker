@@ -11,6 +11,17 @@ button:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,0.
 input { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); min-width: 220px; }
 .muted { color: var(--muted); font-size: 13px; margin-top: 6px; }
 .hidden { display: none; }
+
+body.invertedTheme {
+  filter: invert(1) hue-rotate(180deg);
+  background: #111;
+}
+
+body.invertedTheme img,
+body.invertedTheme video,
+body.invertedTheme canvas {
+  filter: invert(1) hue-rotate(180deg);
+}
 .pre { white-space: pre-wrap; background: #f6f6f6; padding: 10px; border-radius: 10px; border: 1px solid var(--border); }
 .progress { height: 10px; background: #f0f0f0; border-radius: 999px; overflow: hidden; margin: 10px 0; border: 1px solid var(--border); }
 #progressBar { height: 100%; width: 0%; background: #111; }
@@ -95,6 +106,8 @@ ul { margin: 8px 0 0 18px; }
   color: #444;
   font-size: 13px;
 }
+.thinking.hidden { display: none; }
+
 .thinkingDots {
   display: inline-flex;
   gap: 4px;
@@ -171,10 +184,21 @@ label {
 
 @media (max-width: 640px) {
   .floatingChat {
-    right: 10px;
-    left: 10px;
+    position: static;
+    right: auto;
+    left: auto;
+    bottom: auto;
+    width: 100%;
+    margin-top: 12px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+  }
+
+  #coachChatBody .row {
+    flex-wrap: wrap;
+  }
+
+  #coachChatBody .row > button {
     width: auto;
-    bottom: 10px;
   }
 }
 @media (max-width: 640px) {
@@ -305,4 +329,33 @@ select { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border)
 #aiGetPlanBtn[disabled] {
   opacity: 0.7;
   cursor: not-allowed;
+}
+
+
+/* Mobile friendliness improvements */
+canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+button {
+  min-height: 40px;
+}
+
+@media (max-width: 640px) {
+  input,
+  select,
+  button {
+    min-width: 0;
+  }
+
+  .row > input,
+  .row > select,
+  .row > button {
+    width: 100%;
+  }
+
+  body {
+    padding: 12px;
+  }
 }
