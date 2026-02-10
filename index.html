@@ -111,13 +111,23 @@
       <div class="row">
         <div class="pill">Nutrition Label (accurate)</div>
       </div>
-      <input id="photoInput" type="file" accept="image/*" capture="environment" />
+      <div class="row photoActions">
+        <button id="photoFromLibraryBtn" type="button">Choose from camera roll</button>
+        <button id="photoFromCameraBtn" type="button">Use camera</button>
+      </div>
+      <input id="photoInput" type="file" accept="image/*" class="hiddenFileInput" />
+      <input id="photoCameraInput" type="file" accept="image/*" capture="environment" class="hiddenFileInput" />
 
       <div style="height:10px"></div>
       <div class="row">
         <div class="pill">Plate Photo (estimate)</div>
       </div>
-      <input id="plateInput" type="file" accept="image/*" capture="environment" />
+      <div class="row photoActions">
+        <button id="plateFromLibraryBtn" type="button">Choose from camera roll</button>
+        <button id="plateFromCameraBtn" type="button">Use camera</button>
+      </div>
+      <input id="plateInput" type="file" accept="image/*" class="hiddenFileInput" />
+      <input id="plateCameraInput" type="file" accept="image/*" capture="environment" class="hiddenFileInput" />
 
       <div style="height:14px"></div>
       <div class="row">
