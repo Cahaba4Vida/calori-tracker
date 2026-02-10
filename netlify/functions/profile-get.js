@@ -12,12 +12,26 @@ exports.handler = async (event, context) => {
   const { userId, email } = auth.user;
   await ensureUserProfile(userId, email);
 
-  const r = await query(
-    `select onboarding_completed, macro_protein_g, macro_carbs_g, macro_fat_g, goal_weight_lbs, activity_level, goal_date, quick_fills
-     from user_profiles
-     where user_id = $1`,
-    [userId]
-  );
+  let r;
+  try {
+    r = await query(
+      `select onboarding_completed, macro_protein_g, macro_carbs_g, macro_fat_g, goal_weight_lbs, activity_level, goal_date, quick_fills
+       from user_profiles
+       where user_id = $1`,
+      [userId]
+    );
+  } catch (e) {
+    if (e && e.code === "42703") {
+      r = await query(
+        `select onboarding_completed, macro_protein_g, macro_carbs_g, macro_fat_g, goal_weight_lbs, activity_level, goal_date
+         from user_profiles
+         where user_id = $1`,
+        [userId]
+      );
+    } else {
+      return json(500, { error: "Could not load profile" });
+    }
+  }
 
   const row = r.rows[0] || {};
   return json(200, {

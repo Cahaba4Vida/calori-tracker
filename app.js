@@ -1,4 +1,4 @@
-console.log("APP_VERSION v10");
+console.log("APP_VERSION v11");
 let currentUser = null;
 
 let weightUnit = (localStorage.getItem('weightUnit') || 'lbs'); // 'lbs' or 'kg'

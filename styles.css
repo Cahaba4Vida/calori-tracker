@@ -195,19 +195,19 @@ label {
     grid-column: 1;
   }
 
+  #weightCard,
+  #trendsCard,
+  #finishDayCard,
+  #coachChatCard {
+    grid-column: 2;
+  }
+
   #coachChatCard {
     position: static;
     right: auto;
     bottom: auto;
     width: 100%;
     box-shadow: 0 8px 20px rgba(0,0,0,0.12);
-  }
-
-  #panelDashboard > section:nth-of-type(4),
-  #panelDashboard > section:nth-of-type(5),
-  #panelDashboard > section:nth-of-type(6),
-  #coachChatCard {
-    grid-column: 2;
   }
 }
 
