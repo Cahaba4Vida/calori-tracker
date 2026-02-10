@@ -202,6 +202,14 @@ label {
     grid-column: 2;
   }
 
+  #todayCard { grid-row: 1; }
+  #weightCard { grid-row: 1; }
+  #addFoodCard { grid-row: 2; }
+  #trendsCard { grid-row: 2; }
+  #dailyGoalsCard { grid-row: 3; }
+  #finishDayCard { grid-row: 3; }
+  #coachChatCard { grid-row: 4; }
+
   #coachChatCard {
     position: static;
     right: auto;
@@ -396,4 +404,24 @@ button {
   body {
     padding: 12px;
   }
+}
+
+.adminLink {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-decoration: none;
+  color: #111;
+  background: #fff;
+  min-height: 40px;
+}
+
+textarea {
+  width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-family: inherit;
 }

@@ -116,6 +116,9 @@ exports.handler = async (event, context) => {
     await query(`update user_profiles set ${updates.join(", ")} where user_id = $${values.length}`, values);
     return json(200, { ok: true });
   } catch (e) {
+    if (e && e.code === "42703" && Object.prototype.hasOwnProperty.call(body, "quick_fills")) {
+      return json(400, { error: "Quick fills are not enabled in your database yet. Run sql/004_quick_fills.sql and try again." });
+    }
     return json(400, { error: e.message || "Invalid payload" });
   }
 };

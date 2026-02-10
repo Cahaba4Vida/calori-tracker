@@ -33,6 +33,7 @@ let profileState = {
 };
 let aiGoalFlowMode = null;
 let aiGoalSuggestion = null;
+let feedbackGateState = { required: false, campaign: null };
 
 function isoToday() {
   return new Date().toISOString().slice(0, 10);
@@ -202,6 +203,76 @@ async function api(path, opts = {}) {
     throw new Error(msg);
   }
   return body;
+}
+
+
+function setFeedbackOverlay(required, campaign) {
+  const overlay = el('feedbackOverlay');
+  if (!overlay) return;
+
+  overlay.classList.toggle('hidden', !required);
+  feedbackGateState = {
+    required: !!required,
+    campaign: campaign || null
+  };
+
+  if (!required || !campaign) return;
+
+  const title = el('feedbackTitle');
+  const question = el('feedbackQuestion');
+  const input = el('feedbackInput');
+  const submitBtn = el('feedbackSubmitBtn');
+  const err = el('feedbackError');
+
+  if (title) title.innerText = campaign.title || 'Quick feedback request';
+  if (question) question.innerText = campaign.question || 'What should we improve?';
+  if (input) input.placeholder = campaign.placeholder || 'Share your feedback';
+  if (submitBtn) submitBtn.innerText = campaign.submit_label || 'Submit feedback';
+  if (err) err.innerText = '';
+}
+
+async function ensureFeedbackGate() {
+  if (!currentUser) {
+    setFeedbackOverlay(false, null);
+    return;
+  }
+  const status = await api('feedback-status');
+  setFeedbackOverlay(!!status.required, status.campaign || null);
+}
+
+async function submitFeedbackResponse() {
+  if (!feedbackGateState.required || !feedbackGateState.campaign) return;
+
+  const input = el('feedbackInput');
+  const err = el('feedbackError');
+  const submitBtn = el('feedbackSubmitBtn');
+  const responseText = (input?.value || '').trim();
+
+  if (responseText.length < 5) {
+    if (err) err.innerText = 'Please add at least a short response before submitting.';
+    return;
+  }
+
+  if (submitBtn) submitBtn.disabled = true;
+  if (err) err.innerText = '';
+
+  try {
+    await api('feedback-submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        campaign_id: feedbackGateState.campaign.id,
+        response_text: responseText
+      })
+    });
+    if (input) input.value = '';
+    setFeedbackOverlay(false, null);
+    setStatus('Thanks for your feedback.');
+  } catch (e) {
+    if (err) err.innerText = e.message || String(e);
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
 }
 
 
@@ -1058,6 +1129,8 @@ async function loadWeekly() {
 
 
 async function refresh() {
+  await ensureFeedbackGate();
+  if (feedbackGateState.required) return;
   const goal = await loadGoal();
   await loadToday();
   await loadWeight();
@@ -1130,6 +1203,7 @@ function bindUI() {
   el('saveWeightBtn').onclick = () => saveWeight().catch(e => setStatus(e.message));
   el('finishDayBtn').onclick = () => finishDay().catch(e => setStatus(e.message));
   el('sendChatBtn').onclick = () => sendChat().catch(e => setStatus(e.message));
+  el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
 
   // Tabs
   const tabs = el('tabs');
@@ -1144,6 +1218,9 @@ function bindUI() {
     panelSet.classList.toggle('hidden', isDash);
     dashBtn.classList.toggle('active', isDash);
     setBtn.classList.toggle('active', !isDash);
+    if (!isDash) {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
   }
 
   dashBtn.onclick = () => activateTab('dashboard');
@@ -1231,6 +1308,8 @@ function bindUI() {
 async function initAuthedSession() {
   showApp(true);
   await loadProfile();
+  await ensureFeedbackGate();
+  if (feedbackGateState.required) return;
   if (!profileState.onboarding_completed) {
     openAiGoalFlow('onboarding');
     return;
@@ -1254,6 +1333,7 @@ netlifyIdentity.on('logout', () => {
   currentUser = null;
   showApp(false);
   setOnboardingVisible(false);
+  setFeedbackOverlay(false, null);
   setStatus('Logged out.');
 });
 

@@ -5,12 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Calorie & Weight Tracker</title>
   <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
-  <link rel="stylesheet" href="styles.css?v=15" />
+  <link rel="stylesheet" href="styles.css?v=16" />
 </head>
 <body>
   <header class="row">
     <h1>Calorie & Weight Tracker</h1>
     <div class="auth">
+      <a class="adminLink" href="/admin.html">Admin</a>
       <button id="loginBtn">Login / Signup</button>
       <button id="logoutBtn">Logout</button>
     </div>
@@ -349,7 +350,22 @@
     </div>
   </div>
 
-  <script src="app.js?v=11"></script>
+  <script src="app.js?v=12"></script>
+
+
+  <div id="feedbackOverlay" class="onboardingOverlay hidden">
+    <div class="onboardingModal">
+      <div class="onboardingStep">Feedback required</div>
+      <h2 id="feedbackTitle">Quick feedback request</h2>
+      <p id="feedbackQuestion">What should we improve?</p>
+      <label>Your feedback</label>
+      <textarea id="feedbackInput" rows="4" placeholder="Share your feedback"></textarea>
+      <div class="row" style="margin-top:10px;">
+        <button id="feedbackSubmitBtn">Submit feedback</button>
+      </div>
+      <div id="feedbackError" class="muted" style="color:#b00020;"></div>
+    </div>
+  </div>
 
   <!-- Servings confirmation sheet -->
   <div id="sheetOverlay" class="overlay hidden"></div>
