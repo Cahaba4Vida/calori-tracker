@@ -19,6 +19,15 @@ function clampStr(s, max=300) {
   return String(s).slice(0, max);
 }
 
+function compactRawExtraction(meta = {}) {
+  return {
+    source: clampStr(meta.source ?? "manual", 32),
+    confidence: clampStr(meta.confidence ?? "medium", 16),
+    estimated: !!meta.estimated,
+    notes: clampStr(meta.notes, 180)
+  };
+}
+
 exports.handler = async (event, context) => {
   const auth = await requireUser(event, context);
   if (!auth.ok) return auth.response;
@@ -64,11 +73,12 @@ exports.handler = async (event, context) => {
       notes: body.notes ?? null
     };
 
-    raw_extraction = {
-      extracted,
-      servings_eaten: servingsEaten,
-      totals: { calories: totalCalories, protein_g: totalProtein, carbs_g: totalCarbs, fat_g: totalFat }
-    };
+    raw_extraction = compactRawExtraction({
+      source: "nutrition_label",
+      confidence: extracted?.confidence ?? "high",
+      estimated: false,
+      notes: extracted?.notes ?? body.notes
+    });
   } else if (caloriesTotal != null) {
     // Totals path (plate photo estimate)
     if (!(caloriesTotal > 0 && caloriesTotal < 3000)) return json(400, { error: "calories must be between 0 and 3000" });
@@ -93,15 +103,12 @@ exports.handler = async (event, context) => {
     totalFat = fat_g == null ? null : roundInt(fat_g);
 
     const meta = body.raw_extraction_meta || {};
-    raw_extraction = {
+    raw_extraction = compactRawExtraction({
       source: meta.source ?? "plate_photo",
       estimated: meta.estimated ?? ((meta.source ?? "plate_photo") === "plate_photo"),
       confidence: meta.confidence ?? "low",
-      assumptions: Array.isArray(meta.assumptions) ? meta.assumptions.slice(0, 10) : [],
-      portion_hint: meta.portion_hint ?? null,
-      servings_eaten: safeNum(meta.servings_eaten) ?? null,
-      notes: clampStr(meta.notes, 300)
-    };
+      notes: meta.notes
+    });
   } else {
     return json(400, { error: "Invalid payload. Provide calories_per_serving+servings_eaten (label) OR calories totals (estimate)." });
   }

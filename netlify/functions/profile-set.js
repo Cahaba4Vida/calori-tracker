@@ -9,6 +9,38 @@ function asIntOrNull(v, field) {
   return Math.round(n);
 }
 
+function normalizeQuickFills(raw) {
+  if (!Array.isArray(raw)) throw new Error("quick_fills must be an array");
+  if (raw.length > 30) throw new Error("quick_fills supports up to 30 items");
+
+  return raw.map((x, i) => {
+    if (!x || typeof x !== "object") throw new Error(`quick_fills[${i}] must be an object`);
+    const id = String(x.id || "").trim();
+    const name = String(x.name || "").trim();
+    const calories = Number(x.calories);
+    if (!id) throw new Error(`quick_fills[${i}].id is required`);
+    if (!name) throw new Error(`quick_fills[${i}].name is required`);
+    if (!Number.isFinite(calories) || calories <= 0) throw new Error(`quick_fills[${i}].calories must be > 0`);
+
+    const toMacro = (v, key) => {
+      if (v == null || v === "") return null;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0) throw new Error(`quick_fills[${i}].${key} must be >= 0`);
+      return Math.round(n);
+    };
+
+    return {
+      id: id.slice(0, 64),
+      name: name.slice(0, 40),
+      calories: Math.round(calories),
+      protein_g: toMacro(x.protein_g, "protein_g"),
+      carbs_g: toMacro(x.carbs_g, "carbs_g"),
+      fat_g: toMacro(x.fat_g, "fat_g"),
+      enabled: !!x.enabled
+    };
+  });
+}
+
 exports.handler = async (event, context) => {
   if (event.httpMethod && event.httpMethod !== "POST") {
     return json(405, { error: "Method not allowed" });
@@ -71,6 +103,11 @@ exports.handler = async (event, context) => {
       }
       values.push(body.goal_date ?? null);
       updates.push(`goal_date = $${values.length}`);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "quick_fills")) {
+      values.push(JSON.stringify(normalizeQuickFills(body.quick_fills)));
+      updates.push(`quick_fills = $${values.length}::jsonb`);
     }
 
     if (updates.length === 0) return json(400, { error: "No valid fields to update" });
