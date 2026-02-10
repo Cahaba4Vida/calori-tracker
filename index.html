@@ -258,6 +258,20 @@
         <div id="aiPlanSummaryMeta" class="muted">Goal date: — • Activity: —</div>
       </div>
 
+      <section class="card" id="planCard">
+        <h2>Plan & Usage</h2>
+        <div><strong>Current plan:</strong> <span id="planTierLabel">Free</span></div>
+        <div class="muted" id="planFeaturesText">Free includes 5 food entries/day, 3 AI actions/day, and 20 days of history.</div>
+        <div class="muted" id="usageTodayText">Usage today: —</div>
+        <div class="row" style="margin-top:10px;">
+          <button id="upgradeMonthlyBtn">Upgrade Monthly ($5)</button>
+          <button id="upgradeYearlyBtn">Upgrade Yearly ($50)</button>
+          <button id="manageSubscriptionBtn">Manage Subscription</button>
+          <button id="exportDataBtn">Export My Data</button>
+        </div>
+        <div id="planStatus" class="muted"></div>
+      </section>
+
       <div style="margin-top:16px;">
         <h3>Custom Quick Fills</h3>
         <div class="muted">Create your own meals/snacks for one-tap manual entry.</div>
@@ -462,6 +476,7 @@
   </div>
 
 
-  <script src="app.js?v=12"></script>
+  <script src="app-billing.js?v=1"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>

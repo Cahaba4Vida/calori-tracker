@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin • Calorie & Weight Tracker</title>
-  <link rel="stylesheet" href="styles.css?v=16" />
+  <link rel="stylesheet" href="styles.css?v=18" />
 </head>
 <body>
   <header class="row">
@@ -25,6 +25,90 @@
 
   <div id="adminProtected" class="hidden">
     <section class="card">
+      <h2>Growth Goals</h2>
+      <div><strong>Weekly active users goal:</strong> <span id="wauGoalTarget">500</span></div>
+      <div class="goalTrack"><div id="wauGoalBar" class="goalFill"></div></div>
+      <div id="wauGoalLabel" class="muted">0 / 500 (0%)</div>
+
+      <div style="margin-top:14px;"><strong>Paying users goal:</strong> <span id="paidGoalTarget">30</span></div>
+      <div class="goalTrack"><div id="paidGoalBar" class="goalFill paid"></div></div>
+      <div id="paidGoalLabel" class="muted">0 / 30 (0%)</div>
+
+      <div style="margin-top:14px;" class="grid2">
+        <div>
+          <label>Set weekly active users goal</label>
+          <input id="wauGoalInput" type="number" min="1" step="1" placeholder="500" />
+        </div>
+        <div>
+          <label>Set paying users goal</label>
+          <input id="paidGoalInput" type="number" min="1" step="1" placeholder="30" />
+        </div>
+        <div>
+          <label>Free food entries/day</label>
+          <input id="freeFoodLimitInput" type="number" min="1" step="1" placeholder="5" />
+        </div>
+        <div>
+          <label>Free AI actions/day</label>
+          <input id="freeAiLimitInput" type="number" min="1" step="1" placeholder="3" />
+        </div>
+        <div>
+          <label>Free history days</label>
+          <input id="freeHistoryDaysInput" type="number" min="1" step="1" placeholder="20" />
+        </div>
+        <div>
+          <label>Monthly price (USD)</label>
+          <input id="monthlyPriceInput" type="number" min="1" step="1" placeholder="5" />
+        </div>
+        <div>
+          <label>Yearly price (USD)</label>
+          <input id="yearlyPriceInput" type="number" min="1" step="1" placeholder="50" />
+        </div>
+        <div>
+          <label>Manage subscription URL (optional)</label>
+          <input id="manageSubUrlInput" type="text" placeholder="https://..." />
+        </div>
+        <div>
+          <label>Monthly upgrade URL (optional override)</label>
+          <input id="monthlyUpgradeUrlInput" type="text" placeholder="https://..." />
+        </div>
+        <div>
+          <label>Yearly upgrade URL (optional override)</label>
+          <input id="yearlyUpgradeUrlInput" type="text" placeholder="https://..." />
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;"><button id="saveGoalsBtn">Save Goals + Pricing</button></div>
+      <div id="goalsStatus" class="muted"></div>
+    </section>
+
+    <section class="card">
+      <h2>Premium Pass Override</h2>
+      <div class="muted">Grant or revoke premium access for a specific user without requiring payment.</div>
+      <label>User email or user_id</label>
+      <input id="passIdentifierInput" type="text" placeholder="user@example.com or netlify user id" />
+      <label>Expires at (optional, ISO datetime)</label>
+      <input id="passExpiresInput" type="text" placeholder="2026-12-31T23:59:59Z" />
+      <label>Internal note (optional)</label>
+      <input id="passNoteInput" type="text" placeholder="why this pass was granted" />
+      <label>Quick trial days</label>
+      <input id="trialDaysInput" type="number" min="1" max="90" step="1" placeholder="7" />
+      <div class="row" style="margin-top:10px;">
+        <button id="grantPassBtn">Grant Pass</button>
+        <button id="grantTrialBtn">Grant Trial Pass</button>
+        <button id="revokePassBtn">Revoke Pass</button>
+      </div>
+      <div id="passStatus" class="muted"></div>
+    </section>
+
+
+    <section class="card">
+      <h2>Billing Health</h2>
+      <div id="billingHealthSummary" class="muted">No billing health loaded yet.</div>
+      <div class="row" style="margin-top:10px;"><button id="reconcileSubsBtn">Reconcile Stripe Subscriptions</button></div>
+      <div id="reconcileStatus" class="muted"></div>
+      <pre id="webhookEventsOut" class="pre">No webhook events yet.</pre>
+    </section>
+
+    <section class="card">
       <h2>App Statistics</h2>
       <pre id="statsOut" class="pre">Load stats to view data.</pre>
     </section>
@@ -34,9 +118,7 @@
       <div class="muted">Ask product questions (usage patterns, improvement ideas) using current app metrics.</div>
       <label>Ask AI</label>
       <textarea id="insightsQuestionInput" rows="3" placeholder="What are people using this app for mostly and what improvements should we prioritize?"></textarea>
-      <div class="row" style="margin-top:10px;">
-        <button id="getInsightsBtn">Get AI Insights</button>
-      </div>
+      <div class="row" style="margin-top:10px;"><button id="getInsightsBtn">Get AI Insights</button></div>
       <pre id="insightsOut" class="pre">No insights yet.</pre>
       <div id="insightsStatus" class="muted"></div>
     </section>
@@ -44,19 +126,14 @@
     <section class="card">
       <h2>Feedback Form Broadcast (Mandatory)</h2>
       <div class="muted">When active, app users must submit this form before using the app.</div>
-
       <label>Form title</label>
       <input id="campaignTitleInput" type="text" placeholder="Quick feedback request" />
-
       <label>Question</label>
       <input id="campaignQuestionInput" type="text" placeholder="What should we improve?" />
-
       <label>Input placeholder</label>
       <input id="campaignPlaceholderInput" type="text" placeholder="Share your feedback" />
-
       <label>Submit button label</label>
       <input id="campaignSubmitLabelInput" type="text" placeholder="Submit feedback" />
-
       <div class="row" style="margin-top:10px;">
         <button id="broadcastFeedbackBtn">Send Mandatory Feedback Form</button>
         <button id="disableFeedbackBtn">Turn Off Feedback Lock</button>
@@ -65,151 +142,8 @@
     </section>
   </div>
 
-  <script>
-    const el = (id) => document.getElementById(id);
-    const ADMIN_TOKEN_KEY = 'adminDashToken';
-    let adminToken = localStorage.getItem(ADMIN_TOKEN_KEY) || '';
-
-    if (adminToken) {
-      el('adminTokenInput').value = adminToken;
-    }
-
-    function tokenHeaders() {
-      return { 'x-admin-token': adminToken };
-    }
-
-    async function adminApi(path, opts = {}) {
-      const r = await fetch('/api/' + path, {
-        ...opts,
-        headers: { ...(opts.headers || {}), ...tokenHeaders() }
-      });
-      const txt = await r.text();
-      let body = null;
-      try { body = txt ? JSON.parse(txt) : null; } catch { body = { raw: txt }; }
-      if (!r.ok) {
-        const msg = (body && (body.error || body.message)) ? (body.error || body.message) : ('Request failed: ' + r.status);
-        throw new Error(msg);
-      }
-      return body;
-    }
-
-    function setStatus(node, message) {
-      node.innerText = message || '';
-    }
-
-    function setAuthorized(isAuthorized) {
-      el('adminProtected').classList.toggle('hidden', !isAuthorized);
-    }
-
-    function saveToken(value) {
-      adminToken = value.trim();
-      if (adminToken) {
-        localStorage.setItem(ADMIN_TOKEN_KEY, adminToken);
-      } else {
-        localStorage.removeItem(ADMIN_TOKEN_KEY);
-      }
-    }
-
-    async function loadStats(options = {}) {
-      const { throwOnError = false } = options;
-      try {
-        setStatus(el('adminStatus'), 'Loading…');
-        const stats = await adminApi('admin-stats');
-        el('statsOut').innerText = JSON.stringify(stats, null, 2);
-        setStatus(el('adminStatus'), 'Stats loaded.');
-      } catch (e) {
-        setStatus(el('adminStatus'), e.message || String(e));
-        if (throwOnError) throw e;
-      }
-    }
-
-    async function authorize() {
-      const candidate = el('adminTokenInput').value.trim();
-      if (!candidate) {
-        setAuthorized(false);
-        setStatus(el('adminStatus'), 'Paste a valid admin token first.');
-        return;
-      }
-
-      try {
-        setStatus(el('adminStatus'), 'Authorizing…');
-        saveToken(candidate);
-        await loadStats({ throwOnError: true });
-        setAuthorized(true);
-        setStatus(el('adminStatus'), 'Authorized. You can now edit the admin page.');
-      } catch (e) {
-        saveToken('');
-        setAuthorized(false);
-        setStatus(el('adminStatus'), e.message || String(e));
-      }
-    }
-
-    function clearToken() {
-      saveToken('');
-      el('adminTokenInput').value = '';
-      setAuthorized(false);
-      setStatus(el('adminStatus'), 'Admin token cleared.');
-    }
-
-    async function getInsights() {
-      try {
-        setStatus(el('insightsStatus'), 'Generating insights…');
-        const out = await adminApi('admin-ai-insights', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: el('insightsQuestionInput').value.trim() })
-        });
-        el('insightsOut').innerText = out.insights || 'No insights generated.';
-        setStatus(el('insightsStatus'), 'Insights ready.');
-      } catch (e) {
-        setStatus(el('insightsStatus'), e.message || String(e));
-      }
-    }
-
-    async function sendCampaign() {
-      try {
-        setStatus(el('campaignStatus'), 'Sending…');
-        const body = {
-          mode: 'activate',
-          title: el('campaignTitleInput').value.trim(),
-          question: el('campaignQuestionInput').value.trim(),
-          placeholder: el('campaignPlaceholderInput').value.trim(),
-          submit_label: el('campaignSubmitLabelInput').value.trim()
-        };
-        const out = await adminApi('admin-feedback-broadcast', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        setStatus(el('campaignStatus'), `Mandatory feedback form sent (campaign #${out?.campaign?.id || 'new'}).`);
-        await loadStats();
-      } catch (e) {
-        setStatus(el('campaignStatus'), e.message || String(e));
-      }
-    }
-
-    async function disableCampaign() {
-      try {
-        setStatus(el('campaignStatus'), 'Turning off…');
-        await adminApi('admin-feedback-broadcast', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'deactivate' })
-        });
-        setStatus(el('campaignStatus'), 'Feedback lock disabled.');
-        await loadStats();
-      } catch (e) {
-        setStatus(el('campaignStatus'), e.message || String(e));
-      }
-    }
-
-    el('authorizeBtn').onclick = () => authorize();
-    el('clearTokenBtn').onclick = () => clearToken();
-    el('getInsightsBtn').onclick = () => getInsights();
-    el('broadcastFeedbackBtn').onclick = () => sendCampaign();
-    el('disableFeedbackBtn').onclick = () => disableCampaign();
-
-    authorize();
-  </script>
+  <script src="admin-api.js?v=1"></script>
+  <script src="admin-render.js?v=1"></script>
+  <script src="admin.js?v=2"></script>
 </body>
 </html>

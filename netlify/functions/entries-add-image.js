@@ -1,6 +1,7 @@
 const { json, getDenverDateISO } = require("./_util");
 const { requireUser } = require("./_auth");
 const { query, ensureUserProfile } = require("./_db");
+const { enforceFoodEntryLimit, enforceAiActionLimit } = require("./_plan");
 const { responsesCreate, outputText } = require("./_openai");
 
 function safeNum(x) {
@@ -36,6 +37,9 @@ exports.handler = async (event, context) => {
   if (!auth.ok) return auth.response;
   const { userId, email } = auth.user;
   await ensureUserProfile(userId, email);
+  const today = getDenverDateISO(new Date());
+  const aiLimit = await enforceAiActionLimit(userId, today, 'label_scan');
+  if (!aiLimit.ok) return aiLimit.response;
 
   let body;
   try { body = JSON.parse(event.body || "{}"); } catch { body = {}; }
@@ -155,6 +159,8 @@ IMPORTANT: If the image is NOT a Nutrition Facts panel (e.g., front-of-box marke
   const totalFat = fatPerServing == null ? null : roundInt(fatPerServing * servingsEaten);
 
   const entry_date = getDenverDateISO(new Date());
+  const foodLimit = await enforceFoodEntryLimit(userId, entry_date);
+  if (!foodLimit.ok) return foodLimit.response;
   const raw_extraction = compactRawExtraction({
     source: "nutrition_label",
     confidence: extracted?.confidence ?? "high",

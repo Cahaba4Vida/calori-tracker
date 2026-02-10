@@ -1,6 +1,7 @@
 const { json, getDenverDateISO } = require("./_util");
 const { requireUser } = require("./_auth");
 const { query, ensureUserProfile } = require("./_db");
+const { enforceHistoryAccess } = require("./_plan");
 
 exports.handler = async (event, context) => {
   const auth = await requireUser(event, context);
@@ -10,6 +11,8 @@ exports.handler = async (event, context) => {
 
   const qs = event.queryStringParameters || {};
   const date = qs.date || getDenverDateISO(new Date());
+  const historyAccess = await enforceHistoryAccess(userId, date);
+  if (!historyAccess.ok) return historyAccess.response;
 
   const r = await query(
     `select id, taken_at, entry_date, calories, protein_g, carbs_g, fat_g, raw_extraction

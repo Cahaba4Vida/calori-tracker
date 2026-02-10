@@ -450,3 +450,8 @@ textarea {
   border: 1px solid var(--border);
   font-family: inherit;
 }
+
+.goalTrack { height: 12px; background: #f1f1f1; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; margin-top: 8px; }
+.goalFill { height: 100%; width: 0%; background: linear-gradient(90deg, #3f7cff, #75a4ff); }
+.goalFill.paid { background: linear-gradient(90deg, #10a26a, #4bcf96); }
+textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); min-width: 220px; width: 100%; }

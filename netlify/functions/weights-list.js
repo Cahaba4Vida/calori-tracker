@@ -1,6 +1,7 @@
 const { json, getDenverDateISO } = require("./_util");
 const { requireUser } = require("./_auth");
 const { query, ensureUserProfile } = require("./_db");
+const { getUserEntitlements, DEFAULTS } = require("./_plan");
 
 exports.handler = async (event, context) => {
   const auth = await requireUser(event, context);
@@ -9,7 +10,9 @@ exports.handler = async (event, context) => {
   await ensureUserProfile(userId, email);
 
   const qs = event.queryStringParameters || {};
-  const days = Math.min(365, Math.max(1, Number(qs.days || 30)));
+  const ent = await getUserEntitlements(userId);
+  const maxDays = ent.is_premium ? 365 : (ent.limits.history_days || DEFAULTS.free_history_days);
+  const days = Math.min(maxDays, Math.max(1, Number(qs.days || 30)));
 
   // Compute from-date in Denver time by taking today's date string and subtracting days in JS Date in UTC.
   const today = new Date();
