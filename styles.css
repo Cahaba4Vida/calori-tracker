@@ -338,6 +338,9 @@ label {
   display: flex;
   flex-direction: column;
 }
+#plateEstimateSheet.hidden {
+  display: none;
+}
 
 #plateEstimateSheet .sheetBody {
   overflow-y: auto;
