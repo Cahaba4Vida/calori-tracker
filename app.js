@@ -724,8 +724,8 @@ function fileToDataUrl(file) {
   });
 }
 
-async function uploadFoodFromInput() {
-  const input = el('photoInput');
+async function uploadFoodFromInput(inputId = 'photoInput') {
+  const input = el(inputId);
   const file = input.files && input.files[0];
   if (!file) return;
 
@@ -758,8 +758,8 @@ async function uploadFoodFromInput() {
   openSheet();
 }
 
-async function uploadPlateFromInput() {
-  const input = el('plateInput');
+async function uploadPlateFromInput(inputId = 'plateInput') {
+  const input = el(inputId);
   const file = input.files && input.files[0];
   if (!file) return;
 
@@ -1198,8 +1198,19 @@ function bindUI() {
   el('loginBtn').onclick = () => netlifyIdentity.open();
   el('logoutBtn').onclick = () => netlifyIdentity.logout();
   el('saveGoalBtn').onclick = () => saveGoal().catch(e => setStatus(e.message));
-  el('photoInput').onchange = () => uploadFoodFromInput().catch(e => setStatus(e.message));
-  el('plateInput').onchange = () => uploadPlateFromInput().catch(e => setStatus(e.message));
+  const photoInputIds = ['photoInput', 'photoCameraInput'];
+  const plateInputIds = ['plateInput', 'plateCameraInput'];
+
+  photoInputIds.forEach((id) => {
+    const node = el(id);
+    if (!node) return;
+    node.onchange = () => uploadFoodFromInput(id).catch(e => setStatus(e.message));
+  });
+  plateInputIds.forEach((id) => {
+    const node = el(id);
+    if (!node) return;
+    node.onchange = () => uploadPlateFromInput(id).catch(e => setStatus(e.message));
+  });
   el('saveWeightBtn').onclick = () => saveWeight().catch(e => setStatus(e.message));
   el('finishDayBtn').onclick = () => finishDay().catch(e => setStatus(e.message));
   el('sendChatBtn').onclick = () => sendChat().catch(e => setStatus(e.message));
@@ -1299,6 +1310,11 @@ function bindUI() {
   // Manual entry
   bindClick('manualSaveBtn', () => saveManualEntry());
   bindClick('saveQuickFillBtn', () => addQuickFill());
+
+  bindClick('photoFromLibraryBtn', () => { const n = el('photoInput'); if (n) n.click(); });
+  bindClick('photoFromCameraBtn', () => { const n = el('photoCameraInput'); if (n) n.click(); });
+  bindClick('plateFromLibraryBtn', () => { const n = el('plateInput'); if (n) n.click(); });
+  bindClick('plateFromCameraBtn', () => { const n = el('plateCameraInput'); if (n) n.click(); });
 
   bindClick('toggleDailyGoalsBtn', () => toggleSection('dailyGoalsBody', 'toggleDailyGoalsBtn'));
   bindClick('toggleAddFoodBtn', () => toggleSection('addFoodBody', 'toggleAddFoodBtn'));

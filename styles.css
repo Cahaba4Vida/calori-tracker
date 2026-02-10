@@ -351,10 +351,26 @@ select { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border)
 
 .onboardingModal {
   width: min(760px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
   background: #fff;
   border-radius: 14px;
   border: 1px solid var(--border);
   padding: 18px;
+}
+
+.photoActions {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hiddenFileInput {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .onboardingOverlay.hidden { display: none; }
