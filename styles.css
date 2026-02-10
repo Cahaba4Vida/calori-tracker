@@ -18,8 +18,7 @@ body.invertedTheme {
 }
 
 body.invertedTheme img,
-body.invertedTheme video,
-body.invertedTheme canvas {
+body.invertedTheme video {
   filter: invert(1) hue-rotate(180deg);
 }
 .pre { white-space: pre-wrap; background: #f6f6f6; padding: 10px; border-radius: 10px; border: 1px solid var(--border); }
