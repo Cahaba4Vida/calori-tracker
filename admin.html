@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin • Calorie & Weight Tracker</title>
+  <link rel="stylesheet" href="styles.css?v=16" />
+</head>
+<body>
+  <header class="row">
+    <h1>Admin Dashboard</h1>
+    <a href="/">← Back to App</a>
+  </header>
+
+  <section class="card">
+    <h2>Admin Access</h2>
+    <label>Admin token (`ADMIN_DASH_TOKEN`)</label>
+    <input id="adminTokenInput" type="password" placeholder="Paste token" />
+    <div class="row" style="margin-top:10px;">
+      <button id="loadStatsBtn">Load Statistics</button>
+    </div>
+    <div id="adminStatus" class="muted"></div>
+  </section>
+
+  <section class="card">
+    <h2>App Statistics</h2>
+    <pre id="statsOut" class="pre">Load stats to view data.</pre>
+  </section>
+
+
+
+  <section class="card">
+    <h2>AI Insights</h2>
+    <div class="muted">Ask product questions (usage patterns, improvement ideas) using current app metrics.</div>
+    <label>Ask AI</label>
+    <textarea id="insightsQuestionInput" rows="3" placeholder="What are people using this app for mostly and what improvements should we prioritize?"></textarea>
+    <div class="row" style="margin-top:10px;">
+      <button id="getInsightsBtn">Get AI Insights</button>
+    </div>
+    <pre id="insightsOut" class="pre">No insights yet.</pre>
+    <div id="insightsStatus" class="muted"></div>
+  </section>
+
+  <section class="card">
+    <h2>Feedback Form Broadcast (Mandatory)</h2>
+    <div class="muted">When active, app users must submit this form before using the app.</div>
+
+    <label>Form title</label>
+    <input id="campaignTitleInput" type="text" placeholder="Quick feedback request" />
+
+    <label>Question</label>
+    <input id="campaignQuestionInput" type="text" placeholder="What should we improve?" />
+
+    <label>Input placeholder</label>
+    <input id="campaignPlaceholderInput" type="text" placeholder="Share your feedback" />
+
+    <label>Submit button label</label>
+    <input id="campaignSubmitLabelInput" type="text" placeholder="Submit feedback" />
+
+    <div class="row" style="margin-top:10px;">
+      <button id="broadcastFeedbackBtn">Send Mandatory Feedback Form</button>
+      <button id="disableFeedbackBtn">Turn Off Feedback Lock</button>
+    </div>
+    <div id="campaignStatus" class="muted"></div>
+  </section>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+
+    function tokenHeaders() {
+      return { 'x-admin-token': el('adminTokenInput').value.trim() };
+    }
+
+    async function adminApi(path, opts = {}) {
+      const r = await fetch('/api/' + path, {
+        ...opts,
+        headers: { ...(opts.headers || {}), ...tokenHeaders() }
+      });
+      const txt = await r.text();
+      let body = null;
+      try { body = txt ? JSON.parse(txt) : null; } catch { body = { raw: txt }; }
+      if (!r.ok) {
+        const msg = (body && (body.error || body.message)) ? (body.error || body.message) : ('Request failed: ' + r.status);
+        throw new Error(msg);
+      }
+      return body;
+    }
+
+    function setStatus(node, message) {
+      node.innerText = message || '';
+    }
+
+    async function loadStats() {
+      try {
+        setStatus(el('adminStatus'), 'Loading…');
+        const stats = await adminApi('admin-stats');
+        el('statsOut').innerText = JSON.stringify(stats, null, 2);
+        setStatus(el('adminStatus'), 'Stats loaded.');
+      } catch (e) {
+        setStatus(el('adminStatus'), e.message || String(e));
+      }
+    }
+
+
+    async function getInsights() {
+      try {
+        setStatus(el('insightsStatus'), 'Generating insights…');
+        const out = await adminApi('admin-ai-insights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: el('insightsQuestionInput').value.trim() })
+        });
+        el('insightsOut').innerText = out.insights || 'No insights generated.';
+        setStatus(el('insightsStatus'), 'Insights ready.');
+      } catch (e) {
+        setStatus(el('insightsStatus'), e.message || String(e));
+      }
+    }
+
+    async function sendCampaign() {
+      try {
+        setStatus(el('campaignStatus'), 'Sending…');
+        const body = {
+          mode: 'activate',
+          title: el('campaignTitleInput').value.trim(),
+          question: el('campaignQuestionInput').value.trim(),
+          placeholder: el('campaignPlaceholderInput').value.trim(),
+          submit_label: el('campaignSubmitLabelInput').value.trim()
+        };
+        const out = await adminApi('admin-feedback-broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        setStatus(el('campaignStatus'), `Mandatory feedback form sent (campaign #${out?.campaign?.id || 'new'}).`);
+        await loadStats();
+      } catch (e) {
+        setStatus(el('campaignStatus'), e.message || String(e));
+      }
+    }
+
+    async function disableCampaign() {
+      try {
+        setStatus(el('campaignStatus'), 'Turning off…');
+        await adminApi('admin-feedback-broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'deactivate' })
+        });
+        setStatus(el('campaignStatus'), 'Feedback lock disabled.');
+        await loadStats();
+      } catch (e) {
+        setStatus(el('campaignStatus'), e.message || String(e));
+      }
+    }
+
+    el('loadStatsBtn').onclick = () => loadStats();
+    el('getInsightsBtn').onclick = () => getInsights();
+    el('broadcastFeedbackBtn').onclick = () => sendCampaign();
+    el('disableFeedbackBtn').onclick = () => disableCampaign();
+  </script>
+</body>
+</html>
