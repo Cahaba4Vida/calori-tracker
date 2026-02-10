@@ -17,58 +17,65 @@
     <label>Admin token (`ADMIN_DASH_TOKEN`)</label>
     <input id="adminTokenInput" type="password" placeholder="Paste token" />
     <div class="row" style="margin-top:10px;">
-      <button id="loadStatsBtn">Load Statistics</button>
+      <button id="authorizeBtn">Authorize</button>
+      <button id="clearTokenBtn">Clear Token</button>
     </div>
     <div id="adminStatus" class="muted"></div>
   </section>
 
-  <section class="card">
-    <h2>App Statistics</h2>
-    <pre id="statsOut" class="pre">Load stats to view data.</pre>
-  </section>
+  <div id="adminProtected" class="hidden">
+    <section class="card">
+      <h2>App Statistics</h2>
+      <pre id="statsOut" class="pre">Load stats to view data.</pre>
+    </section>
 
+    <section class="card">
+      <h2>AI Insights</h2>
+      <div class="muted">Ask product questions (usage patterns, improvement ideas) using current app metrics.</div>
+      <label>Ask AI</label>
+      <textarea id="insightsQuestionInput" rows="3" placeholder="What are people using this app for mostly and what improvements should we prioritize?"></textarea>
+      <div class="row" style="margin-top:10px;">
+        <button id="getInsightsBtn">Get AI Insights</button>
+      </div>
+      <pre id="insightsOut" class="pre">No insights yet.</pre>
+      <div id="insightsStatus" class="muted"></div>
+    </section>
 
+    <section class="card">
+      <h2>Feedback Form Broadcast (Mandatory)</h2>
+      <div class="muted">When active, app users must submit this form before using the app.</div>
 
-  <section class="card">
-    <h2>AI Insights</h2>
-    <div class="muted">Ask product questions (usage patterns, improvement ideas) using current app metrics.</div>
-    <label>Ask AI</label>
-    <textarea id="insightsQuestionInput" rows="3" placeholder="What are people using this app for mostly and what improvements should we prioritize?"></textarea>
-    <div class="row" style="margin-top:10px;">
-      <button id="getInsightsBtn">Get AI Insights</button>
-    </div>
-    <pre id="insightsOut" class="pre">No insights yet.</pre>
-    <div id="insightsStatus" class="muted"></div>
-  </section>
+      <label>Form title</label>
+      <input id="campaignTitleInput" type="text" placeholder="Quick feedback request" />
 
-  <section class="card">
-    <h2>Feedback Form Broadcast (Mandatory)</h2>
-    <div class="muted">When active, app users must submit this form before using the app.</div>
+      <label>Question</label>
+      <input id="campaignQuestionInput" type="text" placeholder="What should we improve?" />
 
-    <label>Form title</label>
-    <input id="campaignTitleInput" type="text" placeholder="Quick feedback request" />
+      <label>Input placeholder</label>
+      <input id="campaignPlaceholderInput" type="text" placeholder="Share your feedback" />
 
-    <label>Question</label>
-    <input id="campaignQuestionInput" type="text" placeholder="What should we improve?" />
+      <label>Submit button label</label>
+      <input id="campaignSubmitLabelInput" type="text" placeholder="Submit feedback" />
 
-    <label>Input placeholder</label>
-    <input id="campaignPlaceholderInput" type="text" placeholder="Share your feedback" />
-
-    <label>Submit button label</label>
-    <input id="campaignSubmitLabelInput" type="text" placeholder="Submit feedback" />
-
-    <div class="row" style="margin-top:10px;">
-      <button id="broadcastFeedbackBtn">Send Mandatory Feedback Form</button>
-      <button id="disableFeedbackBtn">Turn Off Feedback Lock</button>
-    </div>
-    <div id="campaignStatus" class="muted"></div>
-  </section>
+      <div class="row" style="margin-top:10px;">
+        <button id="broadcastFeedbackBtn">Send Mandatory Feedback Form</button>
+        <button id="disableFeedbackBtn">Turn Off Feedback Lock</button>
+      </div>
+      <div id="campaignStatus" class="muted"></div>
+    </section>
+  </div>
 
   <script>
     const el = (id) => document.getElementById(id);
+    const ADMIN_TOKEN_KEY = 'adminDashToken';
+    let adminToken = localStorage.getItem(ADMIN_TOKEN_KEY) || '';
+
+    if (adminToken) {
+      el('adminTokenInput').value = adminToken;
+    }
 
     function tokenHeaders() {
-      return { 'x-admin-token': el('adminTokenInput').value.trim() };
+      return { 'x-admin-token': adminToken };
     }
 
     async function adminApi(path, opts = {}) {
@@ -90,7 +97,21 @@
       node.innerText = message || '';
     }
 
-    async function loadStats() {
+    function setAuthorized(isAuthorized) {
+      el('adminProtected').classList.toggle('hidden', !isAuthorized);
+    }
+
+    function saveToken(value) {
+      adminToken = value.trim();
+      if (adminToken) {
+        localStorage.setItem(ADMIN_TOKEN_KEY, adminToken);
+      } else {
+        localStorage.removeItem(ADMIN_TOKEN_KEY);
+      }
+    }
+
+    async function loadStats(options = {}) {
+      const { throwOnError = false } = options;
       try {
         setStatus(el('adminStatus'), 'Loading…');
         const stats = await adminApi('admin-stats');
@@ -98,9 +119,37 @@
         setStatus(el('adminStatus'), 'Stats loaded.');
       } catch (e) {
         setStatus(el('adminStatus'), e.message || String(e));
+        if (throwOnError) throw e;
       }
     }
 
+    async function authorize() {
+      const candidate = el('adminTokenInput').value.trim();
+      if (!candidate) {
+        setAuthorized(false);
+        setStatus(el('adminStatus'), 'Paste a valid admin token first.');
+        return;
+      }
+
+      try {
+        setStatus(el('adminStatus'), 'Authorizing…');
+        saveToken(candidate);
+        await loadStats({ throwOnError: true });
+        setAuthorized(true);
+        setStatus(el('adminStatus'), 'Authorized. You can now edit the admin page.');
+      } catch (e) {
+        saveToken('');
+        setAuthorized(false);
+        setStatus(el('adminStatus'), e.message || String(e));
+      }
+    }
+
+    function clearToken() {
+      saveToken('');
+      el('adminTokenInput').value = '';
+      setAuthorized(false);
+      setStatus(el('adminStatus'), 'Admin token cleared.');
+    }
 
     async function getInsights() {
       try {
@@ -154,10 +203,13 @@
       }
     }
 
-    el('loadStatsBtn').onclick = () => loadStats();
+    el('authorizeBtn').onclick = () => authorize();
+    el('clearTokenBtn').onclick = () => clearToken();
     el('getInsightsBtn').onclick = () => getInsights();
     el('broadcastFeedbackBtn').onclick = () => sendCampaign();
     el('disableFeedbackBtn').onclick = () => disableCampaign();
+
+    authorize();
   </script>
 </body>
 </html>
