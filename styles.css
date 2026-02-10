@@ -334,6 +334,13 @@ label {
 }
 #plateEstimateSheet {
   z-index: 1001;
+  max-height: calc(100vh - 24px);
+  display: flex;
+  flex-direction: column;
+}
+
+#plateEstimateSheet .sheetBody {
+  overflow-y: auto;
 }
 
 select { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); min-width: 220px; }
