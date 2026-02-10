@@ -17,6 +17,20 @@ function roundInt(n) {
   return Math.round(x);
 }
 
+function clampStr(s, max=180) {
+  if (s == null) return null;
+  return String(s).slice(0, max);
+}
+
+function compactRawExtraction(meta = {}) {
+  return {
+    source: clampStr(meta.source ?? "nutrition_label", 32),
+    confidence: clampStr(meta.confidence ?? "medium", 16),
+    estimated: !!meta.estimated,
+    notes: clampStr(meta.notes, 180)
+  };
+}
+
 exports.handler = async (event, context) => {
   const auth = await requireUser(event, context);
   if (!auth.ok) return auth.response;
@@ -43,7 +57,7 @@ exports.handler = async (event, context) => {
     notes: "string | null"
   };
 
-  const prompt = 'You are reading a photo. Extract nutrition data ONLY from a real Nutrition Facts / Nutrition Information panel.
+  const prompt = `You are reading a photo. Extract nutrition data ONLY from a real Nutrition Facts / Nutrition Information panel.
 
 Return ONLY valid JSON. No markdown. No commentary. No extra keys.
 
@@ -95,7 +109,7 @@ Notes field:
 - Keep it short and factual about what blocked certainty (e.g. "glare on calories row", "panel appears per 100g", "two columns: prepared vs unprepared").
 
 IMPORTANT: If the image is NOT a Nutrition Facts panel (e.g., front-of-box marketing claims), return calories_per_serving = null, confidence="low", and notes="Nutrition Facts panel not visible".
-';
+`;
 
   const resp = await responsesCreate({
     model: "gpt-5.2",
@@ -141,11 +155,12 @@ IMPORTANT: If the image is NOT a Nutrition Facts panel (e.g., front-of-box marke
   const totalFat = fatPerServing == null ? null : roundInt(fatPerServing * servingsEaten);
 
   const entry_date = getDenverDateISO(new Date());
-  const raw_extraction = {
-    extracted,
-    servings_eaten: servingsEaten,
-    totals: { calories: totalCalories, protein_g: totalProtein, carbs_g: totalCarbs, fat_g: totalFat }
-  };
+  const raw_extraction = compactRawExtraction({
+    source: "nutrition_label",
+    confidence: extracted?.confidence ?? "high",
+    estimated: false,
+    notes: extracted?.notes
+  });
 
   const ins = await query(
     `insert into food_entries(user_id, entry_date, calories, protein_g, carbs_g, fat_g, raw_extraction)

@@ -3,6 +3,7 @@ let currentUser = null;
 
 let weightUnit = (localStorage.getItem('weightUnit') || 'lbs'); // 'lbs' or 'kg'
 let darkModeEnabled = localStorage.getItem('darkMode') === 'true';
+let appFontSizePct = Number(localStorage.getItem('appFontSizePct') || '100');
 
 function lbsToKg(lbs) { return lbs / 2.2046226218; }
 function kgToLbs(kg) { return kg * 2.2046226218; }
@@ -27,7 +28,8 @@ let profileState = {
   macro_fat_g: null,
   goal_weight_lbs: null,
   activity_level: null,
-  goal_date: null
+  goal_date: null,
+  quick_fills: []
 };
 let aiGoalFlowMode = null;
 let aiGoalSuggestion = null;
@@ -60,6 +62,21 @@ function applyDarkModeUI() {
   document.body.classList.toggle('invertedTheme', darkModeEnabled);
   const darkModeLabel = el('darkModeLabel');
   if (darkModeLabel) darkModeLabel.innerText = darkModeEnabled ? 'On' : 'Off';
+}
+
+function clampFontSizePct(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 100;
+  return Math.max(85, Math.min(125, Math.round(n / 5) * 5));
+}
+
+function applyFontSizeUI() {
+  appFontSizePct = clampFontSizePct(appFontSizePct);
+  document.documentElement.style.fontSize = `${appFontSizePct}%`;
+  const label = el('fontSizeLabel');
+  if (label) label.innerText = `${appFontSizePct}%`;
+  const slider = el('fontSizeRange');
+  if (slider) slider.value = String(appFontSizePct);
 }
 
 function toggleSection(bodyId, buttonId, collapseText = 'Collapse', expandText = 'Expand') {
@@ -160,7 +177,9 @@ function resetAiGoalFlowForm() {
 
 async function loadProfile() {
   const p = await api('profile-get');
-  profileState = p;
+  profileState = { ...profileState, ...p, quick_fills: Array.isArray(p.quick_fills) ? p.quick_fills : [] };
+  renderQuickFillButtons();
+  renderQuickFillSettings();
   return p;
 }
 
@@ -838,17 +857,133 @@ async function loadToday() {
 }
 
 function applyManualPreset(preset) {
-  const presets = {
-    light: { calories: 220, protein: 10, carbs: 26, fat: 9 },
-    meal: { calories: 550, protein: 35, carbs: 55, fat: 20 },
-    post: { calories: 320, protein: 30, carbs: 35, fat: 6 }
-  };
-  const p = presets[preset];
+  const p = (profileState.quick_fills || []).find((x) => x.id === preset);
   if (!p) return;
   el('manualCaloriesInput').value = p.calories;
-  el('manualProteinInput').value = p.protein;
-  el('manualCarbsInput').value = p.carbs;
-  el('manualFatInput').value = p.fat;
+  el('manualProteinInput').value = p.protein_g ?? '';
+  el('manualCarbsInput').value = p.carbs_g ?? '';
+  el('manualFatInput').value = p.fat_g ?? '';
+  el('manualNotesInput').value = p.name || '';
+}
+
+function renderQuickFillButtons() {
+  const row = el('quickFillsRow');
+  const block = el('quickAddsBlock');
+  if (!row || !block) return;
+  row.innerHTML = '';
+  const active = (profileState.quick_fills || []).filter((q) => q.enabled);
+  block.classList.toggle('hidden', active.length === 0);
+
+  for (const q of active) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'quickFillBtn';
+    btn.dataset.preset = q.id;
+    btn.innerText = q.name;
+    btn.onclick = () => applyManualPreset(q.id);
+    row.appendChild(btn);
+  }
+}
+
+function renderQuickFillSettings() {
+  const list = el('quickFillList');
+  if (!list) return;
+  list.innerHTML = '';
+  const fills = profileState.quick_fills || [];
+
+  if (fills.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.innerText = 'No quick fills yet.';
+    list.appendChild(li);
+    return;
+  }
+
+  for (const q of fills) {
+    const li = document.createElement('li');
+    li.innerText = `${q.name} — ${q.calories} cal${q.protein_g != null ? `, P${q.protein_g}` : ''}${q.carbs_g != null ? `, C${q.carbs_g}` : ''}${q.fat_g != null ? `, F${q.fat_g}` : ''} (${q.enabled ? 'shown' : 'hidden'})`;
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.innerText = q.enabled ? 'Hide' : 'Show';
+    toggleBtn.onclick = () => updateQuickFill(q.id, { enabled: !q.enabled });
+
+    const delBtn = document.createElement('button');
+    delBtn.innerText = 'Delete';
+    delBtn.onclick = () => deleteQuickFill(q.id);
+
+    li.appendChild(document.createTextNode(' '));
+    li.appendChild(toggleBtn);
+    li.appendChild(delBtn);
+    list.appendChild(li);
+  }
+}
+
+function readQuickFillForm() {
+  const name = (el('quickFillNameInput')?.value || '').trim();
+  const calories = Number(el('quickFillCaloriesInput')?.value);
+  const proteinRaw = el('quickFillProteinInput')?.value;
+  const carbsRaw = el('quickFillCarbsInput')?.value;
+  const fatRaw = el('quickFillFatInput')?.value;
+  const enabled = String(el('quickFillEnabledInput')?.value || 'true') === 'true';
+
+  if (!name) throw new Error('Quick fill name is required.');
+  if (!Number.isFinite(calories) || calories <= 0) throw new Error('Quick fill calories must be > 0.');
+
+  const protein = proteinRaw ? Number(proteinRaw) : null;
+  const carbs = carbsRaw ? Number(carbsRaw) : null;
+  const fat = fatRaw ? Number(fatRaw) : null;
+
+  return {
+    id: `qf_${Date.now()}_${Math.floor(Math.random() * 100000)}`,
+    name: name.slice(0, 40),
+    calories: Math.round(calories),
+    protein_g: Number.isFinite(protein) ? Math.round(protein) : null,
+    carbs_g: Number.isFinite(carbs) ? Math.round(carbs) : null,
+    fat_g: Number.isFinite(fat) ? Math.round(fat) : null,
+    enabled
+  };
+}
+
+function clearQuickFillForm() {
+  el('quickFillNameInput').value = '';
+  el('quickFillCaloriesInput').value = '';
+  el('quickFillProteinInput').value = '';
+  el('quickFillCarbsInput').value = '';
+  el('quickFillFatInput').value = '';
+  el('quickFillEnabledInput').value = 'true';
+}
+
+async function saveQuickFills(next) {
+  await api('profile-set', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ quick_fills: next })
+  });
+  profileState.quick_fills = next;
+  renderQuickFillButtons();
+  renderQuickFillSettings();
+}
+
+async function addQuickFill() {
+  try {
+    const item = readQuickFillForm();
+    const next = [...(profileState.quick_fills || []), item];
+    await saveQuickFills(next);
+    clearQuickFillForm();
+    el('quickFillStatus').innerText = 'Quick fill saved.';
+  } catch (e) {
+    el('quickFillStatus').innerText = e.message || String(e);
+  }
+}
+
+async function updateQuickFill(id, patch) {
+  const next = (profileState.quick_fills || []).map((q) => (q.id === id ? { ...q, ...patch } : q));
+  await saveQuickFills(next);
+}
+
+async function deleteQuickFill(id) {
+  const next = (profileState.quick_fills || []).filter((q) => q.id !== id);
+  await saveQuickFills(next);
 }
 
 async function loadWeight() {
@@ -885,7 +1020,7 @@ async function loadWeightsList() {
 }
 
 async function finishDay() {
-  setStatus('Generating score + tips…');
+  setStatus('Generating summary…');
   const j = await api('day-finish', { method: 'POST' });
   el('scoreOutput').innerText = `Score: ${j.score}\n\n${j.tips}`;
   setStatus('');
@@ -957,9 +1092,6 @@ async function saveManualEntry() {
         source: 'manual',
         estimated: false,
         confidence: 'high',
-        assumptions: [],
-        portion_hint: null,
-        servings_eaten: null,
         notes: notes || null
       }
     };
@@ -1026,6 +1158,9 @@ function bindUI() {
   const darkModeToggle = el('darkModeToggle');
   if (darkModeToggle) darkModeToggle.checked = darkModeEnabled;
   applyDarkModeUI();
+  applyFontSizeUI();
+
+  const fontSizeRange = el('fontSizeRange');
 
   function applyUnitUI() {
     unitLabel.innerText = unitSuffix();
@@ -1046,6 +1181,14 @@ function bindUI() {
       darkModeEnabled = darkModeToggle.checked;
       localStorage.setItem('darkMode', String(darkModeEnabled));
       applyDarkModeUI();
+    };
+  }
+
+  if (fontSizeRange) {
+    fontSizeRange.oninput = () => {
+      appFontSizePct = clampFontSizePct(fontSizeRange.value);
+      localStorage.setItem('appFontSizePct', String(appFontSizePct));
+      applyFontSizeUI();
     };
   }
 
@@ -1078,9 +1221,7 @@ function bindUI() {
 
   // Manual entry
   bindClick('manualSaveBtn', () => saveManualEntry());
-  document.querySelectorAll('.quickFillBtn').forEach((btn) => {
-    btn.onclick = () => applyManualPreset(btn.dataset.preset);
-  });
+  bindClick('saveQuickFillBtn', () => addQuickFill());
 
   bindClick('toggleDailyGoalsBtn', () => toggleSection('dailyGoalsBody', 'toggleDailyGoalsBtn'));
   bindClick('toggleAddFoodBtn', () => toggleSection('addFoodBody', 'toggleAddFoodBtn'));
@@ -1117,5 +1258,6 @@ netlifyIdentity.on('logout', () => {
 });
 
 applyDarkModeUI();
+applyFontSizeUI();
 bindUI();
 netlifyIdentity.init();

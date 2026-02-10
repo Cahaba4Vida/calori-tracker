@@ -21,6 +21,10 @@ No other backend services.
 3. Set env vars (Project configuration → Environment variables):
    - `DATABASE_URL`
    - `OPENAI_API_KEY`
+   - `PERSIST_DAILY_SUMMARIES` (`true` to store daily summaries, default is not persisted)
+   - `RETENTION_ADMIN_TOKEN` (required for running retention endpoint)
+   - `HOT_STORAGE_KEEP_DAYS` (optional, default `90`)
+   - `SUMMARY_KEEP_DAYS` (optional, default uses `HOT_STORAGE_KEEP_DAYS`)
 
 ## Local dev
 Netlify Identity context is not always present in local `netlify dev`. Test auth-dependent functions on a deployed preview/site.
@@ -28,6 +32,8 @@ Netlify Identity context is not always present in local `netlify dev`. Test auth
 ## Notes
 - The server computes the “day” using America/Denver for consistency.
 - The app does not store images—photos are sent to the function for extraction and discarded.
+- `raw_extraction` is intentionally compact (`source`, `confidence`, `estimated`, short `notes`) to reduce storage overhead.
+- Retention/cold storage: run `/.netlify/functions/admin-retention-run` with header `x-admin-token: <RETENTION_ADMIN_TOKEN>` to archive + delete old rows from hot tables.
 
 ## New in v1.1
 - Edit/delete food entries

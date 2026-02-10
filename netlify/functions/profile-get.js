@@ -13,7 +13,7 @@ exports.handler = async (event, context) => {
   await ensureUserProfile(userId, email);
 
   const r = await query(
-    `select onboarding_completed, macro_protein_g, macro_carbs_g, macro_fat_g, goal_weight_lbs, activity_level, goal_date
+    `select onboarding_completed, macro_protein_g, macro_carbs_g, macro_fat_g, goal_weight_lbs, activity_level, goal_date, quick_fills
      from user_profiles
      where user_id = $1`,
     [userId]
@@ -27,6 +27,7 @@ exports.handler = async (event, context) => {
     macro_fat_g: row.macro_fat_g ?? null,
     goal_weight_lbs: row.goal_weight_lbs == null ? null : Number(row.goal_weight_lbs),
     activity_level: row.activity_level ?? null,
-    goal_date: row.goal_date ?? null
+    goal_date: row.goal_date ?? null,
+    quick_fills: Array.isArray(row.quick_fills) ? row.quick_fills : []
   });
 };

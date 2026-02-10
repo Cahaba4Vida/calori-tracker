@@ -173,6 +173,44 @@ label {
   box-shadow: 0 12px 28px rgba(0,0,0,0.2);
 }
 
+@media (min-width: 1100px) {
+  body {
+    max-width: 1180px;
+  }
+
+  .dashboardGrid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+  }
+
+  .dashboardGrid > .card {
+    margin: 0;
+  }
+
+  #todayCard,
+  #addFoodCard,
+  #dailyGoalsCard {
+    grid-column: 1;
+  }
+
+  #coachChatCard {
+    position: static;
+    right: auto;
+    bottom: auto;
+    width: 100%;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+  }
+
+  #panelDashboard > section:nth-of-type(4),
+  #panelDashboard > section:nth-of-type(5),
+  #panelDashboard > section:nth-of-type(6),
+  #coachChatCard {
+    grid-column: 2;
+  }
+}
+
 #coachChatBody .row {
   flex-wrap: nowrap;
 }

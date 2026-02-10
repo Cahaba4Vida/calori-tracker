@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Calorie & Weight Tracker</title>
   <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
-  <link rel="stylesheet" href="styles.css?v=13" />
+  <link rel="stylesheet" href="styles.css?v=14" />
 </head>
 <body>
   <header class="row">
@@ -27,7 +27,7 @@
 
   
   <main id="app" class="hidden">
-    <div id="panelDashboard">
+    <div id="panelDashboard" class="dashboardGrid">
     <section class="card" id="todayCard">
       <h2>Today</h2>
       <div class="statStrip">
@@ -103,7 +103,7 @@
 
     <section class="card" id="addFoodCard">
       <div class="cardHeaderRow">
-        <h2>Add Food (Photo of nutrition label)</h2>
+        <h2>Add Food</h2>
         <button type="button" class="sectionToggleBtn" id="toggleAddFoodBtn" aria-expanded="true" aria-controls="addFoodBody">Collapse</button>
       </div>
       <div id="addFoodBody" class="collapsibleBody">
@@ -111,20 +111,17 @@
         <div class="pill">Nutrition Label (accurate)</div>
       </div>
       <input id="photoInput" type="file" accept="image/*" capture="environment" />
-      <div class="muted">Tip: get close, fill the frame with the Nutrition Facts panel.</div>
 
       <div style="height:10px"></div>
       <div class="row">
         <div class="pill">Plate Photo (estimate)</div>
       </div>
       <input id="plateInput" type="file" accept="image/*" capture="environment" />
-      <div class="muted">Tip: capture the full plate in good light. Estimates are approximate.</div>
 
       <div style="height:14px"></div>
       <div class="row">
         <div class="pill">Manual Entry</div>
       </div>
-      <div class="muted">Quick add calories/macros directly (no photo).</div>
 
       <div class="grid2">
         <div>
@@ -146,13 +143,9 @@
       </div>
       <label>Notes (optional)</label>
       <input id="manualNotesInput" type="text" placeholder="e.g. homemade chicken bowl" />
-      <div class="quickAdds">
+      <div class="quickAdds hidden" id="quickAddsBlock">
         <div class="muted">Quick fills</div>
-        <div class="row">
-          <button type="button" class="quickFillBtn" data-preset="light">Light snack</button>
-          <button type="button" class="quickFillBtn" data-preset="meal">Balanced meal</button>
-          <button type="button" class="quickFillBtn" data-preset="post">Post-workout</button>
-        </div>
+        <div class="row" id="quickFillsRow"></div>
       </div>
 
       <div class="row end" style="margin-top:10px">
@@ -240,6 +233,11 @@
           <div class="muted">Inverts app colors for a dark-style look.</div>
         </div>
       </div>
+      <div class="row" style="margin-top:12px; align-items:center;">
+        <div style="min-width:120px;"><strong>App font size:</strong> <span id="fontSizeLabel">100%</span></div>
+        <input id="fontSizeRange" type="range" min="85" max="125" step="5" value="100" style="min-width:220px;" />
+      </div>
+      <div class="muted">Adjust text size across the app for readability.</div>
       <div class="row" style="margin-top:12px;">
         <button id="settingsAiGoalBtn">Generate AI calorie & macro goals</button>
       </div>
@@ -247,6 +245,45 @@
         <div><strong>Current AI plan:</strong> <span id="aiPlanSummaryCalories">Not set</span></div>
         <div id="aiPlanSummaryMacros" class="muted">Macros: —</div>
         <div id="aiPlanSummaryMeta" class="muted">Goal date: — • Activity: —</div>
+      </div>
+
+      <div style="margin-top:16px;">
+        <h3>Custom Quick Fills</h3>
+        <div class="muted">Create your own meals/snacks for one-tap manual entry.</div>
+        <div class="grid2" style="margin-top:10px;">
+          <div>
+            <label>Name</label>
+            <input id="quickFillNameInput" type="text" placeholder="e.g. Breakfast Burrito" />
+          </div>
+          <div>
+            <label>Calories</label>
+            <input id="quickFillCaloriesInput" type="number" min="1" step="1" placeholder="e.g. 520" />
+          </div>
+          <div>
+            <label>Protein (g)</label>
+            <input id="quickFillProteinInput" type="number" min="0" step="1" placeholder="optional" />
+          </div>
+          <div>
+            <label>Carbs (g)</label>
+            <input id="quickFillCarbsInput" type="number" min="0" step="1" placeholder="optional" />
+          </div>
+          <div>
+            <label>Fat (g)</label>
+            <input id="quickFillFatInput" type="number" min="0" step="1" placeholder="optional" />
+          </div>
+          <div>
+            <label>Show in Add Food</label>
+            <select id="quickFillEnabledInput">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <button id="saveQuickFillBtn">Save Quick Fill</button>
+        </div>
+        <div id="quickFillStatus" class="muted"></div>
+        <ul id="quickFillList"></ul>
       </div>
     </section>
 

@@ -3,6 +3,8 @@ const { requireUser } = require("./_auth");
 const { query, ensureUserProfile } = require("./_db");
 const { responsesCreate, outputText } = require("./_openai");
 
+const shouldPersistDailySummaries = process.env.PERSIST_DAILY_SUMMARIES === "true";
+
 function clampScore(x) {
   const n = Number(x);
   if (!Number.isFinite(n)) return 50;
@@ -39,7 +41,7 @@ exports.handler = async (event, context) => {
 
   const scoringSpec = {
     score: "integer 0-100",
-    tips: "string with 3-6 bullet points (use '-' bullets), tailored and specific"
+    tips: "string with exactly 2-4 short bullet points: first 1-2 wins, then 1-2 improvement tips"
   };
 
   const contextLines = [];
@@ -54,12 +56,14 @@ exports.handler = async (event, context) => {
 
   const prompt = [
     "You are a nutrition coach for calorie tracking.",
-    "Given today's food log, calorie goal, and optional weight, produce a daily adherence score and actionable tips.",
+    "Given today's food log, calorie goal, and optional weight, produce a daily adherence score and a short friendly recap.",
     "Scoring rubric:",
     "- If goal is set: reward being close to goal (within ~5-10%). Penalize large deviation.",
     "- If goal is not set: score based on completeness and consistency; encourage setting a goal.",
     "- Reward logging consistency (more complete log = higher score).",
-    "- Tips should be concrete (e.g., specific meal timing, portioning, common label pitfalls).",
+    "- Keep response brief and friendly.",
+    "- Format tips as bullet points using '-' only.",
+    "- Include 1-2 good things first, then 1-2 concrete improvement tips.",
     "Return ONLY valid JSON (no markdown).",
     "JSON shape: " + JSON.stringify(scoringSpec),
     "",
@@ -79,16 +83,25 @@ exports.handler = async (event, context) => {
   }
 
   const score = clampScore(out.score);
-  const tips = String(out.tips || "").trim() || "- Log consistently\\n- Set a goal\\n- Review portion sizes";
+  const tips = String(out.tips || "").trim().slice(0, 400) || "- Log consistently\\n- Set a goal\\n- Review portion sizes";
 
-  await query(
-    `insert into daily_summaries(user_id, entry_date, total_calories, goal_calories, score, tips)
-     values ($1, $2, $3, $4, $5, $6)
-     on conflict (user_id, entry_date)
-     do update set total_calories=excluded.total_calories, goal_calories=excluded.goal_calories,
-                   score=excluded.score, tips=excluded.tips, created_at=now()`,
-    [userId, date, totalCalories, goal, score, tips]
-  );
+  if (shouldPersistDailySummaries) {
+    await query(
+      `insert into daily_summaries(user_id, entry_date, total_calories, goal_calories, score, tips)
+       values ($1, $2, $3, $4, $5, $6)
+       on conflict (user_id, entry_date)
+       do update set total_calories=excluded.total_calories, goal_calories=excluded.goal_calories,
+                     score=excluded.score, tips=excluded.tips, created_at=now()`,
+      [userId, date, totalCalories, goal, score, tips]
+    );
+  }
 
-  return json(200, { entry_date: date, total_calories: totalCalories, goal_calories: goal, score, tips });
+  return json(200, {
+    entry_date: date,
+    total_calories: totalCalories,
+    goal_calories: goal,
+    score,
+    tips,
+    persisted: shouldPersistDailySummaries
+  });
 };
