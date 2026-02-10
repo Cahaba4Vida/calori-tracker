@@ -294,8 +294,12 @@ function closeSheet() {
 
 function openEstimateSheet() {
   el('estimateError').innerText = '';
-  el('estimateOverlay').classList.remove('hidden');
-  el('plateEstimateSheet').classList.remove('hidden');
+  const overlayEl = el('estimateOverlay');
+  const sheetEl = el('plateEstimateSheet');
+  overlayEl.classList.remove('hidden');
+  sheetEl.classList.remove('hidden');
+  overlayEl.hidden = false;
+  sheetEl.hidden = false;
 
   // Bind handlers after the estimate sheet is rendered/visible.
   const overlay = el('estimateOverlay');
@@ -317,9 +321,13 @@ function openEstimateSheet() {
   }
 }
 function closeEstimateSheet() {
-  el('estimateOverlay').classList.add('hidden');
-  el('plateEstimateSheet').classList.add('hidden');
-  el('estimateOverlay').onclick = null;
+  const overlayEl = el('estimateOverlay');
+  const sheetEl = el('plateEstimateSheet');
+  overlayEl.classList.add('hidden');
+  sheetEl.classList.add('hidden');
+  overlayEl.hidden = true;
+  sheetEl.hidden = true;
+  overlayEl.onclick = null;
   pendingPlateEstimate = null;
 }
 function setBadge(conf) {
