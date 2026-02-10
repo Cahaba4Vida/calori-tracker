@@ -1,6 +1,7 @@
 const { json, getDenverDateISO } = require("./_util");
 const { requireUser } = require("./_auth");
 const { query, ensureUserProfile } = require("./_db");
+const { enforceAiActionLimit } = require("./_plan");
 const { responsesCreate, outputText } = require("./_openai");
 
 exports.handler = async (event, context) => {
@@ -15,6 +16,8 @@ exports.handler = async (event, context) => {
   if (!message) return json(400, { error: "message is required" });
 
   const date = body.date || getDenverDateISO(new Date());
+  const aiLimit = await enforceAiActionLimit(userId, getDenverDateISO(new Date()), 'chat');
+  if (!aiLimit.ok) return aiLimit.response;
 
   const entries = await query(
     `select calories, protein_g, carbs_g, fat_g, taken_at

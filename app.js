@@ -34,6 +34,7 @@ let profileState = {
 let aiGoalFlowMode = null;
 let aiGoalSuggestion = null;
 let feedbackGateState = { required: false, campaign: null };
+let billingController = null;
 
 function isoToday() {
   return new Date().toISOString().slice(0, 10);
@@ -52,6 +53,8 @@ function macroPct(total, goal) {
 const el = (id) => document.getElementById(id);
 
 function setStatus(msg) { el('status').innerText = msg || ''; }
+
+
 function setThinking(isThinking) {
   const thinking = el('aiThinking');
   if (!thinking) return;
@@ -626,6 +629,7 @@ async function saveGoal() {
   });
 
   await loadProfile();
+  if (billingController) await billingController.loadBillingStatus();
   await refresh();
 }
 
@@ -1136,12 +1140,15 @@ async function loadWeekly() {
 }
 
 
+
+
 async function refresh() {
   await ensureFeedbackGate();
   if (feedbackGateState.required) return;
   const goal = await loadGoal();
   await loadToday();
   await loadWeight();
+  if (billingController) await billingController.loadBillingStatus();
   await loadWeightsList();
   await loadWeekly();
 }
@@ -1327,6 +1334,10 @@ function bindUI() {
   bindClick('toggleDailyGoalsBtn', () => toggleSection('dailyGoalsBody', 'toggleDailyGoalsBtn'));
   bindClick('toggleAddFoodBtn', () => toggleSection('addFoodBody', 'toggleAddFoodBtn'));
   bindClick('chatToggleBtn', () => toggleSection('coachChatBody', 'chatToggleBtn', 'Hide', 'Show'));
+  bindClick('upgradeMonthlyBtn', () => billingController && billingController.startUpgradeCheckout('monthly'));
+  bindClick('upgradeYearlyBtn', () => billingController && billingController.startUpgradeCheckout('yearly'));
+  bindClick('manageSubscriptionBtn', () => billingController && billingController.openManageSubscription());
+  bindClick('exportDataBtn', () => billingController && billingController.exportMyData());
 }
 
 async function initAuthedSession() {
@@ -1360,6 +1371,16 @@ netlifyIdentity.on('logout', () => {
   setFeedbackOverlay(false, null);
   setStatus('Logged out.');
 });
+
+if (window.AppBilling && typeof window.AppBilling.createBillingController === 'function') {
+  billingController = window.AppBilling.createBillingController({
+    api,
+    authHeaders,
+    el,
+    setStatus,
+    getCurrentUser: () => currentUser
+  });
+}
 
 applyDarkModeUI();
 applyFontSizeUI();

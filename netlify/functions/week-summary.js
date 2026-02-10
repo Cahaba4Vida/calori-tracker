@@ -1,6 +1,7 @@
 const { json, getDenverDateISO } = require("./_util");
 const { requireUser } = require("./_auth");
 const { query, ensureUserProfile } = require("./_db");
+const { getUserEntitlements, DEFAULTS } = require("./_plan");
 
 function toISODate(d) { return d.toISOString().slice(0,10); }
 
@@ -11,7 +12,9 @@ exports.handler = async (event, context) => {
   await ensureUserProfile(userId, email);
 
   const qs = event.queryStringParameters || {};
-  const days = Math.min(60, Math.max(7, Number(qs.days || 7)));
+  const ent = await getUserEntitlements(userId);
+  const maxDays = ent.is_premium ? 60 : (ent.limits.history_days || DEFAULTS.free_history_days);
+  const days = Math.min(maxDays, Math.max(7, Number(qs.days || 7)));
 
   const todayISO = getDenverDateISO(new Date());
   const [y,m,d] = todayISO.split("-").map(Number);

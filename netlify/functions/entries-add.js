@@ -1,6 +1,7 @@
 const { json, getDenverDateISO } = require("./_util");
 const { requireUser } = require("./_auth");
 const { query, ensureUserProfile } = require("./_db");
+const { enforceFoodEntryLimit } = require("./_plan");
 
 function safeNum(x) {
   if (x == null) return null;
@@ -38,6 +39,8 @@ exports.handler = async (event, context) => {
   try { body = JSON.parse(event.body || "{}"); } catch { body = {}; }
 
   const entry_date = getDenverDateISO(new Date());
+  const limit = await enforceFoodEntryLimit(userId, entry_date);
+  if (!limit.ok) return limit.response;
 
   // Mode 1 (existing): per-serving + servings_eaten
   const caloriesPerServing = safeNum(body.calories_per_serving);

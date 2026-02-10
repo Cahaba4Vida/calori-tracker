@@ -1,6 +1,7 @@
-const { json } = require("./_util");
+const { json, getDenverDateISO } = require("./_util");
 const { requireUser } = require("./_auth");
 const { query, ensureUserProfile } = require("./_db");
+const { enforceAiActionLimit } = require("./_plan");
 const { responsesCreate, outputText } = require("./_openai");
 
 function daysUntil(goalDate) {
@@ -156,6 +157,8 @@ exports.handler = async (event, context) => {
   if (!auth.ok) return auth.response;
   const { userId, email } = auth.user;
   await ensureUserProfile(userId, email);
+  const aiLimit = await enforceAiActionLimit(userId, getDenverDateISO(new Date()), 'ai_goal_plan');
+  if (!aiLimit.ok) return aiLimit.response;
 
   let body;
   try { body = JSON.parse(event.body || "{}"); } catch { body = {}; }

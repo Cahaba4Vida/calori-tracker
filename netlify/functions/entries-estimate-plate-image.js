@@ -1,6 +1,7 @@
-const { json } = require("./_util");
+const { json, getDenverDateISO } = require("./_util");
 const { requireUser } = require("./_auth");
 const { ensureUserProfile } = require("./_db");
+const { enforceAiActionLimit } = require("./_plan");
 const { responsesCreate, outputText } = require("./_openai");
 
 function safeNum(x) {
@@ -22,6 +23,9 @@ exports.handler = async (event, context) => {
   if (!auth.ok) return auth.response;
   const { userId, email } = auth.user;
   await ensureUserProfile(userId, email);
+  const today = getDenverDateISO(new Date());
+  const aiLimit = await enforceAiActionLimit(userId, today, 'plate_estimate');
+  if (!aiLimit.ok) return aiLimit.response;
 
   let body;
   try { body = JSON.parse(event.body || "{}"); } catch { body = {}; }
