@@ -724,7 +724,8 @@ async function loadLinkedDevices() {
 }
 
 function shouldAttachDeviceIdHeader() {
-  return MOCK_MODE || !!currentUser || deviceAutoLoginEnabled;
+  // Always use device auth so logged-out users retain access on the same device.
+  return true;
 }
 
 function authHeaders() {
@@ -2249,6 +2250,7 @@ function openIdentityModal(mode = 'login') {
 }
 
 async function initAuthedSession(opts = {}) {
+  const { skipOnboarding = false, onboardingMode = 'onboarding' } = opts;
   const { skipOnboarding = false } = opts;
   const landing = el('mockLanding');
   if (landing) landing.classList.add('hidden');
@@ -2258,7 +2260,7 @@ async function initAuthedSession(opts = {}) {
   await ensureFeedbackGate();
   if (feedbackGateState.required) return;
   if (!skipOnboarding && !profileState.onboarding_completed) {
-    openAiGoalFlow('onboarding');
+    openAiGoalFlow(onboardingMode);
     return;
   }
   setOnboardingVisible(false);
@@ -2268,6 +2270,13 @@ async function initAuthedSession(opts = {}) {
 if (typeof netlifyIdentity !== 'undefined') {
   netlifyIdentity.on('init', user => {
     currentUser = user;
+
+  if (!user) {
+    setFeedbackOverlay(false, null);
+    initAuthedSession({ skipOnboarding: false, onboardingMode: 'settings' })
+      .catch(e => setStatus(e.message));
+    return;
+  }
     if (user) {
       showApp(true);
       setOnboardingVisible(false);
@@ -2286,6 +2295,13 @@ if (typeof netlifyIdentity !== 'undefined') {
   });
   netlifyIdentity.on('login', user => {
     currentUser = user;
+
+  if (!user) {
+    setFeedbackOverlay(false, null);
+    initAuthedSession({ skipOnboarding: false, onboardingMode: 'settings' })
+      .catch(e => setStatus(e.message));
+    return;
+  }
     const shouldSkipOnboarding = true;
     skipOnboardingAfterLogin = false;
     netlifyIdentity.close();
@@ -2295,19 +2311,15 @@ if (typeof netlifyIdentity !== 'undefined') {
     initAuthedSession({ skipOnboarding: shouldSkipOnboarding }).catch(e => setStatus(e.message));
   });
   netlifyIdentity.on('logout', () => {
-    currentUser = null;
-    setFeedbackOverlay(false, null);
-    if (deviceAutoLoginEnabled) {
-      setStatus('Signed out. Using this device with auto log in.');
-      initAuthedSession().catch(e => setStatus(e.message));
-      return;
-    }
-    showApp(false);
-    linkedDevicesState = [];
-    renderDeviceSettings();
-    showLoggedOutOnboarding();
-    setStatus('Logged out.');
-  });
+  currentUser = null;
+  setFeedbackOverlay(false, null);
+  linkedDevicesState = [];
+  renderDeviceSettings();
+
+  initAuthedSession({ skipOnboarding: false, onboardingMode: 'settings' })
+    .catch(e => setStatus(e.message));
+  setStatus('Logged out.');
+});
   netlifyIdentity.on('close', () => {
     if (!currentUser && !deviceAutoLoginEnabled) {
       showLoggedOutOnboarding();
@@ -2343,10 +2355,7 @@ if (MOCK_MODE) {
 } else if (typeof netlifyIdentity !== 'undefined') {
   // Show onboarding immediately for logged-out users so they never see a blank state
   // while Netlify Identity initializes.
-  if (!deviceAutoLoginEnabled) {
-    showApp(false);
-    showLoggedOutOnboarding();
-  }
+  
   netlifyIdentity.init();
 } else if (deviceAutoLoginEnabled) {
   setOnboardingVisible(false);
