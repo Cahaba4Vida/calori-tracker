@@ -66,7 +66,7 @@
   <main id="app" class="hidden">
     <div id="panelDashboard" class="dashboardGrid">
     <section class="card" id="todayCard">
-      <h2>Today</h2>
+      <h2 id="todayCardTitle">Today</h2>
       <div id="todayDateNav" class="todayDateNav hidden">
         <div class="todayDateNavTop">
           <button id="todayPrevBtn" type="button" class="ghost">←</button>
@@ -387,6 +387,14 @@
         <div id="quickFillStatus" class="muted"></div>
         <ul id="quickFillList"></ul>
       </div>
+
+
+      <section class="card" id="deviceManagementCard" style="margin-top:16px;">
+        <h3>Linked devices</h3>
+        <p class="muted">Manage every device linked to this identity. Name each device and toggle access individually.</p>
+        <div id="deviceList" class="deviceList muted">Loading devices…</div>
+        <div id="deviceSettingsStatus" class="muted" style="margin-top:8px;"></div>
+      </section>
 
       <section class="card signupPromptCard" id="multiDeviceSignupCard">
         <h3>Use Aethon across devices</h3>

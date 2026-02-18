@@ -287,6 +287,31 @@ async function mockApi(path, opts = {}) {
     enforceMockAiLimit('voice-food-add');
     return mockAi('voice-food-add', payload);
   }
+  if (route === 'devices-list') {
+    const currentDeviceId = getOrCreateDeviceId();
+    const existing = Array.isArray(mockState.devices) ? mockState.devices : [];
+    const hasCurrent = existing.some((d) => d && d.device_id === currentDeviceId);
+    const devices = hasCurrent ? existing : [{ device_id: currentDeviceId, device_name: 'This device', is_enabled: true, last_seen_at: new Date().toISOString() }, ...existing];
+    mockState.devices = devices;
+    persistMockState();
+    return { current_device_id: currentDeviceId, devices };
+  }
+  if (route === 'device-update' && method === 'POST') {
+    const deviceId = String(payload.device_id || '').trim();
+    if (!deviceId) throw new Error('device_id is required');
+    const devices = Array.isArray(mockState.devices) ? mockState.devices : [];
+    const idx = devices.findIndex((d) => d && d.device_id === deviceId);
+    if (idx < 0) throw new Error('Device not found');
+    devices[idx] = {
+      ...devices[idx],
+      ...(Object.prototype.hasOwnProperty.call(payload, 'device_name') ? { device_name: payload.device_name || null } : {}),
+      ...(Object.prototype.hasOwnProperty.call(payload, 'is_enabled') ? { is_enabled: !!payload.is_enabled } : {}),
+      last_seen_at: devices[idx].last_seen_at || new Date().toISOString()
+    };
+    mockState.devices = devices;
+    persistMockState();
+    return { ok: true };
+  }
 
   throw new Error(`Mock API route not implemented: ${route}`);
 }
@@ -299,6 +324,8 @@ let viewSpanEnabled = localStorage.getItem(VIEW_SPAN_ENABLED_KEY) === 'true';
 let viewSpanPastDays = Math.max(0, Math.min(6, Number(localStorage.getItem(VIEW_SPAN_PAST_DAYS_KEY) || '3') || 3));
 let viewSpanFutureDays = Math.max(0, Math.min(7, Number(localStorage.getItem(VIEW_SPAN_FUTURE_DAYS_KEY) || '2') || 2));
 let selectedDayOffset = 0;
+let linkedDevicesState = [];
+
 
 function lbsToKg(lbs) { return lbs / 2.2046226218; }
 function kgToLbs(kg) { return kg * 2.2046226218; }
@@ -371,6 +398,7 @@ function renderTodayDateNavigator() {
   if (!viewSpanEnabled) {
     nav.classList.add('hidden');
     selectedDayOffset = 0;
+    syncTodayCardTitle();
     return;
   }
 
@@ -397,6 +425,13 @@ function renderTodayDateNavigator() {
   const next = el('todayNextBtn');
   if (prev) prev.disabled = selectedDayOffset <= -viewSpanPastDays;
   if (next) next.disabled = selectedDayOffset >= viewSpanFutureDays;
+  syncTodayCardTitle();
+}
+
+function syncTodayCardTitle() {
+  const node = el('todayCardTitle');
+  if (!node) return;
+  node.innerText = formatDayLabel(selectedDayOffset);
 }
 
 function fmtGoal(v) {
@@ -571,6 +606,113 @@ async function loadProfile() {
   return p;
 }
 
+function formatDeviceDate(raw) {
+  if (!raw) return '—';
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
+}
+
+function updateDeviceSettingsStatus(msg = '') {
+  const node = el('deviceSettingsStatus');
+  if (node) node.innerText = msg;
+}
+
+function renderDeviceSettings() {
+  const list = el('deviceList');
+  if (!list) return;
+  if (!linkedDevicesState.length) {
+    list.innerHTML = '<div class="muted">No linked devices yet.</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  linkedDevicesState.forEach((device) => {
+    const row = document.createElement('div');
+    row.className = 'deviceRow';
+
+    const top = document.createElement('div');
+    top.className = 'deviceRowTop';
+
+    const title = document.createElement('div');
+    title.innerHTML = `<strong>${device.device_name || 'Unnamed device'}</strong>${device.is_current ? ' <span class="muted">(This device)</span>' : ''}`;
+
+    const switchWrap = document.createElement('label');
+    switchWrap.className = 'switch';
+    switchWrap.innerHTML = `<input type="checkbox" ${device.is_enabled ? 'checked' : ''} /><span class="slider"></span>`;
+    const toggle = switchWrap.querySelector('input');
+    if (toggle) {
+      toggle.onchange = async () => {
+        try {
+          await api('device-update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: device.device_id, is_enabled: !!toggle.checked })
+          });
+          device.is_enabled = !!toggle.checked;
+          updateDeviceSettingsStatus(`Updated ${device.device_name || 'device'} access.`);
+          renderDeviceSettings();
+        } catch (e) {
+          toggle.checked = !!device.is_enabled;
+          updateDeviceSettingsStatus(e.message || String(e));
+        }
+      };
+    }
+
+    top.appendChild(title);
+    top.appendChild(switchWrap);
+
+    const nameRow = document.createElement('div');
+    nameRow.className = 'row';
+    const nameInput = document.createElement('input');
+    nameInput.className = 'deviceNameInput';
+    nameInput.type = 'text';
+    nameInput.maxLength = 80;
+    nameInput.placeholder = 'Name this device';
+    nameInput.value = device.device_name || '';
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.innerText = 'Save name';
+    saveBtn.onclick = async () => {
+      try {
+        await api('device-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device_id: device.device_id, device_name: nameInput.value.trim() || null })
+        });
+        device.device_name = nameInput.value.trim() || null;
+        updateDeviceSettingsStatus('Saved device name.');
+        renderDeviceSettings();
+      } catch (e) {
+        updateDeviceSettingsStatus(e.message || String(e));
+      }
+    };
+    nameRow.appendChild(nameInput);
+    nameRow.appendChild(saveBtn);
+
+    const meta = document.createElement('div');
+    meta.className = 'muted deviceMeta';
+    meta.innerText = `Last seen: ${formatDeviceDate(device.last_seen_at)} • ID: ${device.device_id.slice(0, 10)}…`;
+
+    row.appendChild(top);
+    row.appendChild(nameRow);
+    row.appendChild(meta);
+    list.appendChild(row);
+  });
+}
+
+async function loadLinkedDevices() {
+  const list = el('deviceList');
+  if (!list) return;
+  list.innerHTML = '<div class="muted">Loading devices…</div>';
+  try {
+    const data = await api('devices-list');
+    linkedDevicesState = Array.isArray(data.devices) ? data.devices : [];
+    renderDeviceSettings();
+  } catch (e) {
+    list.innerHTML = '<div class="muted">Could not load linked devices.</div>';
+    updateDeviceSettingsStatus(e.message || String(e));
+  }
+}
 
 function shouldAttachDeviceIdHeader() {
   return MOCK_MODE || !!currentUser || deviceAutoLoginEnabled;
@@ -1319,8 +1461,23 @@ function showAddFoodPanel(panelId = null) {
     node.classList.toggle('hidden', !active);
     node.classList.toggle('modalActive', active);
   });
+
   const overlay = el('addFoodOverlay');
   if (overlay) overlay.classList.toggle('hidden', !panelId);
+
+  // Keep the active panel centered/visible on mobile by preventing page scroll
+  // and resetting scroll position each time a modal is opened.
+  if (panelId) {
+    document.body.style.overflow = 'hidden';
+    try {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    } catch {
+      window.scrollTo(0, 0);
+    }
+  } else {
+    document.body.style.overflow = '';
+  }
+
   activeAddFoodPanel = panelId;
 }
 
@@ -1969,6 +2126,7 @@ function bindUI() {
   const onboardingSignInBtn = el('onboardingSignInBtn');
   if (onboardingSignInBtn) onboardingSignInBtn.onclick = () => {
     skipOnboardingAfterLogin = true;
+    setOnboardingVisible(false);
     openIdentityModal('login');
   };
   ['aiCurrentWeightInput','aiGoalWeightInput','aiGoalDateInput'].forEach((id) => {
@@ -2059,8 +2217,16 @@ function openIdentityModal(mode = 'login') {
     setStatus('Sign in is not available in this environment yet.');
     return;
   }
+
+  const onboardingVisible = !el('onboardingOverlay')?.classList.contains('hidden');
+  if (onboardingVisible) setOnboardingVisible(false);
+
   try {
     netlifyIdentity.open(mode === 'signup' ? 'signup' : 'login');
+    setTimeout(() => {
+      const widget = document.querySelector('.netlify-identity-widget');
+      if (widget) widget.style.zIndex = '2200';
+    }, 0);
   } catch {
     netlifyIdentity.open();
   }
@@ -2071,6 +2237,7 @@ async function initAuthedSession() {
   if (landing) landing.classList.add('hidden');
   showApp(true);
   await loadProfile();
+  await loadLinkedDevices();
   await ensureFeedbackGate();
   if (feedbackGateState.required) return;
   if (!profileState.onboarding_completed) {
@@ -2118,8 +2285,15 @@ if (typeof netlifyIdentity !== 'undefined') {
       return;
     }
     showApp(false);
+    linkedDevicesState = [];
+    renderDeviceSettings();
     showLoggedOutOnboarding();
     setStatus('Logged out.');
+  });
+  netlifyIdentity.on('close', () => {
+    if (!currentUser && !deviceAutoLoginEnabled) {
+      showLoggedOutOnboarding();
+    }
   });
 }
 

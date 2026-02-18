@@ -207,6 +207,9 @@ label {
   inset: 0;
   background: rgba(0,0,0,0.45);
   z-index: 1300;
+  display: grid;
+  place-items: center;
+  padding: 10px;
 }
 
 .addFoodPanel.modalActive {
@@ -214,17 +217,23 @@ label {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: min(720px, calc(100vw - 24px));
-  max-height: calc(100vh - 24px);
+  width: min(720px, calc(100vw - 20px));
+  max-height: calc(100dvh - 20px);
   overflow-y: auto;
   z-index: 1301;
   box-shadow: 0 12px 28px rgba(0,0,0,0.24);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 900px), (max-height: 900px) {
   .addFoodPanel.modalActive {
-    width: calc(100vw - 16px);
-    max-height: calc(100vh - 16px);
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    top: max(8px, env(safe-area-inset-top));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    width: auto;
+    max-height: none;
+    transform: none;
+    margin: auto;
   }
 }
 
@@ -700,4 +709,36 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
   border-color: #3a63ff;
   background: rgba(58,99,255,0.12);
   font-weight: 600;
+}
+
+.deviceList {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.deviceRow {
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  background: var(--card, #fff);
+}
+
+.deviceRowTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.deviceNameInput {
+  width: min(360px, 100%);
+}
+
+.deviceMeta {
+  font-size: 12px;
 }
