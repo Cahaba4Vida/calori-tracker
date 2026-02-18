@@ -1,5 +1,184 @@
 console.log("APP_VERSION v11");
 let currentUser = null;
+const MOCK_MODE = true;
+const MOCK_STORAGE_KEY = 'caloriTrackerMockStateV1';
+const mockStorage = window.sessionStorage;
+
+function defaultMockState() {
+  return {
+    profile: {
+      onboarding_completed: false,
+      macro_protein_g: null,
+      macro_carbs_g: null,
+      macro_fat_g: null,
+      goal_weight_lbs: null,
+      activity_level: null,
+      goal_date: null,
+      quick_fills: []
+    },
+    daily_calories: 2200,
+    entries: [],
+    weights: [],
+    feedback_submitted: false
+  };
+}
+
+function loadMockState() {
+  try {
+    const parsed = JSON.parse(mockStorage.getItem(MOCK_STORAGE_KEY) || '{}');
+    return {
+      ...defaultMockState(),
+      ...parsed,
+      profile: { ...defaultMockState().profile, ...(parsed.profile || {}) }
+    };
+  } catch {
+    return defaultMockState();
+  }
+}
+
+let mockState = loadMockState();
+function persistMockState() {
+  mockStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(mockState));
+}
+
+function resetMockState() {
+  mockState = defaultMockState();
+  persistMockState();
+}
+
+function todayEntries() {
+  const today = isoToday();
+  return mockState.entries.filter((e) => e.entry_date === today);
+}
+
+function parseApiPath(path) {
+  const [route, query = ''] = String(path || '').split('?');
+  return { route, params: new URLSearchParams(query) };
+}
+
+async function mockApi(path, opts = {}) {
+  const { route, params } = parseApiPath(path);
+  const method = String(opts.method || 'GET').toUpperCase();
+  let payload = {};
+  try { payload = opts.body ? JSON.parse(opts.body) : {}; } catch {}
+
+  if (route === 'profile-get') return { ...mockState.profile };
+  if (route === 'profile-set' && method === 'POST') {
+    mockState.profile = { ...mockState.profile, ...payload };
+    persistMockState();
+    return { ok: true };
+  }
+  if (route === 'goal-get') return { daily_calories: mockState.daily_calories };
+  if (route === 'goal-set' && method === 'POST') {
+    mockState.daily_calories = Number(payload.daily_calories) || 0;
+    persistMockState();
+    return { ok: true };
+  }
+  if (route === 'entries-add' && method === 'POST') {
+    const entry = {
+      id: `e_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+      entry_date: isoToday(),
+      taken_at: new Date().toISOString(),
+      calories: Math.round(Number(payload.calories) || 0),
+      protein_g: payload.protein_g == null ? null : Number(payload.protein_g),
+      carbs_g: payload.carbs_g == null ? null : Number(payload.carbs_g),
+      fat_g: payload.fat_g == null ? null : Number(payload.fat_g),
+      raw_extraction: payload.raw_extraction_meta || null
+    };
+    mockState.entries.push(entry);
+    persistMockState();
+    return { ok: true, id: entry.id };
+  }
+  if (route === 'entries-list-day') {
+    const entries = todayEntries();
+    return { entries, total_calories: entries.reduce((s, e) => s + (Number(e.calories) || 0), 0) };
+  }
+  if (route === 'entry-update' && method === 'POST') {
+    mockState.entries = mockState.entries.map((e) => (e.id === payload.id ? { ...e, ...payload } : e));
+    persistMockState();
+    return { ok: true };
+  }
+  if (route === 'entry-delete') {
+    const id = params.get('id');
+    mockState.entries = mockState.entries.filter((e) => e.id !== id);
+    persistMockState();
+    return { ok: true };
+  }
+  if (route === 'weight-get') {
+    const today = isoToday();
+    const row = mockState.weights.find((w) => w.entry_date === today);
+    return { weight_lbs: row ? row.weight_lbs : null };
+  }
+  if (route === 'weight-set' && method === 'POST') {
+    const today = isoToday();
+    mockState.weights = mockState.weights.filter((w) => w.entry_date !== today);
+    mockState.weights.push({ entry_date: today, weight_lbs: Number(payload.weight_lbs) });
+    persistMockState();
+    return { ok: true };
+  }
+  if (route === 'weights-list') {
+    const days = Number(params.get('days') || 14);
+    return { weights: [...mockState.weights].sort((a, b) => b.entry_date.localeCompare(a.entry_date)).slice(0, days) };
+  }
+  if (route === 'week-summary') {
+    const days = Number(params.get('days') || 7);
+    const series = [];
+    for (let i = days - 1; i >= 0; i -= 1) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const date = d.toISOString().slice(0, 10);
+      const entries = mockState.entries.filter((e) => e.entry_date === date);
+      const weight = mockState.weights.find((w) => w.entry_date === date);
+      series.push({ entry_date: date, total_calories: entries.reduce((s, e) => s + (e.calories || 0), 0), weight_lbs: weight ? weight.weight_lbs : null });
+    }
+    return { series };
+  }
+  if (route === 'ai-goals-suggest' && method === 'POST') {
+    const current = Number(payload.current_weight_lbs);
+    const goal = Number(payload.goal_weight_lbs);
+    const delta = current - goal;
+    const daily_calories = Math.max(1300, Math.round(2200 - Math.max(-500, Math.min(500, delta * 8))));
+    const protein_g = Math.max(80, Math.round(goal * 0.8));
+    const fat_g = Math.round((daily_calories * 0.28) / 9);
+    const carbs_g = Math.max(50, Math.round((daily_calories - (protein_g * 4) - (fat_g * 9)) / 4));
+    return {
+      daily_calories,
+      protein_g,
+      carbs_g,
+      fat_g,
+      rationale_bullets: ['Mock mode: plan generated locally in your browser.', 'This estimate uses your current and goal weight plus activity level.', 'Adjust values any time in Settings.']
+    };
+  }
+  if (route === 'entries-add-image') {
+    return { extracted: { calories_per_serving: 320, servings: 1, protein_g_per_serving: 24, carbs_g_per_serving: 28, fat_g_per_serving: 12, confidence: 'medium', notes: 'Mock extraction from local mode.' } };
+  }
+  if (route === 'entries-estimate-plate-image') {
+    return { calories: 540, protein_g: 32, carbs_g: 55, fat_g: 18, confidence: 'medium', assumptions: ['Medium plate portion', 'Mixed meal estimate'], notes: 'Mock estimate generated locally.' };
+  }
+  if (route === 'day-finish') {
+    const total = todayEntries().reduce((s, e) => s + (e.calories || 0), 0);
+    const score = Math.max(1, Math.min(10, Math.round((1 - Math.abs(total - mockState.daily_calories) / Math.max(1, mockState.daily_calories)) * 10)));
+    return { score, tips: 'Nice consistency. In mock mode, this summary is generated locally and not stored server-side.' };
+  }
+  if (route === 'chat') return { reply: 'Mock coach: Great work today. Keep protein high and stay hydrated.' };
+  if (route === 'feedback-status') return { required: false, campaign: null };
+  if (route === 'feedback-submit') return { ok: true };
+  if (route === 'billing-status') {
+    return {
+      is_premium: false,
+      plan_tier: 'free',
+      monthly_price_usd: 5,
+      yearly_price_usd: 50,
+      limits: { food_entries_per_day: 9999, ai_actions_per_day: 9999, history_days: 9999 },
+      usage_today: { food_entries_today: todayEntries().length, ai_actions_today: 0 }
+    };
+  }
+  if (route === 'create-checkout-session' || route === 'manage-subscription') return { url: 'https://example.com' };
+  if (route === 'export-data') return { profile: mockState.profile, goal: { daily_calories: mockState.daily_calories }, entries: mockState.entries, weights: mockState.weights };
+  if (route === 'track-event') return { ok: true };
+
+  throw new Error(`Mock API route not implemented: ${route}`);
+}
 
 let weightUnit = (localStorage.getItem('weightUnit') || 'lbs'); // 'lbs' or 'kg'
 let darkModeEnabled = localStorage.getItem('darkMode') === 'true';
@@ -189,11 +368,12 @@ async function loadProfile() {
 
 
 function authHeaders() {
-  if (!currentUser) return {};
+  if (MOCK_MODE || !currentUser) return {};
   return { Authorization: 'Bearer ' + currentUser.token.access_token };
 }
 
 async function api(path, opts = {}) {
+  if (MOCK_MODE) return mockApi(path, opts);
   const r = await fetch('/api/' + path, {
     ...opts,
     headers: { ...(opts.headers || {}), ...authHeaders() }
@@ -1210,8 +1390,14 @@ async function saveManualEntry() {
 
 function bindUI() {
   setThinking(false);
-  el('loginBtn').onclick = () => netlifyIdentity.open();
-  el('logoutBtn').onclick = () => netlifyIdentity.logout();
+  const loginBtn = el('loginBtn');
+  const logoutBtn = el('logoutBtn');
+  if (loginBtn) loginBtn.onclick = () => netlifyIdentity.open();
+  if (logoutBtn) logoutBtn.onclick = () => netlifyIdentity.logout();
+  const enterMockBtn = el('enterMockBtn');
+  const resetMockBtn = el('resetMockBtn');
+  if (enterMockBtn) enterMockBtn.onclick = () => initAuthedSession().catch(e => setStatus(e.message));
+  if (resetMockBtn) resetMockBtn.onclick = () => { resetMockState(); setStatus('Mock cache reset. Starting fresh onboarding…'); initAuthedSession().catch(e => setStatus(e.message)); };
   el('saveGoalBtn').onclick = () => saveGoal().catch(e => setStatus(e.message));
   const photoInputIds = ['photoInput', 'photoCameraInput'];
   const plateInputIds = ['plateInput', 'plateCameraInput'];
@@ -1341,6 +1527,8 @@ function bindUI() {
 }
 
 async function initAuthedSession() {
+  const landing = el('mockLanding');
+  if (landing) landing.classList.add('hidden');
   showApp(true);
   await loadProfile();
   await ensureFeedbackGate();
@@ -1353,24 +1541,26 @@ async function initAuthedSession() {
   await refresh();
 }
 
-netlifyIdentity.on('init', user => {
-  currentUser = user;
-  showApp(!!user);
-  if (user) initAuthedSession().catch(e => setStatus(e.message));
-});
-netlifyIdentity.on('login', user => {
-  currentUser = user;
-  netlifyIdentity.close();
-  showApp(true);
-  initAuthedSession().catch(e => setStatus(e.message));
-});
-netlifyIdentity.on('logout', () => {
-  currentUser = null;
-  showApp(false);
-  setOnboardingVisible(false);
-  setFeedbackOverlay(false, null);
-  setStatus('Logged out.');
-});
+if (!MOCK_MODE) {
+  netlifyIdentity.on('init', user => {
+    currentUser = user;
+    showApp(!!user);
+    if (user) initAuthedSession().catch(e => setStatus(e.message));
+  });
+  netlifyIdentity.on('login', user => {
+    currentUser = user;
+    netlifyIdentity.close();
+    showApp(true);
+    initAuthedSession().catch(e => setStatus(e.message));
+  });
+  netlifyIdentity.on('logout', () => {
+    currentUser = null;
+    showApp(false);
+    setOnboardingVisible(false);
+    setFeedbackOverlay(false, null);
+    setStatus('Logged out.');
+  });
+}
 
 if (window.AppBilling && typeof window.AppBilling.createBillingController === 'function') {
   billingController = window.AppBilling.createBillingController({
@@ -1385,4 +1575,11 @@ if (window.AppBilling && typeof window.AppBilling.createBillingController === 'f
 applyDarkModeUI();
 applyFontSizeUI();
 bindUI();
-netlifyIdentity.init();
+if (MOCK_MODE) {
+  showApp(false);
+  setStatus('Mock mode active: no login required. Data is cached for this tab/session only.');
+  const landing = el('mockLanding');
+  if (landing) landing.classList.remove('hidden');
+} else {
+  netlifyIdentity.init();
+}

@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Calorie & Weight Tracker</title>
-  <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
   <link rel="stylesheet" href="styles.css?v=16" />
 </head>
 <body>
@@ -12,13 +11,50 @@
     <h1>Calorie & Weight Tracker</h1>
     <div class="auth">
       <a class="adminLink" href="/admin.html">Admin</a>
-      <button id="loginBtn">Login / Signup</button>
-      <button id="logoutBtn">Logout</button>
+      <span class="muted" id="mockModeBadge">Mock Mode</span>
     </div>
   </header>
 
   <div id="status" class="muted"></div>
 
+
+
+  <section id="mockLanding" class="card mockHeroCard">
+    <div class="mockPillRow">
+      <span class="mockPill">Live walkthrough</span>
+      <span class="mockPill">No signup needed</span>
+      <span class="mockPill">Camera + AI demo</span>
+    </div>
+
+    <h2 class="mockHeroTitle">See how Calori works in under 2 minutes</h2>
+    <p class="mockLead">Run the same onboarding your users see, then test food photo capture, AI macro planning, coach chat, trend charts, and daily summaries.</p>
+
+    <div class="mockActionRow">
+      <button id="enterMockBtn" type="button" class="ctaPrimary">Start Interactive Demo</button>
+      <button id="resetMockBtn" type="button" class="ctaSecondary">Restart Demo</button>
+    </div>
+
+    <div class="mockFeatureGrid">
+      <div class="mockFeatureCard">
+        <h3>1) Personalized onboarding</h3>
+        <p>Generate AI calories + macros and accept or edit your plan.</p>
+      </div>
+      <div class="mockFeatureCard">
+        <h3>2) Food capture + quick logging</h3>
+        <p>Try label photos, plate estimates, and manual entries.</p>
+      </div>
+      <div class="mockFeatureCard">
+        <h3>3) Coach + trend insights</h3>
+        <p>Review progress, ask the coach, and see weekly changes instantly.</p>
+      </div>
+    </div>
+
+    <div class="trustRow">
+      <span>✅ Runs locally in your browser</span>
+      <span>📷 Photos are processed for extraction and not stored</span>
+      <span>📱 Best experienced on mobile for live camera capture</span>
+    </div>
+  </section>
 
   <div class="tabs hidden" id="tabs">
     <button class="tabbtn" id="tabDashboardBtn">Dashboard</button>
