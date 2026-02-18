@@ -724,7 +724,7 @@ async function loadLinkedDevices() {
 }
 
 function shouldAttachDeviceIdHeader() {
-  // Always use device auth so logged-out users retain access on the same device.
+  // Always attach device id so logged-out users retain a device session.
   return true;
 }
 
@@ -2251,7 +2251,6 @@ function openIdentityModal(mode = 'login') {
 
 async function initAuthedSession(opts = {}) {
   const { skipOnboarding = false, onboardingMode = 'onboarding' } = opts;
-  const { skipOnboarding = false } = opts;
   const landing = el('mockLanding');
   if (landing) landing.classList.add('hidden');
   showApp(true);
@@ -2271,37 +2270,22 @@ if (typeof netlifyIdentity !== 'undefined') {
   netlifyIdentity.on('init', user => {
     currentUser = user;
 
-  if (!user) {
-    setFeedbackOverlay(false, null);
-    initAuthedSession({ skipOnboarding: false, onboardingMode: 'settings' })
-      .catch(e => setStatus(e.message));
-    return;
-  }
     if (user) {
+      // Logged-in: go straight into the app.
       showApp(true);
       setOnboardingVisible(false);
       setFeedbackOverlay(false, null);
       initAuthedSession({ skipOnboarding: true }).catch(e => setStatus(e.message));
       return;
     }
-    if (deviceAutoLoginEnabled) {
-      setOnboardingVisible(false);
-      setFeedbackOverlay(false, null);
-      initAuthedSession({ skipOnboarding: true }).catch(e => setStatus(e.message));
-    } else {
-      showApp(false);
-      showLoggedOutOnboarding();
-    }
+
+    // Logged-out: continue as a device session. If onboarding isn't complete for this device,
+    // initAuthedSession will open the AI goal flow (settings mode).
+    setFeedbackOverlay(false, null);
+    initAuthedSession({ skipOnboarding: false, onboardingMode: 'settings' }).catch(e => setStatus(e.message));
   });
   netlifyIdentity.on('login', user => {
     currentUser = user;
-
-  if (!user) {
-    setFeedbackOverlay(false, null);
-    initAuthedSession({ skipOnboarding: false, onboardingMode: 'settings' })
-      .catch(e => setStatus(e.message));
-    return;
-  }
     const shouldSkipOnboarding = true;
     skipOnboardingAfterLogin = false;
     netlifyIdentity.close();
@@ -2311,15 +2295,15 @@ if (typeof netlifyIdentity !== 'undefined') {
     initAuthedSession({ skipOnboarding: shouldSkipOnboarding }).catch(e => setStatus(e.message));
   });
   netlifyIdentity.on('logout', () => {
-  currentUser = null;
-  setFeedbackOverlay(false, null);
-  linkedDevicesState = [];
-  renderDeviceSettings();
+    currentUser = null;
+    setFeedbackOverlay(false, null);
+    linkedDevicesState = [];
+    renderDeviceSettings();
 
-  initAuthedSession({ skipOnboarding: false, onboardingMode: 'settings' })
-    .catch(e => setStatus(e.message));
-  setStatus('Logged out.');
-});
+    // After logout, fall back to a device session (same-device relogin without identity).
+    initAuthedSession({ skipOnboarding: false, onboardingMode: 'settings' }).catch(e => setStatus(e.message));
+    setStatus('Logged out.');
+  });
   netlifyIdentity.on('close', () => {
     if (!currentUser && !deviceAutoLoginEnabled) {
       showLoggedOutOnboarding();
@@ -2353,9 +2337,6 @@ if (MOCK_MODE) {
   initAuthedSession().catch(e => setStatus(e.message));
   if (typeof netlifyIdentity !== 'undefined') netlifyIdentity.init();
 } else if (typeof netlifyIdentity !== 'undefined') {
-  // Show onboarding immediately for logged-out users so they never see a blank state
-  // while Netlify Identity initializes.
-  
   netlifyIdentity.init();
 } else if (deviceAutoLoginEnabled) {
   setOnboardingVisible(false);
