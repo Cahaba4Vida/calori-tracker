@@ -19,7 +19,7 @@
 
 
 
-  <section id="mockLanding" class="card mockHeroCard">
+  <section id="mockLanding" class="card mockHeroCard hidden">
     <div class="mockPillRow">
       <span class="mockPill">Live walkthrough</span>
       <span class="mockPill">No signup needed</span>
@@ -67,45 +67,119 @@
     <div id="panelDashboard" class="dashboardGrid">
     <section class="card" id="todayCard">
       <h2>Today</h2>
+      <div id="todayDateNav" class="todayDateNav hidden">
+        <div class="todayDateNavTop">
+          <button id="todayPrevBtn" type="button" class="ghost">←</button>
+          <div id="todayViewingLabel" class="muted">Viewing: Today</div>
+          <button id="todayNextBtn" type="button" class="ghost">→</button>
+        </div>
+        <div id="todayDateChips" class="todayDateChips"></div>
+      </div>
       <div class="statStrip">
         <div class="statTile">
           <div class="statLabel">Remaining</div>
           <div class="statValue" id="todayRemaining">—</div>
         </div>
-        <div class="statTile">
-          <div class="statLabel">Entries</div>
-          <div class="statValue" id="todayEntriesCount">0</div>
-        </div>
       </div>
       <div class="todayGrid">
         <div><strong>Calories:</strong> <span id="todayCalories">—</span> / <span id="todayGoal">—</span></div>
-        <div><strong>Protein:</strong> <span id="todayProtein">—</span> / <span id="todayProteinGoal">—</span></div>
-        <div><strong>Carbs:</strong> <span id="todayCarbs">—</span> / <span id="todayCarbsGoal">—</span></div>
-        <div><strong>Fat:</strong> <span id="todayFat">—</span> / <span id="todayFatGoal">—</span></div>
       </div>
       <div class="progress" title="Calories progress">
         <div id="progressBar"></div>
       </div>
       <div class="macroProgressList">
         <div class="macroProgressRow">
-          <div>Protein</div>
-          <div class="muted" id="proteinProgressText">—</div>
+          <div class="macroLabelCell"><strong>Protein</strong> <span class="muted" id="todayProtein">—</span> / <span class="muted" id="todayProteinGoal">—</span></div>
           <div class="microProgress"><div id="proteinProgressBar"></div></div>
         </div>
         <div class="macroProgressRow">
-          <div>Carbs</div>
-          <div class="muted" id="carbsProgressText">—</div>
+          <div class="macroLabelCell"><strong>Carbs</strong> <span class="muted" id="todayCarbs">—</span> / <span class="muted" id="todayCarbsGoal">—</span></div>
           <div class="microProgress"><div id="carbsProgressBar"></div></div>
         </div>
         <div class="macroProgressRow">
-          <div>Fat</div>
-          <div class="muted" id="fatProgressText">—</div>
+          <div class="macroLabelCell"><strong>Fat</strong> <span class="muted" id="todayFat">—</span> / <span class="muted" id="todayFatGoal">—</span></div>
           <div class="microProgress"><div id="fatProgressBar"></div></div>
         </div>
       </div>
       <h3>Entries</h3>
       <ul id="entriesList"></ul>
     </section>
+
+<section class="card" id="addFoodCard">
+      <div class="cardHeaderRow">
+        <h2>Add Food</h2>
+        <button type="button" class="sectionToggleBtn" id="toggleAddFoodBtn" aria-expanded="true" aria-controls="addFoodBody">Collapse</button>
+      </div>
+      <div id="addFoodBody" class="collapsibleBody">
+      <div class="addFoodModeGrid">
+        <button id="addFoodPhotoBtn" type="button" class="addFoodModeBtn">Photo</button>
+        <button id="addFoodVoiceBtn" type="button" class="addFoodModeBtn">Voice Add</button>
+        <button id="addFoodQuickFillBtn" type="button" class="addFoodModeBtn">Quick Fills</button>
+        <button id="addFoodManualBtn" type="button" class="addFoodModeBtn">Manual Entry</button>
+      </div>
+
+      <div id="addFoodOverlay" class="addFoodOverlay hidden"></div>
+
+      <div id="addFoodPhotoPanel" class="addFoodPanel hidden">
+        <div class="row end"><button class="addFoodModalCloseBtn" type="button">Close</button></div>
+        <div class="muted">Pick how to upload your food photo.</div>
+        <div class="row photoActions">
+          <button id="photoUnifiedLibraryBtn" type="button">Choose from camera roll</button>
+          <button id="photoUnifiedCameraBtn" type="button">Use camera</button>
+        </div>
+      </div>
+      <input id="photoUnifiedInput" type="file" accept="image/*" class="hiddenFileInput" />
+      <input id="photoUnifiedCameraInput" type="file" accept="image/*" capture="environment" class="hiddenFileInput" />
+
+      <div id="addFoodVoicePanel" class="addFoodPanel hidden">
+        <div class="row end"><button class="addFoodModalCloseBtn" type="button">Close</button></div>
+        <div class="muted">Describe what you ate. The assistant will ask follow-up questions if needed.</div>
+        <div class="row">
+          <button id="voiceToggleBtn" type="button">🎤 Start Voice Input</button>
+        </div>
+        <label>Voice transcript</label>
+        <input id="voiceFoodInput" type="text" placeholder="e.g. I had a turkey sandwich and chips" />
+        <pre id="voiceFoodOutput" class="pre" style="min-height:72px"></pre>
+      </div>
+
+      <div id="addFoodQuickFillPanel" class="addFoodPanel hidden">
+        <div class="row end"><button class="addFoodModalCloseBtn" type="button">Close</button></div>
+        <div class="quickAdds" id="quickAddsBlock">
+          <div class="muted">Quick fills</div>
+          <div class="row" id="quickFillsRow"></div>
+          <div class="row" id="quickFillsCtaRow"><button id="addQuickFillsCtaBtn" type="button">Add quickfills</button></div>
+        </div>
+      </div>
+
+      <div id="addFoodManualPanel" class="addFoodPanel hidden">
+        <div class="row end"><button class="addFoodModalCloseBtn" type="button">Close</button></div>
+        <div class="grid2">
+          <div>
+            <label>Calories (total)</label>
+            <input id="manualCaloriesInput" type="number" min="0" step="1" placeholder="e.g. 450" />
+          </div>
+          <div>
+            <label>Protein (g)</label>
+            <input id="manualProteinInput" type="number" min="0" step="1" placeholder="optional" />
+          </div>
+          <div>
+            <label>Carbs (g)</label>
+            <input id="manualCarbsInput" type="number" min="0" step="1" placeholder="optional" />
+          </div>
+          <div>
+            <label>Fat (g)</label>
+            <input id="manualFatInput" type="number" min="0" step="1" placeholder="optional" />
+          </div>
+        </div>
+        <label>Notes (optional)</label>
+        <input id="manualNotesInput" type="text" placeholder="e.g. homemade chicken bowl" />
+
+        <div class="row end" style="margin-top:10px">
+          <button id="manualSaveBtn">Save Manual Entry</button>
+        </div>
+      </div>
+      </div>
+</section>
 
 <section class="card" id="dailyGoalsCard">
       <div class="cardHeaderRow">
@@ -137,69 +211,6 @@
       <div id="goalDisplay" class="muted"></div>
       </div>
     </section>
-
-    <section class="card" id="addFoodCard">
-      <div class="cardHeaderRow">
-        <h2>Add Food</h2>
-        <button type="button" class="sectionToggleBtn" id="toggleAddFoodBtn" aria-expanded="true" aria-controls="addFoodBody">Collapse</button>
-      </div>
-      <div id="addFoodBody" class="collapsibleBody">
-      <div class="row">
-        <div class="pill">Nutrition Label (accurate)</div>
-      </div>
-      <div class="row photoActions">
-        <button id="photoFromLibraryBtn" type="button">Choose from camera roll</button>
-        <button id="photoFromCameraBtn" type="button">Use camera</button>
-      </div>
-      <input id="photoInput" type="file" accept="image/*" class="hiddenFileInput" />
-      <input id="photoCameraInput" type="file" accept="image/*" capture="environment" class="hiddenFileInput" />
-
-      <div style="height:10px"></div>
-      <div class="row">
-        <div class="pill">Plate Photo (estimate)</div>
-      </div>
-      <div class="row photoActions">
-        <button id="plateFromLibraryBtn" type="button">Choose from camera roll</button>
-        <button id="plateFromCameraBtn" type="button">Use camera</button>
-      </div>
-      <input id="plateInput" type="file" accept="image/*" class="hiddenFileInput" />
-      <input id="plateCameraInput" type="file" accept="image/*" capture="environment" class="hiddenFileInput" />
-
-      <div style="height:14px"></div>
-      <div class="row">
-        <div class="pill">Manual Entry</div>
-      </div>
-
-      <div class="grid2">
-        <div>
-          <label>Calories (total)</label>
-          <input id="manualCaloriesInput" type="number" min="0" step="1" placeholder="e.g. 450" />
-        </div>
-        <div>
-          <label>Protein (g)</label>
-          <input id="manualProteinInput" type="number" min="0" step="1" placeholder="optional" />
-        </div>
-        <div>
-          <label>Carbs (g)</label>
-          <input id="manualCarbsInput" type="number" min="0" step="1" placeholder="optional" />
-        </div>
-        <div>
-          <label>Fat (g)</label>
-          <input id="manualFatInput" type="number" min="0" step="1" placeholder="optional" />
-        </div>
-      </div>
-      <label>Notes (optional)</label>
-      <input id="manualNotesInput" type="text" placeholder="e.g. homemade chicken bowl" />
-      <div class="quickAdds hidden" id="quickAddsBlock">
-        <div class="muted">Quick fills</div>
-        <div class="row" id="quickFillsRow"></div>
-      </div>
-
-      <div class="row end" style="margin-top:10px">
-        <button id="manualSaveBtn">Save Manual Entry</button>
-      </div>
-      </div>
-</section>
 
 
 
@@ -280,6 +291,36 @@
           <div class="muted">Inverts app colors for a dark-style look.</div>
         </div>
       </div>
+      <div class="row" style="margin-top:12px;">
+        <label class="switch">
+          <input type="checkbox" id="autoLoginToggle" />
+          <span class="slider"></span>
+        </label>
+        <div>
+          <div><strong>Auto log in on this device:</strong> <span id="autoLoginLabel">On</span></div>
+          <div class="muted">When enabled, this device opens directly into your saved profile without asking you to sign in each time.</div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <label class="switch">
+          <input type="checkbox" id="viewSpanToggle" />
+          <span class="slider"></span>
+        </label>
+        <div>
+          <div><strong>View span:</strong> <span id="viewSpanLabel">Off</span></div>
+          <div class="muted">Turn on to view and edit nearby past/future days from the Today section.</div>
+        </div>
+      </div>
+      <div id="viewSpanConfig" class="grid2 hidden" style="margin-top:10px;">
+        <div>
+          <label>Past days to show (max 6)</label>
+          <input id="viewSpanPastInput" type="number" min="0" max="6" step="1" value="3" />
+        </div>
+        <div>
+          <label>Future days to show (max 7)</label>
+          <input id="viewSpanFutureInput" type="number" min="0" max="7" step="1" value="2" />
+        </div>
+      </div>
       <div class="row" style="margin-top:12px; align-items:center;">
         <div style="min-width:120px;"><strong>App font size:</strong> <span id="fontSizeLabel">100%</span></div>
         <input id="fontSizeRange" type="range" min="85" max="125" step="5" value="100" style="min-width:220px;" />
@@ -297,7 +338,7 @@
       <section class="card" id="planCard">
         <h2>Plan & Usage</h2>
         <div><strong>Current plan:</strong> <span id="planTierLabel">Free</span></div>
-        <div class="muted" id="planFeaturesText">Free includes 5 food entries/day, 3 AI actions/day, and 20 days of history.</div>
+        <div class="muted" id="planFeaturesText">Free includes 5 food entries/day, 5 AI actions/day, and 20 days of history.</div>
         <div class="muted" id="usageTodayText">Usage today: —</div>
         <div class="row" style="margin-top:10px;">
           <button id="upgradeMonthlyBtn">Upgrade Monthly ($5)</button>
@@ -308,7 +349,7 @@
         <div id="planStatus" class="muted"></div>
       </section>
 
-      <div style="margin-top:16px;">
+      <div style="margin-top:16px;" id="quickFillSettingsSection">
         <h3>Custom Quick Fills</h3>
         <div class="muted">Create your own meals/snacks for one-tap manual entry.</div>
         <div class="grid2" style="margin-top:10px;">
@@ -346,6 +387,15 @@
         <div id="quickFillStatus" class="muted"></div>
         <ul id="quickFillList"></ul>
       </div>
+
+      <section class="card signupPromptCard" id="multiDeviceSignupCard">
+        <h3>Use Aethon across devices</h3>
+        <p class="muted">Sign up to sync your data across multiple devices and restore paid access anywhere.</p>
+        <div class="row">
+          <button id="settingsSignUpBtn" type="button">Sign up to use across multiple devices</button>
+          <button id="settingsSignInBtn" type="button" class="ghost">Sign in</button>
+        </div>
+      </section>
     </section>
 
     </div>
@@ -355,12 +405,13 @@
   <div id="onboardingOverlay" class="onboardingOverlay hidden">
     <div class="onboardingModal">
       <div class="onboardingStep">Step <span id="onboardingStepNum">1</span> of 3</div>
-      <h2 id="onboardingTitle">Welcome to Fitflow Calorie Tracker</h2>
+      <h2 id="onboardingTitle">Welcome to Aethon Calorie Tracker</h2>
 
       <div id="onboardingWelcomeScreen">
-        <p>Welcome to Fitflow Calorie Tracker</p>
+        <p>Welcome to Aethon Calorie Tracker</p>
         <p class="muted">We’ll use a few quick inputs to set a calorie and macro target tailored to your timeline.</p>
         <button id="onboardingContinueBtn">Press to continue</button>
+        <button id="onboardingSignInBtn" type="button" class="linkMiniBtn">Already paid? Sign in</button>
       </div>
 
       <div id="onboardingInputScreen" class="hidden">
@@ -400,6 +451,16 @@
         <p><strong>Daily calories:</strong> <span id="aiSuggestedCalories">—</span></p>
         <p><strong>Protein:</strong> <span id="aiSuggestedProtein">—</span>g &nbsp; <strong>Carbs:</strong> <span id="aiSuggestedCarbs">—</span>g &nbsp; <strong>Fat:</strong> <span id="aiSuggestedFat">—</span>g</p>
         <ul id="aiRationaleList"></ul>
+        <div class="row" style="margin-top:10px;">
+          <button id="aiEditPlanBtn" type="button">Edit plan</button>
+        </div>
+        <div id="aiEditPlanBlock" class="hidden" style="margin-top:8px;">
+          <label>Tell AI what to change</label>
+          <textarea id="aiEditPlanInput" rows="3" placeholder="e.g. Higher protein, lower carbs, and a smaller calorie deficit."></textarea>
+          <div class="row end" style="margin-top:8px;">
+            <button id="aiEditPlanSubmitBtn" type="button">Submit edit request</button>
+          </div>
+        </div>
         <div class="row">
           <button id="aiAcceptPlanBtn">Accept plan</button>
           <button id="aiDeclinePlanBtn">Decline</button>

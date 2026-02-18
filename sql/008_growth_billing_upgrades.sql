@@ -1,6 +1,6 @@
 alter table app_admin_settings
   add column if not exists free_food_entries_per_day integer not null default 5,
-  add column if not exists free_ai_actions_per_day integer not null default 3,
+  add column if not exists free_ai_actions_per_day integer not null default 5,
   add column if not exists free_history_days integer not null default 20,
   add column if not exists monthly_price_usd integer not null default 5,
   add column if not exists yearly_price_usd integer not null default 50,
