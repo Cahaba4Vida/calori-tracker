@@ -509,9 +509,19 @@ function toggleSection(bodyId, buttonId, collapseText = 'Collapse', expandText =
 function setOnboardingVisible(visible) {
   const overlay = el('onboardingOverlay');
   if (!overlay) return;
+
   overlay.classList.toggle('hidden', !visible);
-  // Extra safety: also set inline display to avoid any stacking/pointer-event issues if CSS is overridden.
-  overlay.style.display = visible ? 'flex' : 'none';
+
+  // Hard-disable the overlay when hidden so it can never "ghost block" clicks.
+  if (visible) {
+    overlay.style.display = 'flex';
+    overlay.style.pointerEvents = 'auto';
+    overlay.style.opacity = '1';
+  } else {
+    overlay.style.display = 'none';
+    overlay.style.pointerEvents = 'none';
+    overlay.style.opacity = '0';
+  }
 }
 
 
@@ -2224,6 +2234,29 @@ function bindUI() {
 }
 
 
+
+function hideNetlifyIdentityOverlays() {
+  // Netlify Identity injects overlays/modals with varying selectors depending on version.
+  const selectors = [
+    '#netlify-identity-overlay',
+    '#netlify-identity-modal',
+    '#netlify-identity-widget',
+    '.netlify-identity-overlay',
+    '.netlify-identity-modal',
+    '.netlify-identity-widget',
+    '[data-netlify-identity-widget]'
+  ];
+  selectors.forEach((sel) => {
+    document.querySelectorAll(sel).forEach((node) => {
+      try {
+        node.style.display = 'none';
+        node.style.pointerEvents = 'none';
+      } catch {}
+    });
+  });
+  try { document.body.classList.remove('netlify-identity-open'); } catch {}
+}
+
 function openIdentityModal(mode = 'login') {
   if (typeof netlifyIdentity === 'undefined') {
     setStatus('Sign in is not available in this environment yet.');
@@ -2286,16 +2319,20 @@ if (typeof netlifyIdentity !== 'undefined') {
     setFeedbackOverlay(false, null);
     initAuthedSession({ skipOnboarding: false, onboardingMode: 'onboarding' }).catch(e => setStatus(e.message));
   });
-  netlifyIdentity.on('login', user => {
-    currentUser = user;
-    const shouldSkipOnboarding = true;
-    skipOnboardingAfterLogin = false;
-    netlifyIdentity.close();
-    showApp(true);
-    if (shouldSkipOnboarding) setOnboardingVisible(false);
-    setFeedbackOverlay(false, null);
-    initAuthedSession({ skipOnboarding: shouldSkipOnboarding }).catch(e => setStatus(e.message));
-  });
+  netlifyIdentity.on('login', (user) => {
+  currentUser = user;
+  // Always unlock UI after identity login.
+  setOnboardingVisible(false);
+  hideNetlifyIdentityOverlays();
+  showApp(true);
+  setFeedbackOverlay(false, null);
+
+  // Skip onboarding after a paid user logs in.
+  initAuthedSession({ skipOnboarding: true }).catch(e => setStatus(e.message));
+
+  try { netlifyIdentity.close(); } catch {}
+  setStatus('Logged in.');
+});
   netlifyIdentity.on('logout', () => {
     currentUser = null;
     setFeedbackOverlay(false, null);
@@ -2307,10 +2344,9 @@ if (typeof netlifyIdentity !== 'undefined') {
     setStatus('Logged out.');
   });
   netlifyIdentity.on('close', () => {
-    if (!currentUser && !deviceAutoLoginEnabled) {
-      showLoggedOutOnboarding();
-    }
-  });
+  // Ensure no stale overlay keeps the app dim/blocked.
+  hideNetlifyIdentityOverlays();
+});
 }
 
 if (window.AppBilling && typeof window.AppBilling.createBillingController === 'function') {
