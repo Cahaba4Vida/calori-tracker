@@ -1,6 +1,14 @@
-# Calorie & Weight Tracker (Netlify + Neon + Netlify Identity)
+# Calorie & Weight Tracker (Mock Local App)
 
 ## What this is
+
+## Mock mode (no auth, local-only)
+This build runs entirely in **mock mode**:
+- No Netlify Identity login required.
+- No backend/database required for core app usage.
+- Data is cached in browser session storage (`caloriTrackerMockStateV1`) and resets when the tab/session ends (or via Reset Mock Session).
+- Includes a mock landing page before entering onboarding and the full app experience.
+
 A static web app deployed on Netlify using:
 - Netlify Identity (email login)
 - Netlify Functions (API backend)

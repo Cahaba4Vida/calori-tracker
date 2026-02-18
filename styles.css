@@ -1,13 +1,47 @@
-:root { --border:#e7e7e7; --muted:#666; --bg:#fafafa; }
+:root { --border:#dde4f3; --muted:#586174; --bg:#f4f7ff; --ink:#0f172a; --accent:#2563eb; }
 * { box-sizing: border-box; }
-body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 820px; margin: auto; padding: 16px; background: radial-gradient(circle at top, #fff 0%, var(--bg) 48%); }
-h1 { margin: 0; font-size: 20px; }
-h2 { margin: 0; }
-header.row { align-items: center; justify-content: space-between; gap: 12px; }
+body {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  max-width: 860px;
+  margin: auto;
+  padding: 16px;
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 500px at 12% -12%, rgba(59,130,246,0.20), transparent 60%),
+    radial-gradient(900px 400px at 92% -18%, rgba(45,212,191,0.15), transparent 62%),
+    linear-gradient(180deg, #f8fbff 0%, var(--bg) 50%, #f2f6ff 100%);
+}
+h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+h2 { margin: 0; letter-spacing: -0.01em; }
+header.row {
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,0.85);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.72);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 20px rgba(32, 68, 136, 0.08);
+}
 .row { display: flex; gap: 8px; flex-wrap: wrap; }
-.card { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin: 12px 0; box-shadow: 0 8px 24px rgba(17,17,17,0.04); }
-button { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: white; cursor: pointer; transition: transform .08s ease, box-shadow .15s ease; }
-button:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,0.08); }
+.card {
+  background: rgba(255,255,255,0.94);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  margin: 12px 0;
+  box-shadow: 0 10px 24px rgba(25, 58, 122, 0.08);
+}
+button {
+  padding: 9px 12px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: white;
+  cursor: pointer;
+  transition: transform .08s ease, box-shadow .15s ease, border-color .15s ease;
+}
+button:hover { transform: translateY(-1px); box-shadow: 0 6px 14px rgba(37,99,235,0.14); border-color: #b8c9f3; }
 input { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); min-width: 220px; }
 .muted { color: var(--muted); font-size: 13px; margin-top: 6px; }
 .hidden { display: none; }
@@ -455,3 +489,61 @@ textarea {
 .goalFill { height: 100%; width: 0%; background: linear-gradient(90deg, #3f7cff, #75a4ff); }
 .goalFill.paid { background: linear-gradient(90deg, #10a26a, #4bcf96); }
 textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); min-width: 220px; width: 100%; }
+
+
+/* Mock landing polish */
+.mockHeroCard {
+  border: none;
+  background: linear-gradient(140deg, #0f172a 0%, #1d4ed8 45%, #2563eb 100%);
+  color: #fff;
+  box-shadow: 0 18px 40px rgba(16, 40, 95, 0.34);
+}
+
+.mockPillRow { display:flex; flex-wrap:wrap; gap:8px; margin-bottom: 10px; }
+.mockPill {
+  display:inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.16);
+  font-size: 12px;
+}
+.mockHeroTitle { font-size: clamp(24px, 4vw, 30px); line-height: 1.15; margin-bottom: 8px; }
+.mockLead { color: rgba(255,255,255,0.94); margin-top: 4px; margin-bottom: 14px; }
+.mockActionRow { display:flex; flex-wrap:wrap; gap:10px; margin-bottom: 14px; }
+.ctaPrimary {
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid rgba(255,255,255,0.65);
+  font-weight: 700;
+}
+.ctaSecondary {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.38);
+}
+.mockFeatureGrid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:10px; }
+.mockFeatureCard {
+  border-radius: 12px;
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.12);
+}
+.mockFeatureCard h3 { margin: 0 0 4px; font-size: 14px; }
+.mockFeatureCard p { margin: 0; font-size: 13px; color: rgba(255,255,255,0.9); }
+.trustRow {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.9);
+}
+
+#todayCard { border-top: 3px solid #60a5fa; }
+#addFoodCard { border-top: 3px solid #34d399; }
+#coachChatCard { border-top: 3px solid #f59e0b; }
+
+@media (max-width: 760px) {
+  .mockFeatureGrid { grid-template-columns: 1fr; }
+}
