@@ -2,7 +2,7 @@ console.log("APP_VERSION v11");
 let currentUser = null;
 let skipOnboardingAfterLogin = false;
 const QUERY = new URLSearchParams(window.location.search);
-const MOCK_MODE = QUERY.get('mock') !== '0';
+const MOCK_MODE = QUERY.get('mock') === '1';
 const USE_MOCK_API = QUERY.get('mockApi') === '1';
 const MOCK_STORAGE_KEY = 'caloriTrackerMockStateV1';
 const mockStorage = window.localStorage;
@@ -319,7 +319,7 @@ async function mockApi(path, opts = {}) {
 let weightUnit = (localStorage.getItem('weightUnit') || 'lbs'); // 'lbs' or 'kg'
 let darkModeEnabled = localStorage.getItem('darkMode') === 'true';
 let appFontSizePct = Number(localStorage.getItem('appFontSizePct') || '100');
-let deviceAutoLoginEnabled = localStorage.getItem(DEVICE_AUTO_LOGIN_STORAGE_KEY) !== 'false';
+let deviceAutoLoginEnabled = localStorage.getItem(DEVICE_AUTO_LOGIN_STORAGE_KEY) === 'true';
 let viewSpanEnabled = localStorage.getItem(VIEW_SPAN_ENABLED_KEY) === 'true';
 let viewSpanPastDays = Math.max(0, Math.min(6, Number(localStorage.getItem(VIEW_SPAN_PAST_DAYS_KEY) || '3') || 3));
 let viewSpanFutureDays = Math.max(0, Math.min(7, Number(localStorage.getItem(VIEW_SPAN_FUTURE_DAYS_KEY) || '2') || 2));
@@ -465,6 +465,15 @@ function setThinking(isThinking) {
   if (!thinking) return;
   thinking.classList.toggle('hidden', !isThinking);
 }
+
+async function withThinking(work) {
+  setThinking(true);
+  try {
+    return await work();
+  } finally {
+    setThinking(false);
+  }
+}
 function showApp(isAuthed) { el('app').classList.toggle('hidden', !isAuthed); el('tabs').classList.toggle('hidden', !isAuthed); }
 
 function applyDarkModeUI() {
@@ -505,8 +514,8 @@ function setOnboardingVisible(visible) {
 
 
 function showLoggedOutOnboarding() {
-  showOnboardingScreen('welcome');
-  setOnboardingVisible(true);
+  // New users should land directly on the AI plan input step.
+  openAiGoalFlow('settings');
 }
 
 function showOnboardingScreen(which) {
@@ -1200,7 +1209,7 @@ function renderAiSuggestion(result) {
 
 async function requestAiGoalSuggestion(editRequest = null) {
   if (!aiGoalInputs) throw new Error('Set goal inputs first.');
-  const result = await api('ai-goals-suggest', {
+  const result = await withThinking(async () => api('ai-goals-suggest', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1208,7 +1217,7 @@ async function requestAiGoalSuggestion(editRequest = null) {
       edit_request: editRequest,
       messages: aiGoalThread
     })
-  });
+  }));
 
   const summary = `Plan: ${result.daily_calories} cal, P${result.protein_g} C${result.carbs_g} F${result.fat_g}. Rationale: ${(result.rationale_bullets || []).join(' | ')}`;
   if (editRequest) aiGoalThread.push({ role: 'user', content: editRequest });
@@ -1330,11 +1339,11 @@ async function uploadFoodFromInput(inputId = 'photoInput') {
   const imageDataUrl = await fileToDataUrl(file);
 
   // Extract only (do not insert yet)
-  const j = await api('entries-add-image', {
+  const j = await withThinking(async () => api('entries-add-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ imageDataUrl, extract_only: true })
-  });
+  }));
 
   input.value = '';
   setStatus('');
@@ -1365,11 +1374,11 @@ async function uploadPlateFromInput(inputId = 'plateInput') {
 
   const servings_eaten = 1.0;
 
-  const j = await api('entries-estimate-plate-image', {
+  const j = await withThinking(async () => api('entries-estimate-plate-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ imageDataUrl, servings_eaten, portion_hint: null })
-  });
+  }));
 
   input.value = '';
   setStatus('');
@@ -1406,11 +1415,11 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
 
   try {
     setStatus('Analyzing photo…');
-    const j = await api('entries-add-image', {
+    const j = await withThinking(async () => api('entries-add-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ imageDataUrl, extract_only: true })
-    });
+    }));
     setStatus('');
     pendingExtraction = j.extracted;
     el('servingsEatenInput').value = '1.0';
@@ -1427,11 +1436,11 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
   }
 
   setStatus('Estimating plate…');
-  const j = await api('entries-estimate-plate-image', {
+  const j = await withThinking(async () => api('entries-estimate-plate-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ imageDataUrl, servings_eaten: 1.0, portion_hint: null })
-  });
+  }));
   setStatus('');
 
   pendingPlateEstimate = j;
@@ -1531,11 +1540,11 @@ async function sendVoiceFoodMessage() {
   out.innerText = `${out.innerText ? `${out.innerText}\n\n` : ''}You: ${message}`;
   input.value = '';
   setStatus('Asking voice nutrition assistant…');
-  const j = await api('voice-food-add', {
+  const j = await withThinking(async () => api('voice-food-add', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, history: voiceFoodHistory, followups_used: voiceFollowUpCount, followups_limit: 2 })
-  });
+  }));
   setStatus('');
   voiceFoodHistory.push({ role: 'user', text: message });
   voiceFoodHistory.push({ role: 'assistant', text: j.reply || '' });
@@ -2221,18 +2230,26 @@ function openIdentityModal(mode = 'login') {
   const onboardingVisible = !el('onboardingOverlay')?.classList.contains('hidden');
   if (onboardingVisible) setOnboardingVisible(false);
 
-  try {
-    netlifyIdentity.open(mode === 'signup' ? 'signup' : 'login');
+  const raiseIdentityWidget = () => {
     setTimeout(() => {
       const widget = document.querySelector('.netlify-identity-widget');
-      if (widget) widget.style.zIndex = '2200';
+      if (widget) widget.style.zIndex = '20000';
+      const modal = document.querySelector('.netlify-identity-widget .modal');
+      if (modal) modal.style.zIndex = '20001';
     }, 0);
+  };
+
+  try {
+    netlifyIdentity.open(mode === 'signup' ? 'signup' : 'login');
+    raiseIdentityWidget();
   } catch {
     netlifyIdentity.open();
+    raiseIdentityWidget();
   }
 }
 
-async function initAuthedSession() {
+async function initAuthedSession(opts = {}) {
+  const { skipOnboarding = false } = opts;
   const landing = el('mockLanding');
   if (landing) landing.classList.add('hidden');
   showApp(true);
@@ -2240,7 +2257,7 @@ async function initAuthedSession() {
   await loadLinkedDevices();
   await ensureFeedbackGate();
   if (feedbackGateState.required) return;
-  if (!profileState.onboarding_completed) {
+  if (!skipOnboarding && !profileState.onboarding_completed) {
     openAiGoalFlow('onboarding');
     return;
   }
@@ -2253,11 +2270,15 @@ if (typeof netlifyIdentity !== 'undefined') {
     currentUser = user;
     if (user) {
       showApp(true);
-      initAuthedSession().catch(e => setStatus(e.message));
+      setOnboardingVisible(false);
+      setFeedbackOverlay(false, null);
+      initAuthedSession({ skipOnboarding: true }).catch(e => setStatus(e.message));
       return;
     }
     if (deviceAutoLoginEnabled) {
-      initAuthedSession().catch(e => setStatus(e.message));
+      setOnboardingVisible(false);
+      setFeedbackOverlay(false, null);
+      initAuthedSession({ skipOnboarding: true }).catch(e => setStatus(e.message));
     } else {
       showApp(false);
       showLoggedOutOnboarding();
@@ -2265,16 +2286,13 @@ if (typeof netlifyIdentity !== 'undefined') {
   });
   netlifyIdentity.on('login', user => {
     currentUser = user;
-    const shouldSkipOnboarding = skipOnboardingAfterLogin;
+    const shouldSkipOnboarding = true;
     skipOnboardingAfterLogin = false;
     netlifyIdentity.close();
     showApp(true);
-    if (shouldSkipOnboarding) {
-      setOnboardingVisible(false);
-      refresh().catch(e => setStatus(e.message));
-      return;
-    }
-    initAuthedSession().catch(e => setStatus(e.message));
+    if (shouldSkipOnboarding) setOnboardingVisible(false);
+    setFeedbackOverlay(false, null);
+    initAuthedSession({ skipOnboarding: shouldSkipOnboarding }).catch(e => setStatus(e.message));
   });
   netlifyIdentity.on('logout', () => {
     currentUser = null;
@@ -2323,9 +2341,16 @@ if (MOCK_MODE) {
   initAuthedSession().catch(e => setStatus(e.message));
   if (typeof netlifyIdentity !== 'undefined') netlifyIdentity.init();
 } else if (typeof netlifyIdentity !== 'undefined') {
+  // Show onboarding immediately for logged-out users so they never see a blank state
+  // while Netlify Identity initializes.
+  if (!deviceAutoLoginEnabled) {
+    showApp(false);
+    showLoggedOutOnboarding();
+  }
   netlifyIdentity.init();
 } else if (deviceAutoLoginEnabled) {
-  initAuthedSession().catch(e => setStatus(e.message));
+  setOnboardingVisible(false);
+  initAuthedSession({ skipOnboarding: true }).catch(e => setStatus(e.message));
 } else {
   showApp(false);
   showLoggedOutOnboarding();
