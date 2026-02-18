@@ -56,6 +56,22 @@ function parseApiPath(path) {
   return { route, params: new URLSearchParams(query) };
 }
 
+async function mockAi(task, payload = {}) {
+  const r = await fetch('/api/demo-openai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task, payload })
+  });
+  const text = await r.text();
+  let body = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
+  if (!r.ok) {
+    const msg = (body && (body.error || body.message)) ? (body.error || body.message) : ('Request failed: ' + r.status);
+    throw new Error(msg);
+  }
+  return body;
+}
+
 async function mockApi(path, opts = {}) {
   const { route, params } = parseApiPath(path);
   const method = String(opts.method || 'GET').toUpperCase();
@@ -134,33 +150,26 @@ async function mockApi(path, opts = {}) {
     return { series };
   }
   if (route === 'ai-goals-suggest' && method === 'POST') {
-    const current = Number(payload.current_weight_lbs);
-    const goal = Number(payload.goal_weight_lbs);
-    const delta = current - goal;
-    const daily_calories = Math.max(1300, Math.round(2200 - Math.max(-500, Math.min(500, delta * 8))));
-    const protein_g = Math.max(80, Math.round(goal * 0.8));
-    const fat_g = Math.round((daily_calories * 0.28) / 9);
-    const carbs_g = Math.max(50, Math.round((daily_calories - (protein_g * 4) - (fat_g * 9)) / 4));
-    return {
-      daily_calories,
-      protein_g,
-      carbs_g,
-      fat_g,
-      rationale_bullets: ['Mock mode: plan generated locally in your browser.', 'This estimate uses your current and goal weight plus activity level.', 'Adjust values any time in Settings.']
-    };
+    return mockAi('ai-goals-suggest', payload);
   }
-  if (route === 'entries-add-image') {
-    return { extracted: { calories_per_serving: 320, servings: 1, protein_g_per_serving: 24, carbs_g_per_serving: 28, fat_g_per_serving: 12, confidence: 'medium', notes: 'Mock extraction from local mode.' } };
+  if (route === 'entries-add-image' && method === 'POST') {
+    return mockAi('entries-add-image', payload);
   }
-  if (route === 'entries-estimate-plate-image') {
-    return { calories: 540, protein_g: 32, carbs_g: 55, fat_g: 18, confidence: 'medium', assumptions: ['Medium plate portion', 'Mixed meal estimate'], notes: 'Mock estimate generated locally.' };
+  if (route === 'entries-estimate-plate-image' && method === 'POST') {
+    return mockAi('entries-estimate-plate-image', payload);
   }
-  if (route === 'day-finish') {
-    const total = todayEntries().reduce((s, e) => s + (e.calories || 0), 0);
-    const score = Math.max(1, Math.min(10, Math.round((1 - Math.abs(total - mockState.daily_calories) / Math.max(1, mockState.daily_calories)) * 10)));
-    return { score, tips: 'Nice consistency. In mock mode, this summary is generated locally and not stored server-side.' };
+  if (route === 'day-finish' && method === 'POST') {
+    return mockAi('day-finish', {
+      entries: todayEntries(),
+      daily_calories_goal: mockState.daily_calories,
+      macro_goals: {
+        protein_g: mockState.profile?.macro_protein_g,
+        carbs_g: mockState.profile?.macro_carbs_g,
+        fat_g: mockState.profile?.macro_fat_g
+      }
+    });
   }
-  if (route === 'chat') return { reply: 'Mock coach: Great work today. Keep protein high and stay hydrated.' };
+  if (route === 'chat' && method === 'POST') return mockAi('chat', payload);
   if (route === 'feedback-status') return { required: false, campaign: null };
   if (route === 'feedback-submit') return { ok: true };
   if (route === 'billing-status') {
@@ -176,6 +185,9 @@ async function mockApi(path, opts = {}) {
   if (route === 'create-checkout-session' || route === 'manage-subscription') return { url: 'https://example.com' };
   if (route === 'export-data') return { profile: mockState.profile, goal: { daily_calories: mockState.daily_calories }, entries: mockState.entries, weights: mockState.weights };
   if (route === 'track-event') return { ok: true };
+  if (route === 'voice-food-add' && method === 'POST') {
+    return mockAi('voice-food-add', payload);
+  }
 
   throw new Error(`Mock API route not implemented: ${route}`);
 }
@@ -214,6 +226,9 @@ let aiGoalFlowMode = null;
 let aiGoalSuggestion = null;
 let feedbackGateState = { required: false, campaign: null };
 let billingController = null;
+let activeAddFoodPanel = null;
+let voiceFoodHistory = [];
+let voiceRecognition = null;
 
 function isoToday() {
   return new Date().toISOString().slice(0, 10);
@@ -281,6 +296,8 @@ function showOnboardingScreen(which) {
   el('onboardingWelcomeScreen').classList.toggle('hidden', which !== 'welcome');
   el('onboardingInputScreen').classList.toggle('hidden', which !== 'inputs');
   el('onboardingSuggestScreen').classList.toggle('hidden', which !== 'suggestion');
+  const onboardingModal = document.querySelector('#onboardingOverlay .onboardingModal');
+  if (onboardingModal) onboardingModal.classList.toggle('welcomeMode', which === 'welcome');
   const step = which === 'welcome' ? '1' : (which === 'inputs' ? '2' : '3');
   const stepEl = el('onboardingStepNum');
   if (stepEl) stepEl.innerText = step;
@@ -901,7 +918,7 @@ function openAiGoalFlow(mode) {
   document.querySelectorAll('.aiInputUnitText').forEach(n => { n.innerText = unitSuffix(); });
   el('aiGoalDateInput').min = isoToday();
   const showWelcome = mode === 'onboarding';
-  el('onboardingTitle').innerText = showWelcome ? 'Welcome to Fitflow Calorie Tracker' : 'Generate AI calorie & macro goals';
+  el('onboardingTitle').innerText = showWelcome ? 'Welcome to Aethon Calorie Tracker' : 'Generate AI calorie & macro goals';
   el('onboardingContinueBtn').classList.toggle('hidden', !showWelcome);
   el('aiDeclineHint').innerText = showWelcome ? 'If you decline, onboarding will be marked complete. You can still set goals later in Settings.' : 'Decline keeps your current goals unchanged.';
   showOnboardingScreen(showWelcome ? 'welcome' : 'inputs');
@@ -992,6 +1009,128 @@ async function uploadPlateFromInput(inputId = 'plateInput') {
   openEstimateSheet();
 }
 
+async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
+  const input = el(inputId);
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  const imageDataUrl = await fileToDataUrl(file);
+  input.value = '';
+
+  try {
+    setStatus('Analyzing photo…');
+    const j = await api('entries-add-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageDataUrl, extract_only: true })
+    });
+    setStatus('');
+    pendingExtraction = j.extracted;
+    el('servingsEatenInput').value = '1.0';
+    el('calPerServingInput').value = (pendingExtraction.calories_per_serving ?? '').toString();
+    el('proteinPerServingInput').value = pendingExtraction.protein_g_per_serving == null ? '' : String(pendingExtraction.protein_g_per_serving);
+    el('servingsEatenInput').oninput = computeTotalsPreview;
+    el('calPerServingInput').oninput = computeTotalsPreview;
+    el('proteinPerServingInput').oninput = computeTotalsPreview;
+    computeTotalsPreview();
+    openSheet();
+    return;
+  } catch (e) {
+    // If nutrition-label extraction fails, fallback to plate estimate.
+  }
+
+  setStatus('Estimating plate…');
+  const j = await api('entries-estimate-plate-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageDataUrl, servings_eaten: 1.0, portion_hint: null })
+  });
+  setStatus('');
+
+  pendingPlateEstimate = j;
+  el('estimateServingsInput').value = '1';
+  el('estimateCaloriesInput').value = j.calories ?? '';
+  el('estimateProteinInput').value = (j.protein_g == null ? '' : String(Math.round(j.protein_g)));
+  el('estimateCarbsInput').value = (j.carbs_g == null ? '' : String(Math.round(j.carbs_g)));
+  el('estimateFatInput').value = (j.fat_g == null ? '' : String(Math.round(j.fat_g)));
+  setBadge(j.confidence || 'low');
+  const ul = el('estimateAssumptions');
+  ul.innerHTML = '';
+  (j.assumptions || []).forEach((a) => {
+    const li = document.createElement('li');
+    li.innerText = a;
+    ul.appendChild(li);
+  });
+  el('estimateNotes').innerText = j.notes ? j.notes : '';
+  openEstimateSheet();
+}
+
+function showAddFoodPanel(panelId) {
+  const ids = ['addFoodPhotoPanel', 'addFoodVoicePanel', 'addFoodQuickFillPanel', 'addFoodManualPanel'];
+  ids.forEach((id) => {
+    const node = el(id);
+    if (node) node.classList.toggle('hidden', id !== panelId);
+  });
+  activeAddFoodPanel = panelId;
+}
+
+function stopVoiceRecognition() {
+  if (!voiceRecognition) return;
+  try { voiceRecognition.stop(); } catch {}
+}
+
+function ensureVoiceRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return null;
+  if (voiceRecognition) return voiceRecognition;
+  voiceRecognition = new SR();
+  voiceRecognition.continuous = false;
+  voiceRecognition.interimResults = false;
+  voiceRecognition.lang = 'en-US';
+  voiceRecognition.onresult = (event) => {
+    const text = Array.from(event.results || []).map((r) => r[0]?.transcript || '').join(' ').trim();
+    if (!text) return;
+    const field = el('voiceFoodInput');
+    field.value = [field.value, text].filter(Boolean).join(' ').trim();
+  };
+  voiceRecognition.onerror = () => setStatus('Voice input error. You can type your meal details instead.');
+  return voiceRecognition;
+}
+
+async function sendVoiceFoodMessage() {
+  const input = el('voiceFoodInput');
+  const message = (input?.value || '').trim();
+  if (!message) return;
+  const out = el('voiceFoodOutput');
+  out.innerText = `${out.innerText ? `${out.innerText}\n\n` : ''}You: ${message}`;
+  input.value = '';
+  setStatus('Asking voice nutrition assistant…');
+  const j = await api('voice-food-add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, history: voiceFoodHistory })
+  });
+  setStatus('');
+  voiceFoodHistory.push({ role: 'user', text: message });
+  voiceFoodHistory.push({ role: 'assistant', text: j.reply || '' });
+  out.innerText = `${out.innerText}\nAssistant: ${j.reply || ''}`;
+
+  if (j.suggested_entry) {
+    el('manualCaloriesInput').value = j.suggested_entry.calories ?? '';
+    el('manualProteinInput').value = j.suggested_entry.protein_g ?? '';
+    el('manualCarbsInput').value = j.suggested_entry.carbs_g ?? '';
+    el('manualFatInput').value = j.suggested_entry.fat_g ?? '';
+    el('manualNotesInput').value = j.suggested_entry.notes || 'Voice estimate';
+    showAddFoodPanel('addFoodManualPanel');
+  }
+
+  if (j.audio_base64) {
+    const audio = new Audio(`data:${j.audio_mime_type || 'audio/mp3'};base64,${j.audio_base64}`);
+    audio.play().catch(() => {});
+  } else if ('speechSynthesis' in window && j.reply) {
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(j.reply));
+  }
+}
 
 function renderEntries(entries) {
   const list = el('entriesList');
@@ -1086,7 +1225,8 @@ async function loadToday() {
   el('todayProtein').innerText = Math.round(totalProtein);
   el('todayCarbs').innerText = Math.round(totalCarbs);
   el('todayFat').innerText = Math.round(totalFat);
-  el('todayEntriesCount').innerText = String(entries.length);
+  const entriesCountNode = el('todayEntriesCount');
+  if (entriesCountNode) entriesCountNode.innerText = String(entries.length);
 
   const goal = Number(el('todayGoal').innerText);
   const p = pct(j.total_calories ?? 0, isFinite(goal) ? goal : 0);
@@ -1108,9 +1248,12 @@ async function loadToday() {
   const carbsPercent = macroPct(totalCarbs, cGoal);
   const fatPercent = macroPct(totalFat, fGoal);
 
-  el('proteinProgressText').innerText = proteinPercent == null ? 'No goal set' : `${Math.round(totalProtein)} / ${Math.round(pGoal)}g`;
-  el('carbsProgressText').innerText = carbsPercent == null ? 'No goal set' : `${Math.round(totalCarbs)} / ${Math.round(cGoal)}g`;
-  el('fatProgressText').innerText = fatPercent == null ? 'No goal set' : `${Math.round(totalFat)} / ${Math.round(fGoal)}g`;
+  const proteinProgressText = el('proteinProgressText');
+  if (proteinProgressText) proteinProgressText.innerText = proteinPercent == null ? 'No goal set' : `${Math.round(totalProtein)} / ${Math.round(pGoal)}g`;
+  const carbsProgressText = el('carbsProgressText');
+  if (carbsProgressText) carbsProgressText.innerText = carbsPercent == null ? 'No goal set' : `${Math.round(totalCarbs)} / ${Math.round(cGoal)}g`;
+  const fatProgressText = el('fatProgressText');
+  if (fatProgressText) fatProgressText.innerText = fatPercent == null ? 'No goal set' : `${Math.round(totalFat)} / ${Math.round(fGoal)}g`;
 
   el('proteinProgressBar').style.width = `${proteinPercent ?? 0}%`;
   el('carbsProgressBar').style.width = `${carbsPercent ?? 0}%`;
@@ -1135,7 +1278,7 @@ function renderQuickFillButtons() {
   if (!row || !block) return;
   row.innerHTML = '';
   const active = (profileState.quick_fills || []).filter((q) => q.enabled);
-  block.classList.toggle('hidden', active.length === 0);
+  block.classList.toggle('empty', active.length === 0);
 
   for (const q of active) {
     const btn = document.createElement('button');
@@ -1399,18 +1542,11 @@ function bindUI() {
   if (enterMockBtn) enterMockBtn.onclick = () => initAuthedSession().catch(e => setStatus(e.message));
   if (resetMockBtn) resetMockBtn.onclick = () => { resetMockState(); setStatus('Mock cache reset. Starting fresh onboarding…'); initAuthedSession().catch(e => setStatus(e.message)); };
   el('saveGoalBtn').onclick = () => saveGoal().catch(e => setStatus(e.message));
-  const photoInputIds = ['photoInput', 'photoCameraInput'];
-  const plateInputIds = ['plateInput', 'plateCameraInput'];
-
-  photoInputIds.forEach((id) => {
+  const unifiedPhotoInputIds = ['photoUnifiedInput', 'photoUnifiedCameraInput'];
+  unifiedPhotoInputIds.forEach((id) => {
     const node = el(id);
     if (!node) return;
-    node.onchange = () => uploadFoodFromInput(id).catch(e => setStatus(e.message));
-  });
-  plateInputIds.forEach((id) => {
-    const node = el(id);
-    if (!node) return;
-    node.onchange = () => uploadPlateFromInput(id).catch(e => setStatus(e.message));
+    node.onchange = () => uploadUnifiedPhotoFromInput(id).catch((e) => setStatus(e.message));
   });
   el('saveWeightBtn').onclick = () => saveWeight().catch(e => setStatus(e.message));
   el('finishDayBtn').onclick = () => finishDay().catch(e => setStatus(e.message));
@@ -1495,6 +1631,7 @@ function bindUI() {
   // Initialize UI state
   el('weightInput').placeholder = unitSuffix();
   activateTab('dashboard');
+  showAddFoodPanel('addFoodPhotoPanel');
 
   // Click bindings that may not exist until a sheet/modal is rendered
   const bindClick = (id, handler) => {
@@ -1512,10 +1649,28 @@ function bindUI() {
   bindClick('manualSaveBtn', () => saveManualEntry());
   bindClick('saveQuickFillBtn', () => addQuickFill());
 
-  bindClick('photoFromLibraryBtn', () => { const n = el('photoInput'); if (n) n.click(); });
-  bindClick('photoFromCameraBtn', () => { const n = el('photoCameraInput'); if (n) n.click(); });
-  bindClick('plateFromLibraryBtn', () => { const n = el('plateInput'); if (n) n.click(); });
-  bindClick('plateFromCameraBtn', () => { const n = el('plateCameraInput'); if (n) n.click(); });
+  bindClick('addFoodPhotoBtn', () => showAddFoodPanel('addFoodPhotoPanel'));
+  bindClick('addFoodVoiceBtn', () => showAddFoodPanel('addFoodVoicePanel'));
+  bindClick('addFoodQuickFillBtn', () => showAddFoodPanel('addFoodQuickFillPanel'));
+  bindClick('addFoodManualBtn', () => showAddFoodPanel('addFoodManualPanel'));
+
+  bindClick('photoUnifiedLibraryBtn', () => { const n = el('photoUnifiedInput'); if (n) n.click(); });
+  bindClick('photoUnifiedCameraBtn', () => { const n = el('photoUnifiedCameraInput'); if (n) n.click(); });
+
+  bindClick('voiceRecordBtn', () => {
+    const recognition = ensureVoiceRecognition();
+    if (!recognition) {
+      setStatus('Voice recognition is not available on this browser. Type your meal details instead.');
+      return;
+    }
+    setStatus('Listening…');
+    recognition.start();
+  });
+  bindClick('voiceStopBtn', () => {
+    stopVoiceRecognition();
+    setStatus('');
+  });
+  bindClick('voiceFoodSendBtn', () => sendVoiceFoodMessage().catch((e) => setStatus(e.message)));
 
   bindClick('toggleDailyGoalsBtn', () => toggleSection('dailyGoalsBody', 'toggleDailyGoalsBtn'));
   bindClick('toggleAddFoodBtn', () => toggleSection('addFoodBody', 'toggleAddFoodBtn'));
@@ -1575,11 +1730,17 @@ if (window.AppBilling && typeof window.AppBilling.createBillingController === 'f
 applyDarkModeUI();
 applyFontSizeUI();
 bindUI();
+const mockModeBadge = el('mockModeBadge');
+if (mockModeBadge) {
+  mockModeBadge.classList.toggle('hidden', !MOCK_MODE);
+  mockModeBadge.innerText = 'Mock Mode';
+}
+
 if (MOCK_MODE) {
-  showApp(false);
-  setStatus('Mock mode active: no login required. Data is cached for this tab/session only.');
+  showApp(true);
   const landing = el('mockLanding');
-  if (landing) landing.classList.remove('hidden');
+  if (landing) landing.classList.add('hidden');
+  initAuthedSession().catch(e => setStatus(e.message));
 } else {
   netlifyIdentity.init();
 }

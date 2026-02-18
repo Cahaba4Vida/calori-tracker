@@ -61,15 +61,17 @@ body.invertedTheme video {
 ul { margin: 8px 0 0 18px; }
 .auth button { min-width: 120px; }
 
-.statStrip { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.statStrip { display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 8px; }
 .statTile { border: 1px solid var(--border); border-radius: 10px; padding: 8px; background: #fdfdfd; }
 .statLabel { font-size: 12px; color: var(--muted); }
 .statValue { font-size: 18px; font-weight: 700; margin-top: 2px; }
 
 .macroProgressList { margin-top: 4px; margin-bottom: 4px; }
-.macroProgressRow { display: grid; grid-template-columns: 70px 1fr; gap: 6px 10px; align-items: center; margin-top: 8px; }
-.microProgress { grid-column: 1 / -1; height: 7px; border-radius: 999px; background: #efefef; overflow: hidden; border: 1px solid var(--border); }
+.macroProgressRow { display: grid; grid-template-columns: 1fr; gap: 6px; align-items: center; margin-top: 8px; }
+.microProgress { height: 7px; border-radius: 999px; background: #efefef; overflow: hidden; border: 1px solid var(--border); }
 .microProgress > div { height: 100%; width: 0%; background: linear-gradient(90deg, #2f6fff, #6aa0ff); }
+.macroLabelCell { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+
 
 .todayGrid {
   display: grid;
@@ -177,6 +179,37 @@ label {
 .quickAdds { margin-top: 8px; }
 .quickFillBtn { font-size: 12px; padding: 6px 10px; border-radius: 999px; }
 
+
+.addFoodModeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.addFoodModeBtn {
+  width: 100%;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 600;
+}
+
+.addFoodPanel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: #fff;
+}
+
+.quickAdds.empty {
+  opacity: 0.7;
+}
+
+@media (max-width: 640px) {
+  .addFoodModeGrid {
+    grid-template-columns: 1fr;
+  }
+}
 .cardHeaderRow,
 .chatHeaderRow {
   display: flex;
@@ -418,6 +451,51 @@ select { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border)
 }
 
 .onboardingOverlay.hidden { display: none; }
+
+
+.onboardingModal.welcomeMode {
+  width: min(420px, 100%);
+  max-height: min(560px, calc(100vh - 32px));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+
+.onboardingModal.welcomeMode #onboardingWelcomeScreen {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.onboardingModal.welcomeMode #onboardingContinueBtn {
+  width: min(280px, 100%);
+}
+
+@media (max-width: 640px) {
+  .onboardingOverlay {
+    padding: 10px;
+  }
+
+  .onboardingModal {
+    max-height: calc(100vh - 20px);
+    padding: 16px;
+  }
+
+  .onboardingModal.welcomeMode {
+    justify-content: center;
+    min-height: min(360px, calc(100vh - 20px));
+    overflow: hidden;
+  }
+
+  .onboardingModal.welcomeMode h2 {
+    margin: 4px 0 8px;
+  }
+
+  .onboardingModal.welcomeMode p {
+    margin: 0;
+  }
+}
 
 .onboardingStep {
   font-size: 12px;
