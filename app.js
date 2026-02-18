@@ -1,6 +1,8 @@
 console.log("APP_VERSION v11");
 let currentUser = null;
-const MOCK_MODE = true;
+const QUERY = new URLSearchParams(window.location.search);
+const MOCK_MODE = QUERY.get('mock') !== '0';
+const USE_MOCK_API = QUERY.get('mockApi') === '1';
 const MOCK_STORAGE_KEY = 'caloriTrackerMockStateV1';
 const mockStorage = window.localStorage;
 
@@ -67,7 +69,7 @@ function enforceMockAiLimit(actionType = 'unknown') {
   }
   mockState.ai_usage_events = Array.isArray(mockState.ai_usage_events) ? mockState.ai_usage_events : [];
   mockState.ai_usage_events.push({
-    entry_date: payload.date || isoToday(),
+    entry_date: isoToday(),
     action_type: String(actionType).slice(0, 48),
     created_at: new Date().toISOString()
   });
@@ -572,14 +574,14 @@ function authHeaders() {
   if (shouldAttachDeviceIdHeader()) {
     headers['X-Device-Id'] = getOrCreateDeviceId();
   }
-  if (!MOCK_MODE && currentUser?.token?.access_token) {
+  if (currentUser?.token?.access_token) {
     headers.Authorization = 'Bearer ' + currentUser.token.access_token;
   }
   return headers;
 }
 
 async function api(path, opts = {}) {
-  if (MOCK_MODE) {
+  if (USE_MOCK_API) {
     try {
       return await mockApi(path, opts);
     } catch (e) {
@@ -1906,7 +1908,7 @@ function bindUI() {
       deviceAutoLoginEnabled = !!autoLoginToggle.checked;
       localStorage.setItem(DEVICE_AUTO_LOGIN_STORAGE_KEY, String(deviceAutoLoginEnabled));
       if (autoLoginLabel) autoLoginLabel.innerText = deviceAutoLoginEnabled ? 'On' : 'Off';
-      if (!MOCK_MODE && !currentUser) {
+      if (!USE_MOCK_API && !currentUser) {
         if (deviceAutoLoginEnabled) {
           initAuthedSession().catch((e) => setStatus(e.message));
         } else {
@@ -2071,7 +2073,7 @@ async function initAuthedSession() {
   await refresh();
 }
 
-if (!MOCK_MODE && typeof netlifyIdentity !== 'undefined') {
+if (typeof netlifyIdentity !== 'undefined') {
   netlifyIdentity.on('init', user => {
     currentUser = user;
     if (user) {
@@ -2129,6 +2131,7 @@ if (MOCK_MODE) {
   const landing = el('mockLanding');
   if (landing) landing.classList.add('hidden');
   initAuthedSession().catch(e => setStatus(e.message));
+  if (typeof netlifyIdentity !== 'undefined') netlifyIdentity.init();
 } else if (typeof netlifyIdentity !== 'undefined') {
   netlifyIdentity.init();
 } else if (deviceAutoLoginEnabled) {
