@@ -43,6 +43,8 @@ exports.handler = async (event) => {
 
   try {
     if (task === 'ai-goals-suggest') {
+      const messages = Array.isArray(payload.messages) ? payload.messages.slice(-12) : [];
+      const editRequest = typeof payload.edit_request === 'string' ? payload.edit_request.trim() : '';
       const out = await runJsonTask(`You are an expert nutrition coach.
 Return ONLY JSON with keys:
 {
@@ -52,14 +54,20 @@ Return ONLY JSON with keys:
   "fat_g": number,
   "rationale_bullets": string[]
 }
-Rules: realistic, safe, concise rationale (3 bullets).`, payload);
+Rules: realistic, safe, concise rationale (3 bullets).
+If edit_request is present, revise the previous plan using conversation context.` , {
+        ...payload,
+        edit_request: editRequest || null,
+        messages
+      });
       return json(200, out);
     }
 
     if (task === 'chat') {
       const out = await runJsonTask(`You are a supportive calorie/macro coach.
 Return ONLY JSON: {"reply": string}.
-Keep reply <= 3 short sentences and action-focused.`, payload);
+Keep reply <= 3 short sentences and action-focused.
+Use coach_context when provided to answer directly from the user's logged data without asking them to repeat those numbers.`, payload);
       return json(200, out);
     }
 
@@ -112,6 +120,8 @@ Keep calories 50-2500.`;
     }
 
     if (task === 'voice-food-add') {
+      const followupsUsed = Math.max(0, Number(payload.followups_used) || 0);
+      const followupsLimit = Math.max(0, Number(payload.followups_limit) || 2);
       const out = await runJsonTask(`You help users log food from voice descriptions.
 Return ONLY JSON:
 {
@@ -125,7 +135,14 @@ Return ONLY JSON:
     "notes": string
   } | null
 }
-Ask follow-up if details are too vague.`, payload);
+Ask follow-up if details are too vague.
+Ask at most (followups_limit - followups_used) follow-up questions.
+If followups_used >= followups_limit, you must set needs_follow_up=false and provide suggested_entry.`, {
+        ...payload,
+        followups_used: followupsUsed,
+        followups_limit: followupsLimit
+      });
+      if (followupsUsed >= followupsLimit) out.needs_follow_up = false;
       const reply = String(out.reply || 'I can help with that.').slice(0, 280);
       const audio = await createVoiceAudio(reply);
       return json(200, {

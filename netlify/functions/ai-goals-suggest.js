@@ -178,6 +178,8 @@ exports.handler = async (event, context) => {
   }
 
   const history = await loadHistorySummary(userId);
+  const editRequest = typeof body.edit_request === "string" ? body.edit_request.trim() : "";
+  const messages = Array.isArray(body.messages) ? body.messages.slice(-12) : [];
 
   const prompt = [
     "You generate a calorie and macro plan for a weight goal.",
@@ -198,8 +200,10 @@ exports.handler = async (event, context) => {
     `history_weight_change_35d_lbs=${history.weight_change_35d_lbs ?? "unknown"}`,
     `history_tracked_days_all_time=${history.tracked_days_all_time}`,
     `history_first_entry_date=${history.first_entry_date ?? "unknown"}`,
-    `history_last_entry_date=${history.last_entry_date ?? "unknown"}`
-  ].join("\n");
+    `history_last_entry_date=${history.last_entry_date ?? "unknown"}`,
+    editRequest ? `edit_request=${editRequest}` : "",
+    messages.length ? `conversation_messages=${JSON.stringify(messages)}` : ""
+  ].filter(Boolean).join("\n");
 
   let out;
   try {

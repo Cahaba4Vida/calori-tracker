@@ -2,7 +2,28 @@ console.log("APP_VERSION v11");
 let currentUser = null;
 const MOCK_MODE = true;
 const MOCK_STORAGE_KEY = 'caloriTrackerMockStateV1';
-const mockStorage = window.sessionStorage;
+const mockStorage = window.localStorage;
+
+const DEVICE_ID_STORAGE_KEY = 'caloriTrackerDeviceIdV1';
+const DEVICE_AUTO_LOGIN_STORAGE_KEY = 'caloriTrackerAutoLoginV1';
+const VIEW_SPAN_ENABLED_KEY = 'caloriTrackerViewSpanEnabledV1';
+const VIEW_SPAN_PAST_DAYS_KEY = 'caloriTrackerViewSpanPastDaysV1';
+const VIEW_SPAN_FUTURE_DAYS_KEY = 'caloriTrackerViewSpanFutureDaysV1';
+
+function generateDeviceId() {
+  try {
+    if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID().replace(/-/g, '');
+  } catch {}
+  return `dev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 14)}`;
+}
+
+function getOrCreateDeviceId() {
+  const existing = localStorage.getItem(DEVICE_ID_STORAGE_KEY);
+  if (existing) return existing;
+  const next = generateDeviceId();
+  localStorage.setItem(DEVICE_ID_STORAGE_KEY, next);
+  return next;
+}
 
 function defaultMockState() {
   return {
@@ -17,10 +38,40 @@ function defaultMockState() {
       quick_fills: []
     },
     daily_calories: 2200,
+    plan_tier: 'free',
+    subscription_status: 'inactive',
     entries: [],
+    ai_usage_events: [],
     weights: [],
     feedback_submitted: false
   };
+}
+
+function mockIsPremium() {
+  const tier = String(mockState.plan_tier || 'free');
+  const status = String(mockState.subscription_status || 'inactive');
+  return tier === 'premium' && (status === 'active' || status === 'trialing');
+}
+
+function mockAiActionsUsedToday() {
+  const today = isoToday();
+  return (mockState.ai_usage_events || []).filter((e) => e.entry_date === today).length;
+}
+
+function enforceMockAiLimit(actionType = 'unknown') {
+  if (mockIsPremium()) return;
+  const limit = 5;
+  const used = mockAiActionsUsedToday();
+  if (used >= limit) {
+    throw new Error(`Free tier allows up to ${limit} AI actions per day. Upgrade to Premium for unlimited AI.`);
+  }
+  mockState.ai_usage_events = Array.isArray(mockState.ai_usage_events) ? mockState.ai_usage_events : [];
+  mockState.ai_usage_events.push({
+    entry_date: payload.date || isoToday(),
+    action_type: String(actionType).slice(0, 48),
+    created_at: new Date().toISOString()
+  });
+  persistMockState();
 }
 
 function loadMockState() {
@@ -49,6 +100,38 @@ function resetMockState() {
 function todayEntries() {
   const today = isoToday();
   return mockState.entries.filter((e) => e.entry_date === today);
+}
+
+function buildMockCoachContext() {
+  const entries = todayEntries();
+  const totalCalories = entries.reduce((sum, e) => sum + (Number(e.calories) || 0), 0);
+  const totalProtein = entries.reduce((sum, e) => sum + (Number(e.protein_g) || 0), 0);
+  const totalCarbs = entries.reduce((sum, e) => sum + (Number(e.carbs_g) || 0), 0);
+  const totalFat = entries.reduce((sum, e) => sum + (Number(e.fat_g) || 0), 0);
+  const today = isoToday();
+  const todayWeight = (mockState.weights || []).find((w) => w.entry_date === today) || null;
+  const trackedDaysThisWeek = new Set((mockState.entries || []).map((e) => e.entry_date)).size;
+
+  return {
+    date: today,
+    daily_goal_calories: mockState.daily_calories,
+    macro_goals: {
+      protein_g: mockState.profile?.macro_protein_g ?? null,
+      carbs_g: mockState.profile?.macro_carbs_g ?? null,
+      fat_g: mockState.profile?.macro_fat_g ?? null
+    },
+    today_totals: {
+      calories: totalCalories,
+      protein_g: Math.round(totalProtein),
+      carbs_g: Math.round(totalCarbs),
+      fat_g: Math.round(totalFat),
+      entries_count: entries.length
+    },
+    today_weight_lbs: todayWeight ? Number(todayWeight.weight_lbs) : null,
+    tracked_days_total: new Set((mockState.entries || []).map((e) => e.entry_date)).size,
+    tracked_days_this_week: trackedDaysThisWeek,
+    recent_entries: entries.slice(-10)
+  };
 }
 
 function parseApiPath(path) {
@@ -93,7 +176,7 @@ async function mockApi(path, opts = {}) {
   if (route === 'entries-add' && method === 'POST') {
     const entry = {
       id: `e_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
-      entry_date: isoToday(),
+      entry_date: payload.date || isoToday(),
       taken_at: new Date().toISOString(),
       calories: Math.round(Number(payload.calories) || 0),
       protein_g: payload.protein_g == null ? null : Number(payload.protein_g),
@@ -106,8 +189,9 @@ async function mockApi(path, opts = {}) {
     return { ok: true, id: entry.id };
   }
   if (route === 'entries-list-day') {
-    const entries = todayEntries();
-    return { entries, total_calories: entries.reduce((s, e) => s + (Number(e.calories) || 0), 0) };
+    const targetDate = params.get('date') || isoToday();
+    const entries = (mockState.entries || []).filter((e) => e.entry_date === targetDate);
+    return { entry_date: targetDate, entries, total_calories: entries.reduce((s, e) => s + (Number(e.calories) || 0), 0) };
   }
   if (route === 'entry-update' && method === 'POST') {
     mockState.entries = mockState.entries.map((e) => (e.id === payload.id ? { ...e, ...payload } : e));
@@ -121,14 +205,14 @@ async function mockApi(path, opts = {}) {
     return { ok: true };
   }
   if (route === 'weight-get') {
-    const today = isoToday();
-    const row = mockState.weights.find((w) => w.entry_date === today);
-    return { weight_lbs: row ? row.weight_lbs : null };
+    const targetDate = params.get('date') || isoToday();
+    const row = mockState.weights.find((w) => w.entry_date === targetDate);
+    return { entry_date: targetDate, weight_lbs: row ? row.weight_lbs : null };
   }
   if (route === 'weight-set' && method === 'POST') {
-    const today = isoToday();
-    mockState.weights = mockState.weights.filter((w) => w.entry_date !== today);
-    mockState.weights.push({ entry_date: today, weight_lbs: Number(payload.weight_lbs) });
+    const targetDate = payload.date || isoToday();
+    mockState.weights = mockState.weights.filter((w) => w.entry_date !== targetDate);
+    mockState.weights.push({ entry_date: targetDate, weight_lbs: Number(payload.weight_lbs) });
     persistMockState();
     return { ok: true };
   }
@@ -150,15 +234,19 @@ async function mockApi(path, opts = {}) {
     return { series };
   }
   if (route === 'ai-goals-suggest' && method === 'POST') {
+    enforceMockAiLimit('ai-goals-suggest');
     return mockAi('ai-goals-suggest', payload);
   }
   if (route === 'entries-add-image' && method === 'POST') {
+    enforceMockAiLimit('entries-add-image');
     return mockAi('entries-add-image', payload);
   }
   if (route === 'entries-estimate-plate-image' && method === 'POST') {
+    enforceMockAiLimit('entries-estimate-plate-image');
     return mockAi('entries-estimate-plate-image', payload);
   }
   if (route === 'day-finish' && method === 'POST') {
+    enforceMockAiLimit('day-finish');
     return mockAi('day-finish', {
       entries: todayEntries(),
       daily_calories_goal: mockState.daily_calories,
@@ -169,23 +257,31 @@ async function mockApi(path, opts = {}) {
       }
     });
   }
-  if (route === 'chat' && method === 'POST') return mockAi('chat', payload);
+  if (route === 'chat' && method === 'POST') {
+    enforceMockAiLimit('chat');
+    return mockAi('chat', { ...payload, coach_context: buildMockCoachContext() });
+  }
   if (route === 'feedback-status') return { required: false, campaign: null };
   if (route === 'feedback-submit') return { ok: true };
   if (route === 'billing-status') {
+    const isPremium = mockIsPremium();
+    const foodUsed = todayEntries().length;
+    const aiUsed = mockAiActionsUsedToday();
+    const aiLimit = isPremium ? null : 5;
     return {
-      is_premium: false,
-      plan_tier: 'free',
+      is_premium: isPremium,
+      plan_tier: isPremium ? 'premium' : 'free',
       monthly_price_usd: 5,
       yearly_price_usd: 50,
-      limits: { food_entries_per_day: 9999, ai_actions_per_day: 9999, history_days: 9999 },
-      usage_today: { food_entries_today: todayEntries().length, ai_actions_today: 0 }
+      limits: { food_entries_per_day: 9999, ai_actions_per_day: aiLimit, history_days: 9999 },
+      usage_today: { food_entries_today: foodUsed, ai_actions_today: aiUsed }
     };
   }
   if (route === 'create-checkout-session' || route === 'manage-subscription') return { url: 'https://example.com' };
   if (route === 'export-data') return { profile: mockState.profile, goal: { daily_calories: mockState.daily_calories }, entries: mockState.entries, weights: mockState.weights };
   if (route === 'track-event') return { ok: true };
   if (route === 'voice-food-add' && method === 'POST') {
+    enforceMockAiLimit('voice-food-add');
     return mockAi('voice-food-add', payload);
   }
 
@@ -195,6 +291,11 @@ async function mockApi(path, opts = {}) {
 let weightUnit = (localStorage.getItem('weightUnit') || 'lbs'); // 'lbs' or 'kg'
 let darkModeEnabled = localStorage.getItem('darkMode') === 'true';
 let appFontSizePct = Number(localStorage.getItem('appFontSizePct') || '100');
+let deviceAutoLoginEnabled = localStorage.getItem(DEVICE_AUTO_LOGIN_STORAGE_KEY) !== 'false';
+let viewSpanEnabled = localStorage.getItem(VIEW_SPAN_ENABLED_KEY) === 'true';
+let viewSpanPastDays = Math.max(0, Math.min(6, Number(localStorage.getItem(VIEW_SPAN_PAST_DAYS_KEY) || '3') || 3));
+let viewSpanFutureDays = Math.max(0, Math.min(7, Number(localStorage.getItem(VIEW_SPAN_FUTURE_DAYS_KEY) || '2') || 2));
+let selectedDayOffset = 0;
 
 function lbsToKg(lbs) { return lbs / 2.2046226218; }
 function kgToLbs(kg) { return kg * 2.2046226218; }
@@ -224,14 +325,75 @@ let profileState = {
 };
 let aiGoalFlowMode = null;
 let aiGoalSuggestion = null;
+let aiGoalInputs = null;
+let aiGoalThread = [];
 let feedbackGateState = { required: false, campaign: null };
 let billingController = null;
 let activeAddFoodPanel = null;
 let voiceFoodHistory = [];
 let voiceRecognition = null;
+let voiceFollowUpCount = 0;
+let voiceIsListening = false;
+let voiceAutoSendPending = false;
 
 function isoToday() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function dateWithOffset(offsetDays) {
+  const d = new Date();
+  d.setDate(d.getDate() + Number(offsetDays || 0));
+  return d.toISOString().slice(0, 10);
+}
+
+function activeEntryDateISO() {
+  return viewSpanEnabled ? dateWithOffset(selectedDayOffset) : isoToday();
+}
+
+function formatDayLabel(offset) {
+  if (offset === 0) return 'Today';
+  if (offset === -1) return 'Yesterday';
+  if (offset === 1) return 'Tomorrow';
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function renderTodayDateNavigator() {
+  const nav = el('todayDateNav');
+  const chips = el('todayDateChips');
+  const viewing = el('todayViewingLabel');
+  if (!nav || !chips || !viewing) return;
+
+  if (!viewSpanEnabled) {
+    nav.classList.add('hidden');
+    selectedDayOffset = 0;
+    return;
+  }
+
+  selectedDayOffset = Math.max(-viewSpanPastDays, Math.min(viewSpanFutureDays, selectedDayOffset));
+  nav.classList.remove('hidden');
+  chips.innerHTML = '';
+  for (let offset = -viewSpanPastDays; offset <= viewSpanFutureDays; offset += 1) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'todayDateChip' + (offset === selectedDayOffset ? ' active' : '');
+    btn.innerText = formatDayLabel(offset);
+    btn.onclick = () => {
+      selectedDayOffset = offset;
+      renderTodayDateNavigator();
+      refresh().catch((e) => setStatus(e.message));
+    };
+    chips.appendChild(btn);
+  }
+
+  const activeDate = activeEntryDateISO();
+  viewing.innerText = `Viewing: ${formatDayLabel(selectedDayOffset)} (${activeDate})`;
+
+  const prev = el('todayPrevBtn');
+  const next = el('todayNextBtn');
+  if (prev) prev.disabled = selectedDayOffset <= -viewSpanPastDays;
+  if (next) next.disabled = selectedDayOffset >= viewSpanFutureDays;
 }
 
 function fmtGoal(v) {
@@ -247,6 +409,17 @@ function macroPct(total, goal) {
 const el = (id) => document.getElementById(id);
 
 function setStatus(msg) { el('status').innerText = msg || ''; }
+
+function maybePromptUpgradeForAiLimit(message) {
+  const m = String(message || '');
+  if (!/AI actions per day/i.test(m)) return;
+  const goToUpgrade = window.confirm('You reached your 5 free AI uses for this day. Want to upgrade?');
+  if (!goToUpgrade) return;
+  const settingsBtn = el('tabSettingsBtn');
+  if (settingsBtn) settingsBtn.click();
+  const planCard = el('planCard');
+  if (planCard) planCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 
 function setThinking(isThinking) {
@@ -370,9 +543,15 @@ function resetAiGoalFlowForm() {
   el('aiSuggestionError').innerText = '';
   el('aiDeclineHint').innerText = '';
   el('aiRationaleList').innerHTML = '';
+  const editBlock = el('aiEditPlanBlock');
+  if (editBlock) editBlock.classList.add('hidden');
+  const editInput = el('aiEditPlanInput');
+  if (editInput) editInput.value = '';
   clearAiInputErrors();
   setAiGoalLoading(false);
   aiGoalSuggestion = null;
+  aiGoalInputs = null;
+  aiGoalThread = [];
 }
 
 async function loadProfile() {
@@ -384,13 +563,30 @@ async function loadProfile() {
 }
 
 
+function shouldAttachDeviceIdHeader() {
+  return MOCK_MODE || !!currentUser || deviceAutoLoginEnabled;
+}
+
 function authHeaders() {
-  if (MOCK_MODE || !currentUser) return {};
-  return { Authorization: 'Bearer ' + currentUser.token.access_token };
+  const headers = {};
+  if (shouldAttachDeviceIdHeader()) {
+    headers['X-Device-Id'] = getOrCreateDeviceId();
+  }
+  if (!MOCK_MODE && currentUser?.token?.access_token) {
+    headers.Authorization = 'Bearer ' + currentUser.token.access_token;
+  }
+  return headers;
 }
 
 async function api(path, opts = {}) {
-  if (MOCK_MODE) return mockApi(path, opts);
+  if (MOCK_MODE) {
+    try {
+      return await mockApi(path, opts);
+    } catch (e) {
+      maybePromptUpgradeForAiLimit(e?.message || String(e));
+      throw e;
+    }
+  }
   const r = await fetch('/api/' + path, {
     ...opts,
     headers: { ...(opts.headers || {}), ...authHeaders() }
@@ -400,6 +596,7 @@ async function api(path, opts = {}) {
   try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
   if (!r.ok) {
     const msg = (body && (body.error || body.message)) ? (body.error || body.message) : ('Request failed: ' + r.status);
+    maybePromptUpgradeForAiLimit(msg);
     throw new Error(msg);
   }
   return body;
@@ -577,7 +774,8 @@ async function savePlateEstimateFromSheet() {
         protein_g,
         carbs_g,
         fat_g,
-        raw_extraction_meta: meta
+        raw_extraction_meta: meta,
+        date: activeEntryDateISO()
       })
     });
     setStatus('');
@@ -634,7 +832,8 @@ async function saveFromSheet() {
         serving_size: pendingExtraction.serving_size ?? null,
         servings_per_container: pendingExtraction.servings_per_container ?? null,
         notes: pendingExtraction.notes ?? null,
-        extracted: pendingExtraction
+        extracted: pendingExtraction,
+        date: activeEntryDateISO()
       })
     });
     setStatus('');
@@ -832,39 +1031,77 @@ async function saveGoal() {
 
 
 
+function renderAiSuggestion(result) {
+  aiGoalSuggestion = { ...result, goal_weight_lbs: aiGoalInputs.goal_weight_lbs, activity_level: aiGoalInputs.activity_level, goal_date: aiGoalInputs.goal_date };
+  el('aiSuggestedCalories').innerText = String(result.daily_calories);
+  el('aiSuggestedProtein').innerText = String(result.protein_g);
+  el('aiSuggestedCarbs').innerText = String(result.carbs_g);
+  el('aiSuggestedFat').innerText = String(result.fat_g);
+
+  const ul = el('aiRationaleList');
+  ul.innerHTML = '';
+  (result.rationale_bullets || []).forEach((b) => {
+    const li = document.createElement('li');
+    li.innerText = b;
+    ul.appendChild(li);
+  });
+}
+
+async function requestAiGoalSuggestion(editRequest = null) {
+  if (!aiGoalInputs) throw new Error('Set goal inputs first.');
+  const result = await api('ai-goals-suggest', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...aiGoalInputs,
+      edit_request: editRequest,
+      messages: aiGoalThread
+    })
+  });
+
+  const summary = `Plan: ${result.daily_calories} cal, P${result.protein_g} C${result.carbs_g} F${result.fat_g}. Rationale: ${(result.rationale_bullets || []).join(' | ')}`;
+  if (editRequest) aiGoalThread.push({ role: 'user', content: editRequest });
+  aiGoalThread.push({ role: 'assistant', content: summary });
+
+  renderAiSuggestion(result);
+  showOnboardingScreen('suggestion');
+}
+
+
 async function submitAiGoalInputs() {
   const activity = el('aiActivityLevelInput').value;
   const validation = validateAiGoalFields();
   if (!validation.ok) throw new Error('Please fix the highlighted fields.');
 
+  aiGoalInputs = {
+    current_weight_lbs: validation.currentLbs,
+    goal_weight_lbs: validation.goalLbs,
+    activity_level: activity,
+    goal_date: validation.goalDate
+  };
+  aiGoalThread = [
+    { role: 'user', content: `Create an initial plan for current ${validation.currentLbs} lbs, goal ${validation.goalLbs} lbs, activity ${activity}, goal date ${validation.goalDate}.` }
+  ];
+
   setAiGoalLoading(true);
   el('aiGoalFlowError').innerText = '';
   try {
-    const result = await api('ai-goals-suggest', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        current_weight_lbs: validation.currentLbs,
-        goal_weight_lbs: validation.goalLbs,
-        activity_level: activity,
-        goal_date: validation.goalDate
-      })
-    });
+    await requestAiGoalSuggestion(null);
+  } finally {
+    setAiGoalLoading(false);
+  }
+}
 
-    aiGoalSuggestion = { ...result, goal_weight_lbs: validation.goalLbs, activity_level: activity, goal_date: validation.goalDate };
-    el('aiSuggestedCalories').innerText = String(result.daily_calories);
-    el('aiSuggestedProtein').innerText = String(result.protein_g);
-    el('aiSuggestedCarbs').innerText = String(result.carbs_g);
-    el('aiSuggestedFat').innerText = String(result.fat_g);
 
-    const ul = el('aiRationaleList');
-    ul.innerHTML = '';
-    (result.rationale_bullets || []).forEach(b => {
-      const li = document.createElement('li');
-      li.innerText = b;
-      ul.appendChild(li);
-    });
-    showOnboardingScreen('suggestion');
+async function submitAiPlanEdit() {
+  if (!aiGoalInputs) throw new Error('Generate a plan first.');
+  const request = (el('aiEditPlanInput')?.value || '').trim();
+  if (!request) throw new Error('Please describe what you want to change.');
+  setAiGoalLoading(true);
+  el('aiSuggestionError').innerText = '';
+  try {
+    await requestAiGoalSuggestion(request);
+    el('aiEditPlanInput').value = '';
   } finally {
     setAiGoalLoading(false);
   }
@@ -1064,18 +1301,30 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
   openEstimateSheet();
 }
 
-function showAddFoodPanel(panelId) {
+function showAddFoodPanel(panelId = null) {
   const ids = ['addFoodPhotoPanel', 'addFoodVoicePanel', 'addFoodQuickFillPanel', 'addFoodManualPanel'];
   ids.forEach((id) => {
     const node = el(id);
-    if (node) node.classList.toggle('hidden', id !== panelId);
+    if (!node) return;
+    const active = !!panelId && id === panelId;
+    node.classList.toggle('hidden', !active);
+    node.classList.toggle('modalActive', active);
   });
+  const overlay = el('addFoodOverlay');
+  if (overlay) overlay.classList.toggle('hidden', !panelId);
   activeAddFoodPanel = panelId;
 }
 
 function stopVoiceRecognition() {
   if (!voiceRecognition) return;
+  voiceIsListening = false;
+  updateVoiceToggleLabel();
   try { voiceRecognition.stop(); } catch {}
+}
+
+function updateVoiceToggleLabel() {
+  const btn = el('voiceToggleBtn');
+  if (btn) btn.innerText = voiceIsListening ? '■ Stop Voice Input' : '🎤 Start Voice Input';
 }
 
 function ensureVoiceRecognition() {
@@ -1092,7 +1341,19 @@ function ensureVoiceRecognition() {
     const field = el('voiceFoodInput');
     field.value = [field.value, text].filter(Boolean).join(' ').trim();
   };
-  voiceRecognition.onerror = () => setStatus('Voice input error. You can type your meal details instead.');
+  voiceRecognition.onend = () => {
+    voiceIsListening = false;
+    updateVoiceToggleLabel();
+    setStatus('');
+    const msg = (el('voiceFoodInput')?.value || '').trim();
+    if (voiceAutoSendPending && msg) sendVoiceFoodMessage().catch((e) => setStatus(e.message));
+    voiceAutoSendPending = false;
+  };
+  voiceRecognition.onerror = () => {
+    voiceIsListening = false;
+    updateVoiceToggleLabel();
+    setStatus('Voice input error. You can type your meal details instead.');
+  };
   return voiceRecognition;
 }
 
@@ -1107,12 +1368,16 @@ async function sendVoiceFoodMessage() {
   const j = await api('voice-food-add', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, history: voiceFoodHistory })
+    body: JSON.stringify({ message, history: voiceFoodHistory, followups_used: voiceFollowUpCount, followups_limit: 2 })
   });
   setStatus('');
   voiceFoodHistory.push({ role: 'user', text: message });
   voiceFoodHistory.push({ role: 'assistant', text: j.reply || '' });
   out.innerText = `${out.innerText}\nAssistant: ${j.reply || ''}`;
+
+  if (j.needs_follow_up) {
+    voiceFollowUpCount += 1;
+  }
 
   if (j.suggested_entry) {
     el('manualCaloriesInput').value = j.suggested_entry.calories ?? '';
@@ -1120,6 +1385,7 @@ async function sendVoiceFoodMessage() {
     el('manualCarbsInput').value = j.suggested_entry.carbs_g ?? '';
     el('manualFatInput').value = j.suggested_entry.fat_g ?? '';
     el('manualNotesInput').value = j.suggested_entry.notes || 'Voice estimate';
+    voiceFollowUpCount = 0;
     showAddFoodPanel('addFoodManualPanel');
   }
 
@@ -1214,7 +1480,8 @@ function renderEntries(entries) {
 
 
 async function loadToday() {
-  const j = await api('entries-list-day');
+  const dateISO = activeEntryDateISO();
+  const j = await api('entries-list-day?date=' + encodeURIComponent(dateISO));
   const entries = j.entries || [];
 
   const totalProtein = entries.reduce((sum, e) => sum + (Number(e.protein_g) || 0), 0);
@@ -1275,10 +1542,12 @@ function applyManualPreset(preset) {
 function renderQuickFillButtons() {
   const row = el('quickFillsRow');
   const block = el('quickAddsBlock');
+  const ctaRow = el('quickFillsCtaRow');
   if (!row || !block) return;
   row.innerHTML = '';
   const active = (profileState.quick_fills || []).filter((q) => q.enabled);
   block.classList.toggle('empty', active.length === 0);
+  if (ctaRow) ctaRow.classList.toggle('hidden', active.length > 0);
 
   for (const q of active) {
     const btn = document.createElement('button');
@@ -1393,8 +1662,10 @@ async function deleteQuickFill(id) {
 }
 
 async function loadWeight() {
-  const j = await api('weight-get');
-  el('weightDisplay').innerText = j.weight_lbs != null ? ('Today: ' + displayWeight(j.weight_lbs) + ' ' + unitSuffix()) : 'No weight logged today';
+  const dateISO = activeEntryDateISO();
+  const j = await api('weight-get?date=' + encodeURIComponent(dateISO));
+  const dayLabel = formatDayLabel(selectedDayOffset);
+  el('weightDisplay').innerText = j.weight_lbs != null ? (`${dayLabel}: ` + displayWeight(j.weight_lbs) + ' ' + unitSuffix()) : `No weight logged for ${dayLabel.toLowerCase()}`;
 }
 
 async function saveWeight() {
@@ -1402,7 +1673,7 @@ async function saveWeight() {
   await api('weight-set', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ weight_lbs: wLbs })
+    body: JSON.stringify({ weight_lbs: wLbs, date: activeEntryDateISO() })
   });
   el('weightInput').value = '';
   await refresh();
@@ -1427,8 +1698,11 @@ async function loadWeightsList() {
 
 async function finishDay() {
   setStatus('Generating summary…');
-  const j = await api('day-finish', { method: 'POST' });
-  el('scoreOutput').innerText = `Score: ${j.score}\n\n${j.tips}`;
+  const j = await api('day-finish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: activeEntryDateISO() }) });
+  const rawScore = Number(j.score);
+  const maxScore = Number.isFinite(rawScore) && rawScore > 10 ? 100 : 10;
+  const scoreText = Number.isFinite(rawScore) ? `${Math.round(rawScore)}/${maxScore}` : '—';
+  el('scoreOutput').innerText = `Score: ${scoreText}\n\n${j.tips}`;
   setStatus('');
 }
 
@@ -1499,6 +1773,7 @@ async function saveManualEntry() {
       protein_g: (protein_g == null || !Number.isFinite(protein_g)) ? null : protein_g,
       carbs_g: (carbs_g == null || !Number.isFinite(carbs_g)) ? null : carbs_g,
       fat_g: (fat_g == null || !Number.isFinite(fat_g)) ? null : fat_g,
+      date: activeEntryDateISO(),
       raw_extraction_meta: {
         source: 'manual',
         estimated: false,
@@ -1535,12 +1810,12 @@ function bindUI() {
   setThinking(false);
   const loginBtn = el('loginBtn');
   const logoutBtn = el('logoutBtn');
-  if (loginBtn) loginBtn.onclick = () => netlifyIdentity.open();
-  if (logoutBtn) logoutBtn.onclick = () => netlifyIdentity.logout();
+  if (loginBtn) loginBtn.onclick = () => openIdentityModal('login');
+  if (logoutBtn) logoutBtn.onclick = () => { if (typeof netlifyIdentity !== 'undefined') netlifyIdentity.logout(); };
   const enterMockBtn = el('enterMockBtn');
   const resetMockBtn = el('resetMockBtn');
   if (enterMockBtn) enterMockBtn.onclick = () => initAuthedSession().catch(e => setStatus(e.message));
-  if (resetMockBtn) resetMockBtn.onclick = () => { resetMockState(); setStatus('Mock cache reset. Starting fresh onboarding…'); initAuthedSession().catch(e => setStatus(e.message)); };
+  if (resetMockBtn) resetMockBtn.onclick = () => { resetMockState(); setStatus('Local demo data reset. Starting fresh onboarding…'); initAuthedSession().catch(e => setStatus(e.message)); };
   el('saveGoalBtn').onclick = () => saveGoal().catch(e => setStatus(e.message));
   const unifiedPhotoInputIds = ['photoUnifiedInput', 'photoUnifiedCameraInput'];
   unifiedPhotoInputIds.forEach((id) => {
@@ -1582,6 +1857,23 @@ function bindUI() {
 
   const darkModeToggle = el('darkModeToggle');
   if (darkModeToggle) darkModeToggle.checked = darkModeEnabled;
+
+  const autoLoginToggle = el('autoLoginToggle');
+  const autoLoginLabel = el('autoLoginLabel');
+  if (autoLoginToggle) autoLoginToggle.checked = deviceAutoLoginEnabled;
+  if (autoLoginLabel) autoLoginLabel.innerText = deviceAutoLoginEnabled ? 'On' : 'Off';
+
+  const viewSpanToggle = el('viewSpanToggle');
+  const viewSpanLabel = el('viewSpanLabel');
+  const viewSpanConfig = el('viewSpanConfig');
+  const viewSpanPastInput = el('viewSpanPastInput');
+  const viewSpanFutureInput = el('viewSpanFutureInput');
+  if (viewSpanToggle) viewSpanToggle.checked = viewSpanEnabled;
+  if (viewSpanLabel) viewSpanLabel.innerText = viewSpanEnabled ? 'On' : 'Off';
+  if (viewSpanConfig) viewSpanConfig.classList.toggle('hidden', !viewSpanEnabled);
+  if (viewSpanPastInput) viewSpanPastInput.value = String(viewSpanPastDays);
+  if (viewSpanFutureInput) viewSpanFutureInput.value = String(viewSpanFutureDays);
+
   applyDarkModeUI();
   applyFontSizeUI();
 
@@ -1609,6 +1901,55 @@ function bindUI() {
     };
   }
 
+  if (autoLoginToggle) {
+    autoLoginToggle.onchange = () => {
+      deviceAutoLoginEnabled = !!autoLoginToggle.checked;
+      localStorage.setItem(DEVICE_AUTO_LOGIN_STORAGE_KEY, String(deviceAutoLoginEnabled));
+      if (autoLoginLabel) autoLoginLabel.innerText = deviceAutoLoginEnabled ? 'On' : 'Off';
+      if (!MOCK_MODE && !currentUser) {
+        if (deviceAutoLoginEnabled) {
+          initAuthedSession().catch((e) => setStatus(e.message));
+        } else {
+          showApp(false);
+          setOnboardingVisible(false);
+          setStatus('Auto log in disabled for this device. Sign in to continue.');
+        }
+      }
+    };
+  }
+
+  if (viewSpanToggle) {
+    viewSpanToggle.onchange = () => {
+      viewSpanEnabled = !!viewSpanToggle.checked;
+      localStorage.setItem(VIEW_SPAN_ENABLED_KEY, String(viewSpanEnabled));
+      if (viewSpanLabel) viewSpanLabel.innerText = viewSpanEnabled ? 'On' : 'Off';
+      if (viewSpanConfig) viewSpanConfig.classList.toggle('hidden', !viewSpanEnabled);
+      if (!viewSpanEnabled) selectedDayOffset = 0;
+      renderTodayDateNavigator();
+      refresh().catch((e) => setStatus(e.message));
+    };
+  }
+  if (viewSpanPastInput) {
+    viewSpanPastInput.onchange = () => {
+      const next = Math.max(0, Math.min(6, Number(viewSpanPastInput.value) || 0));
+      viewSpanPastDays = next;
+      viewSpanPastInput.value = String(next);
+      localStorage.setItem(VIEW_SPAN_PAST_DAYS_KEY, String(next));
+      renderTodayDateNavigator();
+      refresh().catch((e) => setStatus(e.message));
+    };
+  }
+  if (viewSpanFutureInput) {
+    viewSpanFutureInput.onchange = () => {
+      const next = Math.max(0, Math.min(7, Number(viewSpanFutureInput.value) || 0));
+      viewSpanFutureDays = next;
+      viewSpanFutureInput.value = String(next);
+      localStorage.setItem(VIEW_SPAN_FUTURE_DAYS_KEY, String(next));
+      renderTodayDateNavigator();
+      refresh().catch((e) => setStatus(e.message));
+    };
+  }
+
   if (fontSizeRange) {
     fontSizeRange.oninput = () => {
       appFontSizePct = clampFontSizePct(fontSizeRange.value);
@@ -1618,6 +1959,8 @@ function bindUI() {
   }
 
   el('onboardingContinueBtn').onclick = () => showOnboardingScreen('inputs');
+  const onboardingSignInBtn = el('onboardingSignInBtn');
+  if (onboardingSignInBtn) onboardingSignInBtn.onclick = () => openIdentityModal('login');
   ['aiCurrentWeightInput','aiGoalWeightInput','aiGoalDateInput'].forEach((id) => {
     const node = el(id);
     if (!node) return;
@@ -1626,12 +1969,16 @@ function bindUI() {
   el('aiGetPlanBtn').onclick = () => submitAiGoalInputs().catch(e => { el('aiGoalFlowError').innerText = e.message + ' Try again.'; });
   el('aiAcceptPlanBtn').onclick = () => acceptAiPlan().catch(e => { el('aiSuggestionError').innerText = e.message; });
   el('aiDeclinePlanBtn').onclick = () => declineAiPlan().catch(e => { el('aiSuggestionError').innerText = e.message; });
+  el('aiEditPlanBtn').onclick = () => { const b = el('aiEditPlanBlock'); if (b) b.classList.toggle('hidden'); };
+  el('aiEditPlanSubmitBtn').onclick = () => submitAiPlanEdit().catch(e => { el('aiSuggestionError').innerText = e.message; });
   el('settingsAiGoalBtn').onclick = () => openAiGoalFlow('settings');
 
   // Initialize UI state
   el('weightInput').placeholder = unitSuffix();
   activateTab('dashboard');
-  showAddFoodPanel('addFoodPhotoPanel');
+  showAddFoodPanel(null);
+  updateVoiceToggleLabel();
+  renderTodayDateNavigator();
 
   // Click bindings that may not exist until a sheet/modal is rendered
   const bindClick = (id, handler) => {
@@ -1648,29 +1995,44 @@ function bindUI() {
   // Manual entry
   bindClick('manualSaveBtn', () => saveManualEntry());
   bindClick('saveQuickFillBtn', () => addQuickFill());
+  bindClick('addQuickFillsCtaBtn', () => {
+    const sBtn = el('tabSettingsBtn');
+    if (sBtn) sBtn.click();
+    const sec = el('quickFillSettingsSection');
+    if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  bindClick('settingsSignUpBtn', () => openIdentityModal('signup'));
+  bindClick('settingsSignInBtn', () => openIdentityModal('login'));
 
   bindClick('addFoodPhotoBtn', () => showAddFoodPanel('addFoodPhotoPanel'));
-  bindClick('addFoodVoiceBtn', () => showAddFoodPanel('addFoodVoicePanel'));
+  bindClick('addFoodVoiceBtn', () => { voiceFollowUpCount = 0; showAddFoodPanel('addFoodVoicePanel'); });
   bindClick('addFoodQuickFillBtn', () => showAddFoodPanel('addFoodQuickFillPanel'));
   bindClick('addFoodManualBtn', () => showAddFoodPanel('addFoodManualPanel'));
+  bindClick('addFoodOverlay', () => showAddFoodPanel(null));
+  document.querySelectorAll('.addFoodModalCloseBtn').forEach((n) => { n.onclick = () => showAddFoodPanel(null); });
 
+  bindClick('todayPrevBtn', () => { if (!viewSpanEnabled) return; selectedDayOffset = Math.max(-viewSpanPastDays, selectedDayOffset - 1); renderTodayDateNavigator(); refresh().catch(e => setStatus(e.message)); });
+  bindClick('todayNextBtn', () => { if (!viewSpanEnabled) return; selectedDayOffset = Math.min(viewSpanFutureDays, selectedDayOffset + 1); renderTodayDateNavigator(); refresh().catch(e => setStatus(e.message)); });
   bindClick('photoUnifiedLibraryBtn', () => { const n = el('photoUnifiedInput'); if (n) n.click(); });
   bindClick('photoUnifiedCameraBtn', () => { const n = el('photoUnifiedCameraInput'); if (n) n.click(); });
 
-  bindClick('voiceRecordBtn', () => {
+  bindClick('voiceToggleBtn', () => {
     const recognition = ensureVoiceRecognition();
     if (!recognition) {
       setStatus('Voice recognition is not available on this browser. Type your meal details instead.');
       return;
     }
+    if (voiceIsListening) {
+      stopVoiceRecognition();
+      return;
+    }
+    voiceIsListening = true;
+    voiceAutoSendPending = true;
+    updateVoiceToggleLabel();
     setStatus('Listening…');
     recognition.start();
   });
-  bindClick('voiceStopBtn', () => {
-    stopVoiceRecognition();
-    setStatus('');
-  });
-  bindClick('voiceFoodSendBtn', () => sendVoiceFoodMessage().catch((e) => setStatus(e.message)));
 
   bindClick('toggleDailyGoalsBtn', () => toggleSection('dailyGoalsBody', 'toggleDailyGoalsBtn'));
   bindClick('toggleAddFoodBtn', () => toggleSection('addFoodBody', 'toggleAddFoodBtn'));
@@ -1679,6 +2041,19 @@ function bindUI() {
   bindClick('upgradeYearlyBtn', () => billingController && billingController.startUpgradeCheckout('yearly'));
   bindClick('manageSubscriptionBtn', () => billingController && billingController.openManageSubscription());
   bindClick('exportDataBtn', () => billingController && billingController.exportMyData());
+}
+
+
+function openIdentityModal(mode = 'login') {
+  if (typeof netlifyIdentity === 'undefined') {
+    setStatus('Sign in is not available in this environment yet.');
+    return;
+  }
+  try {
+    netlifyIdentity.open(mode === 'signup' ? 'signup' : 'login');
+  } catch {
+    netlifyIdentity.open();
+  }
 }
 
 async function initAuthedSession() {
@@ -1696,11 +2071,19 @@ async function initAuthedSession() {
   await refresh();
 }
 
-if (!MOCK_MODE) {
+if (!MOCK_MODE && typeof netlifyIdentity !== 'undefined') {
   netlifyIdentity.on('init', user => {
     currentUser = user;
-    showApp(!!user);
-    if (user) initAuthedSession().catch(e => setStatus(e.message));
+    if (user) {
+      showApp(true);
+      initAuthedSession().catch(e => setStatus(e.message));
+      return;
+    }
+    if (deviceAutoLoginEnabled) {
+      initAuthedSession().catch(e => setStatus(e.message));
+    } else {
+      showApp(false);
+    }
   });
   netlifyIdentity.on('login', user => {
     currentUser = user;
@@ -1710,9 +2093,14 @@ if (!MOCK_MODE) {
   });
   netlifyIdentity.on('logout', () => {
     currentUser = null;
+    setFeedbackOverlay(false, null);
+    if (deviceAutoLoginEnabled) {
+      setStatus('Signed out. Using this device with auto log in.');
+      initAuthedSession().catch(e => setStatus(e.message));
+      return;
+    }
     showApp(false);
     setOnboardingVisible(false);
-    setFeedbackOverlay(false, null);
     setStatus('Logged out.');
   });
 }
@@ -1741,6 +2129,10 @@ if (MOCK_MODE) {
   const landing = el('mockLanding');
   if (landing) landing.classList.add('hidden');
   initAuthedSession().catch(e => setStatus(e.message));
-} else {
+} else if (typeof netlifyIdentity !== 'undefined') {
   netlifyIdentity.init();
+} else if (deviceAutoLoginEnabled) {
+  initAuthedSession().catch(e => setStatus(e.message));
+} else {
+  showApp(false);
 }

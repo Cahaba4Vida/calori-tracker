@@ -3,7 +3,7 @@ const { getDenverDateISO, json } = require('./_util');
 
 const DEFAULTS = {
   free_food_entries_per_day: 5,
-  free_ai_actions_per_day: 3,
+  free_ai_actions_per_day: 5,
   free_history_days: 20,
   monthly_price_usd: 5,
   yearly_price_usd: 50,

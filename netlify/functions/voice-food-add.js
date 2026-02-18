@@ -42,6 +42,8 @@ exports.handler = async (event, context) => {
 
   const message = String(body.message || "").trim();
   const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
+  const followupsUsed = Math.max(0, Number(body.followups_used) || 0);
+  const followupsLimit = Math.max(0, Number(body.followups_limit) || 2);
   if (!message) return json(400, { error: "message is required" });
 
   const prompt = `You help users log food from voice descriptions.
@@ -59,11 +61,13 @@ Return ONLY JSON with this exact shape:
 }
 Rules:
 - Ask follow-up when meal details are too vague to estimate calories confidently.
+- You may ask AT MOST (followups_limit - followups_used) follow-up questions this turn.
 - If enough detail exists, provide a best-effort estimate.
 - Keep calories between 50 and 2500.
 - Keep macro grams between 0 and 300.
 - Keep reply under 2 short sentences.
-- notes should summarize what was estimated and why.`;
+- notes should summarize what was estimated and why.
+- If followups_used >= followups_limit, you MUST set needs_follow_up=false and provide suggested_entry.`;
 
   const resp = await responsesCreate({
     model: "gpt-5.2",
@@ -73,7 +77,7 @@ Rules:
         content: [
           {
             type: "input_text",
-            text: `${prompt}\n\nHistory: ${JSON.stringify(history)}\nUser: ${message}`
+            text: `${prompt}\n\nfollowups_used=${followupsUsed}\nfollowups_limit=${followupsLimit}\nHistory: ${JSON.stringify(history)}\nUser: ${message}`
           }
         ]
       }
@@ -88,6 +92,7 @@ Rules:
     return json(502, { error: "Model did not return valid JSON", raw: text });
   }
 
+  if (followupsUsed >= followupsLimit) parsed.needs_follow_up = false;
   const reply = String(parsed.reply || "I can help with that.").slice(0, 280);
   const audio = await createVoiceAudio(reply);
 

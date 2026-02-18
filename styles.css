@@ -201,6 +201,33 @@ label {
   background: #fff;
 }
 
+
+.addFoodOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 1300;
+}
+
+.addFoodPanel.modalActive {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(720px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  z-index: 1301;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.24);
+}
+
+@media (max-width: 640px) {
+  .addFoodPanel.modalActive {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+  }
+}
+
 .quickAdds.empty {
   opacity: 0.7;
 }
@@ -624,4 +651,53 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
 
 @media (max-width: 760px) {
   .mockFeatureGrid { grid-template-columns: 1fr; }
+}
+
+.linkMiniBtn {
+  margin-top: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--accent, #3a63ff);
+  font-size: 12px;
+  text-decoration: underline;
+  padding: 4px 6px;
+}
+
+.signupPromptCard {
+  margin-top: 18px;
+  border: 1px dashed var(--border, #d9dee8);
+}
+
+
+.todayDateNav {
+  margin-bottom: 10px;
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 10px;
+  padding: 8px;
+  background: rgba(0,0,0,0.02);
+}
+.todayDateNavTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.todayDateChips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-top: 8px;
+}
+.todayDateChip {
+  border: 1px solid var(--border, #d9dee8);
+  background: var(--card, #fff);
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.todayDateChip.active {
+  border-color: #3a63ff;
+  background: rgba(58,99,255,0.12);
+  font-weight: 600;
 }

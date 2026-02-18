@@ -37,7 +37,7 @@
         upgradeHint.classList.toggle('hidden', !!billingState?.is_premium);
         upgradeHint.innerText = billingState?.is_premium
           ? ''
-          : 'Free plan includes 5 food entries/day, 3 AI actions/day, 20-day history, and no export. Upgrade for unlimited access.';
+          : 'Free plan includes 5 food entries/day, 5 AI actions/day, 20-day history, and no export. Upgrade for unlimited access.';
       }
 
       if (!billingState?.is_premium && usage) {
