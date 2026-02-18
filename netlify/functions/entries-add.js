@@ -38,7 +38,8 @@ exports.handler = async (event, context) => {
   let body;
   try { body = JSON.parse(event.body || "{}"); } catch { body = {}; }
 
-  const entry_date = getDenverDateISO(new Date());
+  const bodyDate = String(body.date || '').trim();
+  const entry_date = /^\d{4}-\d{2}-\d{2}$/.test(bodyDate) ? bodyDate : getDenverDateISO(new Date());
   const limit = await enforceFoodEntryLimit(userId, entry_date);
   if (!limit.ok) return limit.response;
 

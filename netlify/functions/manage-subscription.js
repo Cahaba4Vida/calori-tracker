@@ -1,5 +1,5 @@
 const { json } = require('./_util');
-const { requireUser } = require('./_auth');
+const { requireSignedUser } = require('./_auth');
 const { ensureUserProfile, query } = require('./_db');
 const { getPlanConfig } = require('./_plan');
 
@@ -13,7 +13,7 @@ function asForm(payload) {
 exports.handler = async (event, context) => {
   if (event.httpMethod && event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
 
-  const auth = await requireUser(event, context);
+  const auth = await requireSignedUser(event, context);
   if (!auth.ok) return auth.response;
   const { userId, email } = auth.user;
   await ensureUserProfile(userId, email);
