@@ -1,5 +1,6 @@
 console.log("APP_VERSION v11");
 let currentUser = null;
+let skipOnboardingAfterLogin = false;
 const QUERY = new URLSearchParams(window.location.search);
 const MOCK_MODE = QUERY.get('mock') !== '0';
 const USE_MOCK_API = QUERY.get('mockApi') === '1';
@@ -465,6 +466,12 @@ function setOnboardingVisible(visible) {
   const overlay = el('onboardingOverlay');
   if (!overlay) return;
   overlay.classList.toggle('hidden', !visible);
+}
+
+
+function showLoggedOutOnboarding() {
+  showOnboardingScreen('welcome');
+  setOnboardingVisible(true);
 }
 
 function showOnboardingScreen(which) {
@@ -1912,9 +1919,7 @@ function bindUI() {
         if (deviceAutoLoginEnabled) {
           initAuthedSession().catch((e) => setStatus(e.message));
         } else {
-          showApp(false);
-          setOnboardingVisible(false);
-          setStatus('Auto log in disabled for this device. Sign in to continue.');
+          setStatus('Auto log in disabled for this device. You will be asked to sign in next time.');
         }
       }
     };
@@ -1962,7 +1967,10 @@ function bindUI() {
 
   el('onboardingContinueBtn').onclick = () => showOnboardingScreen('inputs');
   const onboardingSignInBtn = el('onboardingSignInBtn');
-  if (onboardingSignInBtn) onboardingSignInBtn.onclick = () => openIdentityModal('login');
+  if (onboardingSignInBtn) onboardingSignInBtn.onclick = () => {
+    skipOnboardingAfterLogin = true;
+    openIdentityModal('login');
+  };
   ['aiCurrentWeightInput','aiGoalWeightInput','aiGoalDateInput'].forEach((id) => {
     const node = el(id);
     if (!node) return;
@@ -2085,12 +2093,20 @@ if (typeof netlifyIdentity !== 'undefined') {
       initAuthedSession().catch(e => setStatus(e.message));
     } else {
       showApp(false);
+      showLoggedOutOnboarding();
     }
   });
   netlifyIdentity.on('login', user => {
     currentUser = user;
+    const shouldSkipOnboarding = skipOnboardingAfterLogin;
+    skipOnboardingAfterLogin = false;
     netlifyIdentity.close();
     showApp(true);
+    if (shouldSkipOnboarding) {
+      setOnboardingVisible(false);
+      refresh().catch(e => setStatus(e.message));
+      return;
+    }
     initAuthedSession().catch(e => setStatus(e.message));
   });
   netlifyIdentity.on('logout', () => {
@@ -2102,7 +2118,7 @@ if (typeof netlifyIdentity !== 'undefined') {
       return;
     }
     showApp(false);
-    setOnboardingVisible(false);
+    showLoggedOutOnboarding();
     setStatus('Logged out.');
   });
 }
@@ -2138,4 +2154,5 @@ if (MOCK_MODE) {
   initAuthedSession().catch(e => setStatus(e.message));
 } else {
   showApp(false);
+  showLoggedOutOnboarding();
 }
