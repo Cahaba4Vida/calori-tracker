@@ -510,6 +510,8 @@ function setOnboardingVisible(visible) {
   const overlay = el('onboardingOverlay');
   if (!overlay) return;
   overlay.classList.toggle('hidden', !visible);
+  // Extra safety: also set inline display to avoid any stacking/pointer-event issues if CSS is overridden.
+  overlay.style.display = visible ? 'flex' : 'none';
 }
 
 

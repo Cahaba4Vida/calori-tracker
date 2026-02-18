@@ -455,7 +455,7 @@ select { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border)
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.55);
-  z-index: 10001;
+  z-index:  9000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -751,4 +751,17 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
 .netlify-identity-modal,
 .netlify-identity-widget {
   z-index: 20000 !important;
+}
+
+
+
+/* Ensure Netlify Identity modal is always clickable above onboarding overlay (covers multiple Netlify class/id variants) */
+#netlify-identity-widget,
+#netlify-identity-overlay,
+#netlify-identity-modal,
+.netlify-identity-widget,
+.netlify-identity-overlay,
+.netlify-identity-modal,
+[data-netlify-identity-widget] {
+  z-index: 99999 !important;
 }
