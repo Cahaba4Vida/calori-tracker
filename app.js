@@ -514,8 +514,8 @@ function setOnboardingVisible(visible) {
 
 
 function showLoggedOutOnboarding() {
-  // New users should land directly on the AI plan input step.
-  openAiGoalFlow('settings');
+  // Logged-out users start the onboarding welcome flow.
+  openAiGoalFlow('onboarding');
 }
 
 function showOnboardingScreen(which) {
@@ -2282,7 +2282,7 @@ if (typeof netlifyIdentity !== 'undefined') {
     // Logged-out: continue as a device session. If onboarding isn't complete for this device,
     // initAuthedSession will open the AI goal flow (settings mode).
     setFeedbackOverlay(false, null);
-    initAuthedSession({ skipOnboarding: false, onboardingMode: 'settings' }).catch(e => setStatus(e.message));
+    initAuthedSession({ skipOnboarding: false, onboardingMode: 'onboarding' }).catch(e => setStatus(e.message));
   });
   netlifyIdentity.on('login', user => {
     currentUser = user;
@@ -2301,7 +2301,7 @@ if (typeof netlifyIdentity !== 'undefined') {
     renderDeviceSettings();
 
     // After logout, fall back to a device session (same-device relogin without identity).
-    initAuthedSession({ skipOnboarding: false, onboardingMode: 'settings' }).catch(e => setStatus(e.message));
+    initAuthedSession({ skipOnboarding: false, onboardingMode: 'onboarding' }).catch(e => setStatus(e.message));
     setStatus('Logged out.');
   });
   netlifyIdentity.on('close', () => {
