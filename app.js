@@ -1,3 +1,9 @@
+
+function setHTML(id, html) {
+  const node = el(id);
+  if (!node) return;
+  node.innerHTML = html;
+}
 console.log("APP_VERSION v11");
 let currentUser = null;
 let skipOnboardingAfterLogin = false;
@@ -616,7 +622,7 @@ function resetAiGoalFlowForm() {
   setText('aiGoalFlowError', '');
   setText('aiSuggestionError', '');
   setText('aiDeclineHint', '');
-  el('aiRationaleList').innerHTML = '';
+  setHTML('aiRationaleList', '');
   const editBlock = el('aiEditPlanBlock');
   if (editBlock) editBlock.classList.add('hidden');
   const editInput = el('aiEditPlanInput');
@@ -1248,6 +1254,7 @@ function renderAiSuggestion(result) {
   setText('aiSuggestedFat', String(result.fat_g));
 
   const ul = el('aiRationaleList');
+  if (!ul) return;
   ul.innerHTML = '';
   (result.rationale_bullets || []).forEach((b) => {
     const li = document.createElement('li');
@@ -1446,6 +1453,7 @@ async function uploadPlateFromInput(inputId = 'plateInput') {
   setBadge(j.confidence || 'low');
 
   const ul = el('estimateAssumptions');
+  if (!ul) return;
   ul.innerHTML = '';
   (j.assumptions || []).forEach(a => {
     const li = document.createElement('li');
@@ -1502,6 +1510,7 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
   (() => { const __n = el('estimateFatInput'); if (__n) __n.value = (j.fat_g == null ? '' : String(Math.round(j.fat_g))); })();
   setBadge(j.confidence || 'low');
   const ul = el('estimateAssumptions');
+  if (!ul) return;
   ul.innerHTML = '';
   (j.assumptions || []).forEach((a) => {
     const li = document.createElement('li');
@@ -1626,6 +1635,7 @@ async function sendVoiceFoodMessage() {
 
 function renderEntries(entries) {
   const list = el('entriesList');
+  if (!list) return;
   list.innerHTML = '';
   if (!entries || entries.length === 0) {
     const li = document.createElement('li');
@@ -1908,6 +1918,7 @@ async function saveWeight() {
 async function loadWeightsList() {
   const j = await api('weights-list?days=14');
   const list = el('weightsList');
+  if (!list) return;
   list.innerHTML = '';
   if (!j.weights || j.weights.length === 0) {
     const li = document.createElement('li');
