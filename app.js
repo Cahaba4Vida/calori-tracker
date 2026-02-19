@@ -1675,9 +1675,6 @@ function ensureVoiceRecognition() {
     setStatus('Voice input error. You can type your meal details instead.');
   };
   return voiceRecognition;
-  } finally {
-    setPhotoProcessing(false);
-  }
 }
 
 async function sendVoiceFoodMessage() {
