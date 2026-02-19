@@ -2039,17 +2039,22 @@ function bindUI() {
   const resetMockBtn = el('resetMockBtn');
   if (enterMockBtn) enterMockBtn.onclick = () => initAuthedSession().catch(e => setStatus(e.message));
   if (resetMockBtn) resetMockBtn.onclick = () => { resetMockState(); setStatus('Local demo data reset. Starting fresh onboarding…'); initAuthedSession().catch(e => setStatus(e.message)); };
-  el('saveGoalBtn').onclick = () => saveGoal().catch(e => setStatus(e.message));
+  const saveGoalBtn = el('saveGoalBtn');
+  if (saveGoalBtn) saveGoalBtn.onclick = () => saveGoal().catch(e => setStatus(e.message));
   const unifiedPhotoInputIds = ['photoUnifiedInput', 'photoUnifiedCameraInput'];
   unifiedPhotoInputIds.forEach((id) => {
     const node = el(id);
     if (!node) return;
     node.onchange = () => uploadUnifiedPhotoFromInput(id).catch((e) => setStatus(e.message));
   });
-  el('saveWeightBtn').onclick = () => saveWeight().catch(e => setStatus(e.message));
-  el('finishDayBtn').onclick = () => finishDay().catch(e => setStatus(e.message));
-  el('sendChatBtn').onclick = () => sendChat().catch(e => setStatus(e.message));
-  el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
+  const saveWeightBtn = el('saveWeightBtn');
+  if (saveWeightBtn) saveWeightBtn.onclick = () => saveWeight().catch(e => setStatus(e.message));
+  const finishDayBtn = el('finishDayBtn');
+  if (finishDayBtn) finishDayBtn.onclick = () => finishDay().catch(e => setStatus(e.message));
+  const sendChatBtn = el('sendChatBtn');
+  if (sendChatBtn) sendChatBtn.onclick = () => sendChat().catch(e => setStatus(e.message));
+  const feedbackSubmitBtn = el('feedbackSubmitBtn');
+  if (feedbackSubmitBtn) feedbackSubmitBtn.onclick = () => submitFeedbackResponse();
 
   // Tabs
   const tabs = el('tabs');
@@ -2069,14 +2074,14 @@ function bindUI() {
     }
   }
 
-  dashBtn.onclick = () => activateTab('dashboard');
-  setBtn.onclick = () => activateTab('settings');
+  if (dashBtn) dashBtn.onclick = () => activateTab('dashboard');
+  if (setBtn) setBtn.onclick = () => activateTab('settings');
 
   // Settings: unit toggle
   const unitToggle = el('unitToggle');
   const unitLabel = el('unitLabel');
-  unitToggle.checked = (weightUnit === 'kg');
-  unitLabel.innerText = unitSuffix();
+  if (unitToggle) unitToggle.checked = (weightUnit === 'kg');
+  if (unitLabel) unitLabel.innerText = unitSuffix();
 
   const darkModeToggle = el('darkModeToggle');
   if (darkModeToggle) darkModeToggle.checked = darkModeEnabled;

@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { json } = require("./_util");
-const { ensureUserProfile, ensureDeviceIdentity, linkDeviceToUser, resolveUserIdByDevice } = require('./_db');
+const { ensureUserProfile, ensureDeviceIdentity, linkDeviceToUser, resolveUserIdByDevice, mergeDeviceAnonymousData } = require('./_db');
 
 function getNetlifyUser(context) {
   try {
@@ -43,6 +43,14 @@ async function requireUser(event, context) {
     await ensureUserProfile(userId, email);
     if (deviceId) {
       await ensureDeviceIdentity(deviceId);
+      // If this device has anonymous data, migrate it into the signed-in account.
+      try {
+        const anonUserId = stableDeviceUserId(deviceId);
+        await mergeDeviceAnonymousData({ fromUserId: anonUserId, toUserId: userId });
+      } catch (e) {
+        // Non-fatal: linking should still work even if merge fails.
+        console.error('mergeDeviceAnonymousData failed', e);
+      }
       await linkDeviceToUser(deviceId, userId);
     }
 
