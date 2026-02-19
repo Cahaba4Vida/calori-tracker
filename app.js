@@ -1371,7 +1371,8 @@ function openAiGoalFlow(mode) {
   aiGoalFlowMode = mode;
   resetAiGoalFlowForm();
   document.querySelectorAll('.aiInputUnitText').forEach(n => { n.innerText = unitSuffix(); });
-  el('aiGoalDateInput').min = isoToday();
+  const aiGoalDateInput = el('aiGoalDateInput');
+  if (aiGoalDateInput) aiGoalDateInput.min = isoToday();
   const showWelcome = mode === 'onboarding';
   setText('onboardingTitle', showWelcome ? 'Welcome to Aethon Calorie Tracker' : 'Generate AI calorie & macro goals');
   el('onboardingContinueBtn').classList.toggle('hidden', !showWelcome);
