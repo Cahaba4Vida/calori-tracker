@@ -789,7 +789,7 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
    swap these URLs to the *_dark.png variants. */
 #todayCard, #addFoodCard, #dailyGoalsCard, #trendsCard{
   background-size: cover;
-  background-position: center;
+  background-position: right center;
   background-repeat: no-repeat;
 }
 #todayCard{ background-image: url("./assets/backgrounds/today_light.png"); }
@@ -828,7 +828,7 @@ body.invertedTheme #trendsCard::before{
   inset: 0;
   z-index: 0;
   background-size: cover;
-  background-position: center;
+  background-position: right center;
   background-repeat: no-repeat;
   filter: invert(1) hue-rotate(180deg);
 }
