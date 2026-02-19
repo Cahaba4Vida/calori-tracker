@@ -606,10 +606,10 @@ function renderAiPlanSummary() {
 }
 
 function resetAiGoalFlowForm() {
-  el('aiCurrentWeightInput').value = '';
-  el('aiGoalWeightInput').value = '';
-  el('aiActivityLevelInput').value = 'moderate';
-  el('aiGoalDateInput').value = '';
+  (() => { const __n = el('aiCurrentWeightInput'); if (__n) __n.value = ''; })();
+  (() => { const __n = el('aiGoalWeightInput'); if (__n) __n.value = ''; })();
+  (() => { const __n = el('aiActivityLevelInput'); if (__n) __n.value = 'moderate'; })();
+  (() => { const __n = el('aiGoalDateInput'); if (__n) __n.value = ''; })();
   el('aiGoalFlowError').innerText = '';
   el('aiSuggestionError').innerText = '';
   el('aiDeclineHint').innerText = '';
@@ -959,9 +959,9 @@ async function savePlateEstimateFromSheet() {
     const calories = Number(el('estimateCaloriesInput').value);
     if (!isFinite(calories) || calories <= 0) throw new Error('Calories must be > 0.');
 
-    const protein_g = el('estimateProteinInput').value === '' ? null : Number(el('estimateProteinInput').value);
-    const carbs_g = el('estimateCarbsInput').value === '' ? null : Number(el('estimateCarbsInput').value);
-    const fat_g = el('estimateFatInput').value === '' ? null : Number(el('estimateFatInput').value);
+    const protein_g = (() => { const __n = el('estimateProteinInput'); if (__n) __n.value = == '' ? null : Number(el('estimateProteinInput').value); })();
+    const carbs_g = (() => { const __n = el('estimateCarbsInput'); if (__n) __n.value = == '' ? null : Number(el('estimateCarbsInput').value); })();
+    const fat_g = (() => { const __n = el('estimateFatInput'); if (__n) __n.value = == '' ? null : Number(el('estimateFatInput').value); })();
 
     const meta = {
       confidence: pendingPlateEstimate.confidence,
@@ -998,7 +998,7 @@ async function savePlateEstimateFromSheet() {
 function computeTotalsPreview() {
   const servings = Number(el('servingsEatenInput').value);
   const cal = Number(el('calPerServingInput').value);
-  const prot = el('proteinPerServingInput').value === '' ? null : Number(el('proteinPerServingInput').value);
+  const prot = (() => { const __n = el('proteinPerServingInput'); if (__n) __n.value = == '' ? null : Number(el('proteinPerServingInput').value); })();
 
   if (!isFinite(servings) || servings <= 0 || !isFinite(cal) || cal < 0) {
     el('totalCaloriesComputed').innerText = '—';
@@ -1018,7 +1018,7 @@ async function saveFromSheet() {
     el('sheetError').innerText = '';
     const servings_eaten = Number(el('servingsEatenInput').value);
     const calories_per_serving = Number(el('calPerServingInput').value);
-    const protein_g_per_serving = el('proteinPerServingInput').value === '' ? null : Number(el('proteinPerServingInput').value);
+    const protein_g_per_serving = (() => { const __n = el('proteinPerServingInput'); if (__n) __n.value = == '' ? null : Number(el('proteinPerServingInput').value); })();
 
     if (!pendingExtraction) throw new Error('No extracted data.');
     if (!isFinite(servings_eaten) || servings_eaten <= 0) throw new Error('Servings eaten must be > 0.');
@@ -1186,10 +1186,10 @@ async function loadGoal() {
   el('todayCarbsGoal').innerText = fmtGoal(macroGoals.carbs_g);
   el('todayFatGoal').innerText = fmtGoal(macroGoals.fat_g);
 
-  el('goalInput').value = j.daily_calories ?? '';
-  el('proteinGoalInput').value = macroGoals.protein_g ?? '';
-  el('carbsGoalInput').value = macroGoals.carbs_g ?? '';
-  el('fatGoalInput').value = macroGoals.fat_g ?? '';
+  (() => { const __n = el('goalInput'); if (__n) __n.value = j.daily_calories ?? ''; })();
+  (() => { const __n = el('proteinGoalInput'); if (__n) __n.value = macroGoals.protein_g ?? ''; })();
+  (() => { const __n = el('carbsGoalInput'); if (__n) __n.value = macroGoals.carbs_g ?? ''; })();
+  (() => { const __n = el('fatGoalInput'); if (__n) __n.value = macroGoals.fat_g ?? ''; })();
 
   const parts = [`Calories: ${j.daily_calories ?? '—'}`];
   if (macroGoals.protein_g != null) parts.push(`Protein: ${macroGoals.protein_g}g`);
@@ -1307,7 +1307,7 @@ async function submitAiPlanEdit() {
   el('aiSuggestionError').innerText = '';
   try {
     await requestAiGoalSuggestion(request);
-    el('aiEditPlanInput').value = '';
+    (() => { const __n = el('aiEditPlanInput'); if (__n) __n.value = ''; })();
   } finally {
     setAiGoalLoading(false);
   }
@@ -1399,9 +1399,9 @@ async function uploadFoodFromInput(inputId = 'photoInput') {
   pendingExtraction = j.extracted;
 
   // Prefill sheet fields
-  el('servingsEatenInput').value = '1.0';
-  el('calPerServingInput').value = (pendingExtraction.calories_per_serving ?? '').toString();
-  el('proteinPerServingInput').value = pendingExtraction.protein_g_per_serving == null ? '' : String(pendingExtraction.protein_g_per_serving);
+  (() => { const __n = el('servingsEatenInput'); if (__n) __n.value = '1.0'; })();
+  (() => { const __n = el('calPerServingInput'); if (__n) __n.value = (pendingExtraction.calories_per_serving ?? '').toString(); })();
+  (() => { const __n = el('proteinPerServingInput'); if (__n) __n.value = pendingExtraction.protein_g_per_serving == null ? '' : String(pendingExtraction.protein_g_per_serving); })();
 
   // Wire live compute
   el('servingsEatenInput').oninput = computeTotalsPreview;
@@ -1434,11 +1434,11 @@ async function uploadPlateFromInput(inputId = 'plateInput') {
   pendingPlateEstimate = j;
 
   // Prefill sheet
-  el('estimateServingsInput').value = String(servings_eaten);
-  el('estimateCaloriesInput').value = j.calories ?? '';
-  el('estimateProteinInput').value = (j.protein_g == null ? '' : String(Math.round(j.protein_g)));
-  el('estimateCarbsInput').value = (j.carbs_g == null ? '' : String(Math.round(j.carbs_g)));
-  el('estimateFatInput').value = (j.fat_g == null ? '' : String(Math.round(j.fat_g)));
+  (() => { const __n = el('estimateServingsInput'); if (__n) __n.value = String(servings_eaten); })();
+  (() => { const __n = el('estimateCaloriesInput'); if (__n) __n.value = j.calories ?? ''; })();
+  (() => { const __n = el('estimateProteinInput'); if (__n) __n.value = (j.protein_g == null ? '' : String(Math.round(j.protein_g))); })();
+  (() => { const __n = el('estimateCarbsInput'); if (__n) __n.value = (j.carbs_g == null ? '' : String(Math.round(j.carbs_g))); })();
+  (() => { const __n = el('estimateFatInput'); if (__n) __n.value = (j.fat_g == null ? '' : String(Math.round(j.fat_g))); })();
 
   setBadge(j.confidence || 'low');
 
@@ -1470,9 +1470,9 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
     }));
     setStatus('');
     pendingExtraction = j.extracted;
-    el('servingsEatenInput').value = '1.0';
-    el('calPerServingInput').value = (pendingExtraction.calories_per_serving ?? '').toString();
-    el('proteinPerServingInput').value = pendingExtraction.protein_g_per_serving == null ? '' : String(pendingExtraction.protein_g_per_serving);
+    (() => { const __n = el('servingsEatenInput'); if (__n) __n.value = '1.0'; })();
+    (() => { const __n = el('calPerServingInput'); if (__n) __n.value = (pendingExtraction.calories_per_serving ?? '').toString(); })();
+    (() => { const __n = el('proteinPerServingInput'); if (__n) __n.value = pendingExtraction.protein_g_per_serving == null ? '' : String(pendingExtraction.protein_g_per_serving); })();
     el('servingsEatenInput').oninput = computeTotalsPreview;
     el('calPerServingInput').oninput = computeTotalsPreview;
     el('proteinPerServingInput').oninput = computeTotalsPreview;
@@ -1492,11 +1492,11 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
   setStatus('');
 
   pendingPlateEstimate = j;
-  el('estimateServingsInput').value = '1';
-  el('estimateCaloriesInput').value = j.calories ?? '';
-  el('estimateProteinInput').value = (j.protein_g == null ? '' : String(Math.round(j.protein_g)));
-  el('estimateCarbsInput').value = (j.carbs_g == null ? '' : String(Math.round(j.carbs_g)));
-  el('estimateFatInput').value = (j.fat_g == null ? '' : String(Math.round(j.fat_g)));
+  (() => { const __n = el('estimateServingsInput'); if (__n) __n.value = '1'; })();
+  (() => { const __n = el('estimateCaloriesInput'); if (__n) __n.value = j.calories ?? ''; })();
+  (() => { const __n = el('estimateProteinInput'); if (__n) __n.value = (j.protein_g == null ? '' : String(Math.round(j.protein_g))); })();
+  (() => { const __n = el('estimateCarbsInput'); if (__n) __n.value = (j.carbs_g == null ? '' : String(Math.round(j.carbs_g))); })();
+  (() => { const __n = el('estimateFatInput'); if (__n) __n.value = (j.fat_g == null ? '' : String(Math.round(j.fat_g))); })();
   setBadge(j.confidence || 'low');
   const ul = el('estimateAssumptions');
   ul.innerHTML = '';
@@ -1603,11 +1603,11 @@ async function sendVoiceFoodMessage() {
   }
 
   if (j.suggested_entry) {
-    el('manualCaloriesInput').value = j.suggested_entry.calories ?? '';
-    el('manualProteinInput').value = j.suggested_entry.protein_g ?? '';
-    el('manualCarbsInput').value = j.suggested_entry.carbs_g ?? '';
-    el('manualFatInput').value = j.suggested_entry.fat_g ?? '';
-    el('manualNotesInput').value = j.suggested_entry.notes || 'Voice estimate';
+    (() => { const __n = el('manualCaloriesInput'); if (__n) __n.value = j.suggested_entry.calories ?? ''; })();
+    (() => { const __n = el('manualProteinInput'); if (__n) __n.value = j.suggested_entry.protein_g ?? ''; })();
+    (() => { const __n = el('manualCarbsInput'); if (__n) __n.value = j.suggested_entry.carbs_g ?? ''; })();
+    (() => { const __n = el('manualFatInput'); if (__n) __n.value = j.suggested_entry.fat_g ?? ''; })();
+    (() => { const __n = el('manualNotesInput'); if (__n) __n.value = j.suggested_entry.notes || 'Voice estimate'; })();
     voiceFollowUpCount = 0;
     showAddFoodPanel('addFoodManualPanel');
   }
@@ -1755,11 +1755,11 @@ async function loadToday() {
 function applyManualPreset(preset) {
   const p = (profileState.quick_fills || []).find((x) => x.id === preset);
   if (!p) return;
-  el('manualCaloriesInput').value = p.calories;
-  el('manualProteinInput').value = p.protein_g ?? '';
-  el('manualCarbsInput').value = p.carbs_g ?? '';
-  el('manualFatInput').value = p.fat_g ?? '';
-  el('manualNotesInput').value = p.name || '';
+  (() => { const __n = el('manualCaloriesInput'); if (__n) __n.value = p.calories; })();
+  (() => { const __n = el('manualProteinInput'); if (__n) __n.value = p.protein_g ?? ''; })();
+  (() => { const __n = el('manualCarbsInput'); if (__n) __n.value = p.carbs_g ?? ''; })();
+  (() => { const __n = el('manualFatInput'); if (__n) __n.value = p.fat_g ?? ''; })();
+  (() => { const __n = el('manualNotesInput'); if (__n) __n.value = p.name || ''; })();
 }
 
 function renderQuickFillButtons() {
@@ -1843,12 +1843,12 @@ function readQuickFillForm() {
 }
 
 function clearQuickFillForm() {
-  el('quickFillNameInput').value = '';
-  el('quickFillCaloriesInput').value = '';
-  el('quickFillProteinInput').value = '';
-  el('quickFillCarbsInput').value = '';
-  el('quickFillFatInput').value = '';
-  el('quickFillEnabledInput').value = 'true';
+  (() => { const __n = el('quickFillNameInput'); if (__n) __n.value = ''; })();
+  (() => { const __n = el('quickFillCaloriesInput'); if (__n) __n.value = ''; })();
+  (() => { const __n = el('quickFillProteinInput'); if (__n) __n.value = ''; })();
+  (() => { const __n = el('quickFillCarbsInput'); if (__n) __n.value = ''; })();
+  (() => { const __n = el('quickFillFatInput'); if (__n) __n.value = ''; })();
+  (() => { const __n = el('quickFillEnabledInput'); if (__n) __n.value = 'true'; })();
 }
 
 async function saveQuickFills(next) {
@@ -1898,7 +1898,7 @@ async function saveWeight() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ weight_lbs: wLbs, date: activeEntryDateISO() })
   });
-  el('weightInput').value = '';
+  (() => { const __n = el('weightInput'); if (__n) __n.value = ''; })();
   await refresh();
 }
 
@@ -2013,11 +2013,11 @@ async function saveManualEntry() {
     });
 
     // Clear inputs
-    el('manualCaloriesInput').value = '';
-    el('manualProteinInput').value = '';
-    el('manualCarbsInput').value = '';
-    el('manualFatInput').value = '';
-    el('manualNotesInput').value = '';
+    (() => { const __n = el('manualCaloriesInput'); if (__n) __n.value = ''; })();
+    (() => { const __n = el('manualProteinInput'); if (__n) __n.value = ''; })();
+    (() => { const __n = el('manualCarbsInput'); if (__n) __n.value = ''; })();
+    (() => { const __n = el('manualFatInput'); if (__n) __n.value = ''; })();
+    (() => { const __n = el('manualNotesInput'); if (__n) __n.value = ''; })();
 
     await refresh();
     setStatus('Manual entry saved.');
@@ -2184,7 +2184,7 @@ function bindUI() {
     };
   }
 
-  el('onboardingContinueBtn').onclick = () => showOnboardingScreen('inputs');
+  (() => { const __n = el('onboardingContinueBtn'); if (__n) __n.onclick = () => showOnboardingScreen('inputs'); })();
   const onboardingSignInBtn = el('onboardingSignInBtn');
   if (onboardingSignInBtn) onboardingSignInBtn.onclick = () => {
     skipOnboardingAfterLogin = true;
@@ -2196,12 +2196,12 @@ function bindUI() {
     if (!node) return;
     node.onblur = () => { validateAiGoalFields(); };
   });
-  el('aiGetPlanBtn').onclick = () => submitAiGoalInputs().catch(e => { el('aiGoalFlowError').innerText = e.message + ' Try again.'; });
-  el('aiAcceptPlanBtn').onclick = () => acceptAiPlan().catch(e => { el('aiSuggestionError').innerText = e.message; });
-  el('aiDeclinePlanBtn').onclick = () => declineAiPlan().catch(e => { el('aiSuggestionError').innerText = e.message; });
-  el('aiEditPlanBtn').onclick = () => { const b = el('aiEditPlanBlock'); if (b) b.classList.toggle('hidden'); };
-  el('aiEditPlanSubmitBtn').onclick = () => submitAiPlanEdit().catch(e => { el('aiSuggestionError').innerText = e.message; });
-  el('settingsAiGoalBtn').onclick = () => openAiGoalFlow('settings');
+  (() => { const __n = el('aiGetPlanBtn'); if (__n) __n.onclick = () => submitAiGoalInputs().catch(e => { el('aiGoalFlowError').innerText = e.message + ' Try again.'; })(); });
+  (() => { const __n = el('aiAcceptPlanBtn'); if (__n) __n.onclick = () => acceptAiPlan().catch(e => { el('aiSuggestionError').innerText = e.message; })(); });
+  (() => { const __n = el('aiDeclinePlanBtn'); if (__n) __n.onclick = () => declineAiPlan().catch(e => { el('aiSuggestionError').innerText = e.message; })(); });
+  (() => { const __n = el('aiEditPlanBtn'); if (__n) __n.onclick = () => { const b = el('aiEditPlanBlock'); })(); if (b) b.classList.toggle('hidden'); };
+  (() => { const __n = el('aiEditPlanSubmitBtn'); if (__n) __n.onclick = () => submitAiPlanEdit().catch(e => { el('aiSuggestionError').innerText = e.message; })(); });
+  (() => { const __n = el('settingsAiGoalBtn'); if (__n) __n.onclick = () => openAiGoalFlow('settings'); })();
 
   // Initialize UI state
   el('weightInput').placeholder = unitSuffix();
