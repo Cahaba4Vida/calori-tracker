@@ -521,6 +521,7 @@ function setOnboardingVisible(visible) {
     overlay.style.display = 'none';
     overlay.style.pointerEvents = 'none';
     overlay.style.opacity = '0';
+    hideAllBlockingOverlays();
   }
 }
 
@@ -1306,6 +1307,7 @@ async function acceptAiPlan() {
 
   await loadProfile();
   setOnboardingVisible(false);
+  hideAllBlockingOverlays();
   await refresh();
 }
 
@@ -1320,6 +1322,7 @@ async function declineAiPlan() {
     await refresh();
   }
   setOnboardingVisible(false);
+  hideAllBlockingOverlays();
 }
 
 function openAiGoalFlow(mode) {
@@ -2257,6 +2260,41 @@ function hideNetlifyIdentityOverlays() {
   try { document.body.classList.remove('netlify-identity-open'); } catch {}
 }
 
+function hideAllBlockingOverlays() {
+  // Make sure no full-screen overlay can linger and dim/block the UI.
+  const ids = [
+    'onboardingOverlay',
+    'feedbackOverlay',
+    'sheetOverlay',
+    'addFoodOverlay',
+    'estimateOverlay'
+  ];
+  ids.forEach((id) => {
+    const node = el(id);
+    if (!node) return;
+    node.classList.add('hidden');
+    node.style.display = 'none';
+    node.style.pointerEvents = 'none';
+    node.style.opacity = '0';
+    // Some overlays also use the HTML hidden attribute.
+    try { node.hidden = true; } catch {}
+  });
+
+  // Hide sheets/panels if they exist.
+  const sheetIds = ['servingsSheet', 'plateEstimateSheet'];
+  sheetIds.forEach((id) => {
+    const node = el(id);
+    if (!node) return;
+    node.classList.add('hidden');
+    node.style.display = 'none';
+    try { node.hidden = true; } catch {}
+  });
+
+  // Restore scrolling if any modal previously disabled it.
+  try { document.body.style.overflow = ''; } catch {}
+}
+
+
 function openIdentityModal(mode = 'login') {
   if (typeof netlifyIdentity === 'undefined') {
     setStatus('Sign in is not available in this environment yet.');
@@ -2324,6 +2362,7 @@ if (typeof netlifyIdentity !== 'undefined') {
   // Always unlock UI after identity login.
   setOnboardingVisible(false);
   hideNetlifyIdentityOverlays();
+  hideAllBlockingOverlays();
   showApp(true);
   setFeedbackOverlay(false, null);
 
@@ -2346,6 +2385,7 @@ if (typeof netlifyIdentity !== 'undefined') {
   netlifyIdentity.on('close', () => {
   // Ensure no stale overlay keeps the app dim/blocked.
   hideNetlifyIdentityOverlays();
+  hideAllBlockingOverlays();
 });
 }
 
