@@ -1401,13 +1401,67 @@ function fileToDataUrl(file) {
   });
 }
 
+function setPhotoProcessing(on, msg) {
+  const o = el('photoProcessingOverlay');
+  if (!o) return;
+  o.classList.toggle('isVisible', !!on);
+  o.classList.toggle('hidden', true); // keep hidden class irrelevant
+const t = el('photoProcessingText');
+  if (t) t.innerText = msg || 'Processing photo…';
+}
+
+// Downscale/compress images before sending to Functions.
+// Prevents request payload size issues on large mobile photos.
+async function fileToDataUrlResized(file, { maxDim = 1280, quality = 0.85 } = {}) {
+  if (!file) return null;
+  if (!String(file.type || '').startsWith('image/')) {
+    return await fileToDataUrl(file);
+  }
+
+  // If already small enough, keep original encoding
+  const isProbablySmall = (file.size || 0) <= 900_000; // ~0.9MB
+  if (isProbablySmall) {
+    return await fileToDataUrl(file);
+  }
+
+  const originalUrl = await fileToDataUrl(file);
+
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = originalUrl;
+  });
+
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  if (!w || !h) return originalUrl;
+
+  const scale = Math.min(1, maxDim / Math.max(w, h));
+  const tw = Math.max(1, Math.round(w * scale));
+  const th = Math.max(1, Math.round(h * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = tw;
+  canvas.height = th;
+
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, tw, th);
+
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
+
 async function uploadFoodFromInput(inputId = 'photoInput') {
   const input = el(inputId);
   const file = input.files && input.files[0];
   if (!file) return;
 
-  setStatus('Extracting nutrition info…');
-  const imageDataUrl = await fileToDataUrl(file);
+  
+  setPhotoProcessing(true, 'Extracting nutrition…');
+  try {
+setStatus('Extracting nutrition info…');
+  const imageDataUrl = await fileToDataUrlResized(file);
 
   // Extract only (do not insert yet)
   const j = await withThinking(async () => api('entries-add-image', {
@@ -1433,6 +1487,10 @@ async function uploadFoodFromInput(inputId = 'photoInput') {
 
   computeTotalsPreview();
   openSheet();
+  } finally {
+    setPhotoProcessing(false);
+  }
+
 }
 
 async function uploadPlateFromInput(inputId = 'plateInput') {
@@ -1440,8 +1498,11 @@ async function uploadPlateFromInput(inputId = 'plateInput') {
   const file = input.files && input.files[0];
   if (!file) return;
 
-  setStatus('Estimating…');
-  const imageDataUrl = await fileToDataUrl(file);
+  
+  setPhotoProcessing(true, 'Analyzing photo…');
+  try {
+setStatus('Estimating…');
+  const imageDataUrl = await fileToDataUrlResized(file);
 
   const servings_eaten = 1.0;
 
@@ -1475,13 +1536,20 @@ async function uploadPlateFromInput(inputId = 'plateInput') {
   el('estimateNotes').innerText = j.notes ? j.notes : '';
 
   openEstimateSheet();
+  } finally {
+    setPhotoProcessing(false);
+  }
+
 }
 
 async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
   const input = el(inputId);
   const file = input && input.files && input.files[0];
   if (!file) return;
-  const imageDataUrl = await fileToDataUrl(file);
+  
+  setPhotoProcessing(true, 'Analyzing photo…');
+  try {
+const imageDataUrl = await fileToDataUrlResized(file);
   input.value = '';
 
   try {
@@ -1601,6 +1669,9 @@ function ensureVoiceRecognition() {
     setStatus('Voice input error. You can type your meal details instead.');
   };
   return voiceRecognition;
+  } finally {
+    setPhotoProcessing(false);
+  }
 }
 
 async function sendVoiceFoodMessage() {
