@@ -2109,7 +2109,8 @@ function bindUI() {
 
   function applyUnitUI() {
     unitLabel.innerText = unitSuffix();
-    el('weightInput').placeholder = unitSuffix();
+    const weightInput = el('weightInput');
+  if (weightInput) weightInput.placeholder = unitSuffix();
     // Re-render weight display/list if already present
     loadWeight().catch(() => {});
     loadWeightsList().catch(() => {});
@@ -2196,15 +2197,42 @@ function bindUI() {
     if (!node) return;
     node.onblur = () => { validateAiGoalFields(); };
   });
-  (() => { const __n = el('aiGetPlanBtn'); if (__n) __n.onclick = () => submitAiGoalInputs().catch(e => { el('aiGoalFlowError').innerText = e.message + ' Try again.'; })(); });
-  (() => { const __n = el('aiAcceptPlanBtn'); if (__n) __n.onclick = () => acceptAiPlan().catch(e => { el('aiSuggestionError').innerText = e.message; })(); });
-  (() => { const __n = el('aiDeclinePlanBtn'); if (__n) __n.onclick = () => declineAiPlan().catch(e => { el('aiSuggestionError').innerText = e.message; })(); });
-  (() => { const __n = el('aiEditPlanBtn'); if (__n) __n.onclick = () => { const b = el('aiEditPlanBlock'); })(); if (b) b.classList.toggle('hidden'); };
-  (() => { const __n = el('aiEditPlanSubmitBtn'); if (__n) __n.onclick = () => submitAiPlanEdit().catch(e => { el('aiSuggestionError').innerText = e.message; })(); });
-  (() => { const __n = el('settingsAiGoalBtn'); if (__n) __n.onclick = () => openAiGoalFlow('settings'); })();
+    const aiGetPlanBtn = el('aiGetPlanBtn');
+  if (aiGetPlanBtn) aiGetPlanBtn.onclick = () => submitAiGoalInputs().catch(e => {
+    const n = el('aiGoalFlowError');
+    if (n) n.innerText = (e && e.message ? e.message : String(e)) + ' Try again.';
+  });
 
-  // Initialize UI state
-  el('weightInput').placeholder = unitSuffix();
+  const aiAcceptPlanBtn = el('aiAcceptPlanBtn');
+  if (aiAcceptPlanBtn) aiAcceptPlanBtn.onclick = () => acceptAiPlan().catch(e => {
+    const n = el('aiSuggestionError');
+    if (n) n.innerText = (e && e.message ? e.message : String(e));
+  });
+
+  const aiDeclinePlanBtn = el('aiDeclinePlanBtn');
+  if (aiDeclinePlanBtn) aiDeclinePlanBtn.onclick = () => declineAiPlan().catch(e => {
+    const n = el('aiSuggestionError');
+    if (n) n.innerText = (e && e.message ? e.message : String(e));
+  });
+
+  const aiEditPlanBtn = el('aiEditPlanBtn');
+  if (aiEditPlanBtn) aiEditPlanBtn.onclick = () => {
+    const b = el('aiEditPlanBlock');
+    if (b) b.classList.toggle('hidden');
+  };
+
+  const aiEditPlanSubmitBtn = el('aiEditPlanSubmitBtn');
+  if (aiEditPlanSubmitBtn) aiEditPlanSubmitBtn.onclick = () => submitAiPlanEdit().catch(e => {
+    const n = el('aiSuggestionError');
+    if (n) n.innerText = (e && e.message ? e.message : String(e));
+  });
+
+  const settingsAiGoalBtn = el('settingsAiGoalBtn');
+  if (settingsAiGoalBtn) settingsAiGoalBtn.onclick = () => openAiGoalFlow('settings');
+
+// Initialize UI state
+  const weightInput = el('weightInput');
+  if (weightInput) weightInput.placeholder = unitSuffix();
   activateTab('dashboard');
   showAddFoodPanel(null);
   updateVoiceToggleLabel();
