@@ -527,11 +527,14 @@ function setOnboardingVisible(visible) {
 
 
 function showLoggedOutOnboarding() {
-  // Logged-out users should start at onboarding Step 1.
+  // Logged-out users run in device-session mode.
+  // Option A: this device remembers onboarding; only show onboarding if not completed.
   showApp(true);
-  openAiGoalFlow('onboarding');
+  try { setOnboardingVisible(false); } catch {}
+  try { hideAllBlockingOverlays(); } catch {}
+  setFeedbackOverlay(false, null);
+  initAuthedSession({ skipOnboarding: false, onboardingMode: 'onboarding' }).catch(e => setStatus(e.message));
 }
-
 
 function showOnboardingScreen(which) {
   el('onboardingWelcomeScreen').classList.toggle('hidden', which !== 'welcome');
@@ -2381,11 +2384,8 @@ if (typeof netlifyIdentity !== 'undefined') {
       return;
     }
 
-    // Logged-out: show the app + immediately start the onboarding flow (Step 1).
-    showApp(true);
+    // Logged-out: device session (Option A). Onboarding shows only if not completed on this device.
     showLoggedOutOnboarding();
-    setFeedbackOverlay(false, null);
-    initAuthedSession({ skipOnboarding: false, onboardingMode: 'onboarding' }).catch(e => setStatus(e.message));
 });
   netlifyIdentity.on('login', (user) => {
   currentUser = user;
@@ -2403,15 +2403,11 @@ if (typeof netlifyIdentity !== 'undefined') {
   setStatus('Logged in.');
 });
   netlifyIdentity.on('logout', () => {
-    currentUser = null;
-    setFeedbackOverlay(false, null);
-    linkedDevicesState = [];
-    renderDeviceSettings();
-
-    // After logout, fall back to a device session (same-device relogin without identity).
-    initAuthedSession({ skipOnboarding: false, onboardingMode: 'onboarding' }).catch(e => setStatus(e.message));
-    setStatus('Logged out.');
-  });
+  currentUser = null;
+  // Continue as device session.
+  showLoggedOutOnboarding();
+  setStatus('Logged out.');
+});
   netlifyIdentity.on('close', () => {
   // Ensure no stale overlay keeps the app dim/blocked.
   hideNetlifyIdentityOverlays();
