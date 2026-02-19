@@ -783,16 +783,29 @@ function shouldAttachDeviceIdHeader() {
   return true;
 }
 
-function authHeaders() {
+async function authHeaders() {
   const headers = {};
   if (shouldAttachDeviceIdHeader()) {
     headers['X-Device-Id'] = getOrCreateDeviceId();
   }
-  if (currentUser?.token?.access_token) {
-    headers.Authorization = 'Bearer ' + currentUser.token.access_token;
+
+  // Netlify Identity: prefer a fresh JWT (handles refresh/expiry).
+  if (currentUser) {
+    try {
+      if (typeof currentUser.jwt === 'function') {
+        const token = await currentUser.jwt();
+        if (token) headers.Authorization = 'Bearer ' + token;
+        return headers;
+      }
+    } catch {}
+    // Fallbacks for older widget shapes
+    const token = currentUser?.token?.access_token || currentUser?.token?.id_token;
+    if (token) headers.Authorization = 'Bearer ' + token;
   }
+
   return headers;
 }
+
 
 async function api(path, opts = {}) {
   if (USE_MOCK_API) {
@@ -805,7 +818,7 @@ async function api(path, opts = {}) {
   }
   const r = await fetch('/api/' + path, {
     ...opts,
-    headers: { ...(opts.headers || {}), ...authHeaders() }
+    headers: { ...(opts.headers || {}), ...(await authHeaders()) }
   });
   const text = await r.text();
   let body = null;
