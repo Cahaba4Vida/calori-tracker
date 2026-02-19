@@ -527,9 +527,11 @@ function setOnboardingVisible(visible) {
 
 
 function showLoggedOutOnboarding() {
-  // Logged-out users start the onboarding welcome flow.
+  // Logged-out users should start at onboarding Step 1.
+  showApp(true);
   openAiGoalFlow('onboarding');
 }
+
 
 function showOnboardingScreen(which) {
   el('onboardingWelcomeScreen').classList.toggle('hidden', which !== 'welcome');
@@ -656,7 +658,7 @@ function renderDeviceSettings() {
     top.className = 'deviceRowTop';
 
     const title = document.createElement('div');
-    title.innerHTML = `<strong>${device.device_name || 'Unnamed device'}</strong>${device.is_current ? ' <span class="muted">(This device)</span>' : ''}`;
+    title.innerHTML = `<strong>${device.device_name || 'Unnamed device'}</strong>${device.is_current ? ' <span class="muted">(This device)</span>' : ''}<div class="muted" style="margin-top:4px;">Auto login</div>`;
 
     const switchWrap = document.createElement('label');
     switchWrap.className = 'switch';
@@ -711,6 +713,33 @@ function renderDeviceSettings() {
     nameRow.appendChild(nameInput);
     nameRow.appendChild(saveBtn);
 
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'dangerBtn';
+    deleteBtn.innerText = 'Delete';
+    deleteBtn.disabled = !!device.is_current;
+    deleteBtn.title = device.is_current ? 'Cannot delete the current device while using it.' : 'Remove this device from your account.';
+    deleteBtn.onclick = async () => {
+      if (device.is_current) return;
+      const ok = confirm('Remove this device from your account? It will no longer auto-login.');
+      if (!ok) return;
+      try {
+        await api('device-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device_id: device.device_id })
+        });
+        linkedDevicesState = linkedDevicesState.filter((d) => d.device_id !== device.device_id);
+        updateDeviceSettingsStatus('Deleted device.');
+        renderDeviceSettings();
+      } catch (e) {
+        updateDeviceSettingsStatus(e.message || String(e));
+      }
+    };
+
+    nameRow.appendChild(deleteBtn);
+
+
     const meta = document.createElement('div');
     meta.className = 'muted deviceMeta';
     meta.innerText = `Last seen: ${formatDeviceDate(device.last_seen_at)} • ID: ${device.device_id.slice(0, 10)}…`;
@@ -754,13 +783,1673 @@ function authHeaders() {
 
 async function api(path, opts = {}) {
   if (USE_MOCK_API) {
+    try {
+      return await mockApi(path, opts);
+    } catch (e) {
+      maybePromptUpgradeForAiLimit(e?.message || String(e));
+      throw e;
+    }
+  }
+  const r = await fetch('/api/' + path, {
+    ...opts,
+    headers: { ...(opts.headers || {}), ...authHeaders() }
+  });
+  const text = await r.text();
+  let body = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
+  if (!r.ok) {
+    const msg = (body && (body.error || body.message)) ? (body.error || body.message) : ('Request failed: ' + r.status);
+    maybePromptUpgradeForAiLimit(msg);
+    throw new Error(msg);
+  }
+  return body;
+}
+
+
+function setFeedbackOverlay(required, campaign) {
+  const overlay = el('feedbackOverlay');
+  if (!overlay) return;
+
+  overlay.classList.toggle('hidden', !required);
+  feedbackGateState = {
+    required: !!required,
+    campaign: campaign || null
+  };
+
+  if (!required || !campaign) return;
+
+  const title = el('feedbackTitle');
+  const question = el('feedbackQuestion');
+  const input = el('feedbackInput');
+  const submitBtn = el('feedbackSubmitBtn');
+  const err = el('feedbackError');
+
+  if (title) title.innerText = campaign.title || 'Quick feedback request';
+  if (question) question.innerText = campaign.question || 'What should we improve?';
+  if (input) input.placeholder = campaign.placeholder || 'Share your feedback';
+  if (submitBtn) submitBtn.innerText = campaign.submit_label || 'Submit feedback';
+  if (err) err.innerText = '';
+}
+
+async function ensureFeedbackGate() {
+  if (!currentUser) {
+    setFeedbackOverlay(false, null);
+    return;
+  }
+  const status = await api('feedback-status');
+  setFeedbackOverlay(!!status.required, status.campaign || null);
+}
+
+async function submitFeedbackResponse() {
+  if (!feedbackGateState.required || !feedbackGateState.campaign) return;
+
+  const input = el('feedbackInput');
+  const err = el('feedbackError');
+  const submitBtn = el('feedbackSubmitBtn');
+  const responseText = (input?.value || '').trim();
+
+  if (responseText.length < 5) {
+    if (err) err.innerText = 'Please add at least a short response before submitting.';
+    return;
+  }
+
+  if (submitBtn) submitBtn.disabled = true;
+  if (err) err.innerText = '';
+
+  try {
+    await api('feedback-submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        campaign_id: feedbackGateState.campaign.id,
+        response_text: responseText
+      })
+    });
+    if (input) input.value = '';
+    setFeedbackOverlay(false, null);
+    setStatus('Thanks for your feedback.');
+  } catch (e) {
+    if (err) err.innerText = e.message || String(e);
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+
+let pendingExtraction = null;
+let pendingPlateEstimate = null;
+
+
+function openSheet() {
+  el('sheetError').innerText = '';
+  el('sheetOverlay').classList.remove('hidden');
+  el('servingsSheet').classList.remove('hidden');
+}
+
+function closeSheet() {
+  el('sheetOverlay').classList.add('hidden');
+  el('servingsSheet').classList.add('hidden');
+  pendingExtraction = null;
+}
+
+function openEstimateSheet() {
+  el('estimateError').innerText = '';
+  const overlayEl = el('estimateOverlay');
+  const sheetEl = el('plateEstimateSheet');
+  overlayEl.classList.remove('hidden');
+  sheetEl.classList.remove('hidden');
+  overlayEl.hidden = false;
+  sheetEl.hidden = false;
+
+  // Bind handlers after the estimate sheet is rendered/visible.
+  const overlay = el('estimateOverlay');
+  const closeBtn = el('estimateCloseBtn');
+  const cancelBtn = el('estimateCancelBtn');
+  const saveBtn = el('estimateSaveBtn');
+
+  if (overlay) {
+    overlay.onclick = () => closeEstimateSheet();
+  }
+  if (closeBtn) {
+    closeBtn.onclick = () => closeEstimateSheet();
+  }
+  if (cancelBtn) {
+    cancelBtn.onclick = () => closeEstimateSheet();
+  }
+  if (saveBtn) {
+    saveBtn.onclick = () => savePlateEstimateFromSheet();
+  }
+}
+function closeEstimateSheet() {
+  const overlayEl = el('estimateOverlay');
+  const sheetEl = el('plateEstimateSheet');
+  overlayEl.classList.add('hidden');
+  sheetEl.classList.add('hidden');
+  overlayEl.hidden = true;
+  sheetEl.hidden = true;
+  overlayEl.onclick = null;
+  pendingPlateEstimate = null;
+}
+function setBadge(conf) {
+  const b = el('estimateBadge');
+  b.innerText = conf;
+  b.classList.remove('high','medium','low');
+  if (conf === 'high') b.classList.add('high');
+  else if (conf === 'medium') b.classList.add('medium');
+  else b.classList.add('low');
+}
+
+async function savePlateEstimateFromSheet() {
+  const saveBtn = el('estimateSaveBtn');
+  const prevText = saveBtn ? saveBtn.innerText : '';
+  try {
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerText = 'Saving...';
+    }
+    el('estimateError').innerText = '';
+    if (!pendingPlateEstimate) throw new Error('No estimate available.');
+
+    const servings = Number(el('estimateServingsInput').value);
+    if (!isFinite(servings) || servings <= 0) throw new Error('Servings eaten must be > 0.');
+
+    const calories = Number(el('estimateCaloriesInput').value);
+    if (!isFinite(calories) || calories <= 0) throw new Error('Calories must be > 0.');
+
+    const protein_g = el('estimateProteinInput').value === '' ? null : Number(el('estimateProteinInput').value);
+    const carbs_g = el('estimateCarbsInput').value === '' ? null : Number(el('estimateCarbsInput').value);
+    const fat_g = el('estimateFatInput').value === '' ? null : Number(el('estimateFatInput').value);
+
+    const meta = {
+      confidence: pendingPlateEstimate.confidence,
+      assumptions: pendingPlateEstimate.assumptions || [],
+      portion_hint: pendingPlateEstimate.portion_hint || null,
+      servings_eaten: servings,
+      notes: pendingPlateEstimate.notes || null
+    };
+
+    setStatus('Saving entry…');
+    await api('entries-add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        calories,
+        protein_g,
+        carbs_g,
+        fat_g,
+        raw_extraction_meta: meta,
+        date: activeEntryDateISO()
+      })
+    });
+    setStatus('');
+    closeEstimateSheet();
+    await refresh();
+  } catch (e) {
+    setStatus('');
+    try { el('estimateError').innerText = e.message; } catch {}
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = prevText || 'Save Entry'; }
+  }
+}
+
+function computeTotalsPreview() {
+  const servings = Number(el('servingsEatenInput').value);
+  const cal = Number(el('calPerServingInput').value);
+  const prot = el('proteinPerServingInput').value === '' ? null : Number(el('proteinPerServingInput').value);
+
+  if (!isFinite(servings) || servings <= 0 || !isFinite(cal) || cal < 0) {
+    el('totalCaloriesComputed').innerText = '—';
+  } else {
+    el('totalCaloriesComputed').innerText = String(Math.round(cal * servings));
+  }
+
+  if (prot == null || !isFinite(servings) || servings <= 0 || !isFinite(prot) || prot < 0) {
+    el('totalProteinComputed').innerText = '—';
+  } else {
+    el('totalProteinComputed').innerText = String(Math.round(prot * servings));
+  }
+}
+
+async function saveFromSheet() {
+  try {
+    el('sheetError').innerText = '';
+    const servings_eaten = Number(el('servingsEatenInput').value);
+    const calories_per_serving = Number(el('calPerServingInput').value);
+    const protein_g_per_serving = el('proteinPerServingInput').value === '' ? null : Number(el('proteinPerServingInput').value);
+
+    if (!pendingExtraction) throw new Error('No extracted data.');
+    if (!isFinite(servings_eaten) || servings_eaten <= 0) throw new Error('Servings eaten must be > 0.');
+    if (!isFinite(calories_per_serving) || calories_per_serving < 0) throw new Error('Calories per serving must be >= 0.');
+    if (protein_g_per_serving != null && (!isFinite(protein_g_per_serving) || protein_g_per_serving < 0)) throw new Error('Protein per serving must be >= 0.');
+
+    setStatus('Saving entry…');
+    await api('entries-add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        servings_eaten,
+        calories_per_serving,
+        protein_g_per_serving,
+        carbs_g_per_serving: pendingExtraction.carbs_g_per_serving ?? null,
+        fat_g_per_serving: pendingExtraction.fat_g_per_serving ?? null,
+        serving_size: pendingExtraction.serving_size ?? null,
+        servings_per_container: pendingExtraction.servings_per_container ?? null,
+        notes: pendingExtraction.notes ?? null,
+        extracted: pendingExtraction,
+        date: activeEntryDateISO()
+      })
+    });
+    setStatus('');
+    closeSheet();
+    await refresh();
+  } catch (e) {
+    setStatus('');
+    el('sheetError').innerText = e.message;
+  }
+}
+
+
+function pct(n, d) {
+  if (!d || d <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((n / d) * 100)));
+}
+
+
+function drawBarChart(canvasId, labels, values) {
+  const c = el(canvasId);
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  const W = c.width, H = c.height;
+  ctx.clearRect(0,0,W,H);
+
+  const padL = 40, padR = 10, padT = 10, padB = 30;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+
+  const maxV = Math.max(1, ...values);
+  // axes
+  ctx.beginPath();
+  ctx.moveTo(padL, padT);
+  ctx.lineTo(padL, padT + innerH);
+  ctx.lineTo(padL + innerW, padT + innerH);
+  ctx.stroke();
+
+  const n = values.length;
+  const gap = 6;
+  const barW = Math.max(2, Math.floor((innerW - gap*(n-1)) / n));
+
+  for (let i=0;i<n;i++) {
+    const v = values[i];
+    const h = Math.round((v / maxV) * innerH);
+    const x = padL + i*(barW+gap);
+    const y = padT + innerH - h;
+    ctx.fillRect(x, y, barW, h);
+
+    // label (MM-DD)
+    ctx.save();
+    ctx.translate(x + barW/2, padT + innerH + 14);
+    ctx.rotate(-Math.PI/6);
+    ctx.textAlign = 'center';
+    ctx.font = '12px sans-serif';
+    ctx.fillText(labels[i], 0, 0);
+    ctx.restore();
+  }
+
+  // max label
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(String(maxV), padL - 6, padT + 10);
+}
+
+function drawLineChart(canvasId, labels, values) {
+  const c = el(canvasId);
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  const W = c.width, H = c.height;
+  ctx.clearRect(0,0,W,H);
+
+  const padL = 40, padR = 10, padT = 10, padB = 30;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+
+  const finiteVals = values.filter(v => typeof v === 'number' && isFinite(v));
+  const minV = finiteVals.length ? Math.min(...finiteVals) : 0;
+  const maxV = finiteVals.length ? Math.max(...finiteVals) : 1;
+  const span = Math.max(1e-6, maxV - minV);
+
+  // axes
+  ctx.beginPath();
+  ctx.moveTo(padL, padT);
+  ctx.lineTo(padL, padT + innerH);
+  ctx.lineTo(padL + innerW, padT + innerH);
+  ctx.stroke();
+
+  const n = labels.length;
+  const step = n > 1 ? innerW / (n-1) : innerW;
+
+  // line (skip nulls)
+  ctx.beginPath();
+  let started = false;
+  for (let i=0;i<n;i++) {
+    const v = values[i];
+    if (v == null || !isFinite(v)) { started = false; continue; }
+    const x = padL + i*step;
+    const y = padT + innerH - ((v - minV) / span) * innerH;
+    if (!started) { ctx.moveTo(x,y); started = true; }
+    else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // points
+  for (let i=0;i<n;i++) {
+    const v = values[i];
+    if (v == null || !isFinite(v)) continue;
+    const x = padL + i*step;
+    const y = padT + innerH - ((v - minV) / span) * innerH;
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // labels
+  for (let i=0;i<n;i++) {
+    const x = padL + i*step;
+    ctx.save();
+    ctx.translate(x, padT + innerH + 14);
+    ctx.rotate(-Math.PI/6);
+    ctx.textAlign = 'center';
+    ctx.font = '12px sans-serif';
+    ctx.fillText(labels[i], 0, 0);
+    ctx.restore();
+  }
+
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(maxV.toFixed(1), padL - 6, padT + 10);
+  ctx.fillText(minV.toFixed(1), padL - 6, padT + innerH);
+}
+
+
+async function loadGoal() {
+  const j = await api('goal-get');
+  const macroGoals = {
+    protein_g: profileState.macro_protein_g,
+    carbs_g: profileState.macro_carbs_g,
+    fat_g: profileState.macro_fat_g
+  };
+
+  el('todayGoal').innerText = j.daily_calories ?? '—';
+  el('todayProteinGoal').innerText = fmtGoal(macroGoals.protein_g);
+  el('todayCarbsGoal').innerText = fmtGoal(macroGoals.carbs_g);
+  el('todayFatGoal').innerText = fmtGoal(macroGoals.fat_g);
+
+  el('goalInput').value = j.daily_calories ?? '';
+  el('proteinGoalInput').value = macroGoals.protein_g ?? '';
+  el('carbsGoalInput').value = macroGoals.carbs_g ?? '';
+  el('fatGoalInput').value = macroGoals.fat_g ?? '';
+
+  const parts = [`Calories: ${j.daily_calories ?? '—'}`];
+  if (macroGoals.protein_g != null) parts.push(`Protein: ${macroGoals.protein_g}g`);
+  if (macroGoals.carbs_g != null) parts.push(`Carbs: ${macroGoals.carbs_g}g`);
+  if (macroGoals.fat_g != null) parts.push(`Fat: ${macroGoals.fat_g}g`);
+  el('goalDisplay').innerText = parts.join(' • ');
+  renderAiPlanSummary();
+
+  return j.daily_calories ?? null;
+}
+
+async function saveGoal() {
+  const vRaw = el('goalInput').value;
+  const v = Number(vRaw);
+  if (!vRaw || !Number.isFinite(v) || v < 0) throw new Error('Calories goal must be a number >= 0.');
+
+  const asOptional = (id) => {
+    const raw = (el(id).value || '').trim();
+    if (raw === '') return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) throw new Error('Macro goals must be numbers >= 0.');
+    return Math.round(n);
+  };
+
+  await api('goal-set', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ daily_calories: Math.round(v) })
+  });
+
+  await api('profile-set', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      macro_protein_g: asOptional('proteinGoalInput'),
+      macro_carbs_g: asOptional('carbsGoalInput'),
+      macro_fat_g: asOptional('fatGoalInput')
+    })
+  });
+
+  await loadProfile();
+  if (billingController) await billingController.loadBillingStatus();
+  await refresh();
+}
+
+
+
+function renderAiSuggestion(result) {
+  aiGoalSuggestion = { ...result, goal_weight_lbs: aiGoalInputs.goal_weight_lbs, activity_level: aiGoalInputs.activity_level, goal_date: aiGoalInputs.goal_date };
+  el('aiSuggestedCalories').innerText = String(result.daily_calories);
+  el('aiSuggestedProtein').innerText = String(result.protein_g);
+  el('aiSuggestedCarbs').innerText = String(result.carbs_g);
+  el('aiSuggestedFat').innerText = String(result.fat_g);
+
+  const ul = el('aiRationaleList');
+  ul.innerHTML = '';
+  (result.rationale_bullets || []).forEach((b) => {
+    const li = document.createElement('li');
+    li.innerText = b;
+    ul.appendChild(li);
+  });
+}
+
+async function requestAiGoalSuggestion(editRequest = null) {
+  if (!aiGoalInputs) throw new Error('Set goal inputs first.');
+  const result = await withThinking(async () => api('ai-goals-suggest', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...aiGoalInputs,
+      edit_request: editRequest,
+      messages: aiGoalThread
+    })
+  }));
+
+  const summary = `Plan: ${result.daily_calories} cal, P${result.protein_g} C${result.carbs_g} F${result.fat_g}. Rationale: ${(result.rationale_bullets || []).join(' | ')}`;
+  if (editRequest) aiGoalThread.push({ role: 'user', content: editRequest });
+  aiGoalThread.push({ role: 'assistant', content: summary });
+
+  renderAiSuggestion(result);
+  showOnboardingScreen('suggestion');
+}
+
+
+async function submitAiGoalInputs() {
+  const activity = el('aiActivityLevelInput').value;
+  const validation = validateAiGoalFields();
+  if (!validation.ok) throw new Error('Please fix the highlighted fields.');
+
+  aiGoalInputs = {
+    current_weight_lbs: validation.currentLbs,
+    goal_weight_lbs: validation.goalLbs,
+    activity_level: activity,
+    goal_date: validation.goalDate
+  };
+  aiGoalThread = [
+    { role: 'user', content: `Create an initial plan for current ${validation.currentLbs} lbs, goal ${validation.goalLbs} lbs, activity ${activity}, goal date ${validation.goalDate}.` }
+  ];
+
+  setAiGoalLoading(true);
+  el('aiGoalFlowError').innerText = '';
+  try {
+    await requestAiGoalSuggestion(null);
+  } finally {
+    setAiGoalLoading(false);
+  }
+}
+
+
+async function submitAiPlanEdit() {
+  if (!aiGoalInputs) throw new Error('Generate a plan first.');
+  const request = (el('aiEditPlanInput')?.value || '').trim();
+  if (!request) throw new Error('Please describe what you want to change.');
+  setAiGoalLoading(true);
+  el('aiSuggestionError').innerText = '';
+  try {
+    await requestAiGoalSuggestion(request);
+    el('aiEditPlanInput').value = '';
+  } finally {
+    setAiGoalLoading(false);
+  }
+}
+
+async function acceptAiPlan() {
+  if (!aiGoalSuggestion) throw new Error('No suggestion available.');
+  await api('goal-set', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ daily_calories: aiGoalSuggestion.daily_calories })
+  });
+
+  const payload = {
+    macro_protein_g: aiGoalSuggestion.protein_g,
+    macro_carbs_g: aiGoalSuggestion.carbs_g,
+    macro_fat_g: aiGoalSuggestion.fat_g,
+    goal_weight_lbs: aiGoalSuggestion.goal_weight_lbs,
+    activity_level: aiGoalSuggestion.activity_level,
+    goal_date: aiGoalSuggestion.goal_date
+  };
+  if (aiGoalFlowMode === 'onboarding') payload.onboarding_completed = true;
+
+  await api('profile-set', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  await loadProfile();
+  setOnboardingVisible(false);
+  hideAllBlockingOverlays();
+  await refresh();
+}
+
+async function declineAiPlan() {
+  if (aiGoalFlowMode === 'onboarding') {
+    await api('profile-set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ onboarding_completed: true })
+    });
+    await loadProfile();
+    await refresh();
+  }
+  setOnboardingVisible(false);
+  hideAllBlockingOverlays();
+}
+
+function openAiGoalFlow(mode) {
+  aiGoalFlowMode = mode;
+  resetAiGoalFlowForm();
+  document.querySelectorAll('.aiInputUnitText').forEach(n => { n.innerText = unitSuffix(); });
+  el('aiGoalDateInput').min = isoToday();
+  const showWelcome = mode === 'onboarding';
+  el('onboardingTitle').innerText = showWelcome ? 'Welcome to Aethon Calorie Tracker' : 'Generate AI calorie & macro goals';
+  el('onboardingContinueBtn').classList.toggle('hidden', !showWelcome);
+  el('aiDeclineHint').innerText = showWelcome ? 'If you decline, onboarding will be marked complete. You can still set goals later in Settings.' : 'Decline keeps your current goals unchanged.';
+  showOnboardingScreen(showWelcome ? 'welcome' : 'inputs');
+  setOnboardingVisible(true);
+}
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => resolve(reader.result);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadFoodFromInput(inputId = 'photoInput') {
+  const input = el(inputId);
+  const file = input.files && input.files[0];
+  if (!file) return;
+
+  setStatus('Extracting nutrition info…');
+  const imageDataUrl = await fileToDataUrl(file);
+
+  // Extract only (do not insert yet)
+  const j = await withThinking(async () => api('entries-add-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageDataUrl, extract_only: true })
+  }));
+
+  input.value = '';
+  setStatus('');
+
+  pendingExtraction = j.extracted;
+
+  // Prefill sheet fields
+  el('servingsEatenInput').value = '1.0';
+  el('calPerServingInput').value = (pendingExtraction.calories_per_serving ?? '').toString();
+  el('proteinPerServingInput').value = pendingExtraction.protein_g_per_serving == null ? '' : String(pendingExtraction.protein_g_per_serving);
+
+  // Wire live compute
+  el('servingsEatenInput').oninput = computeTotalsPreview;
+  el('calPerServingInput').oninput = computeTotalsPreview;
+  el('proteinPerServingInput').oninput = computeTotalsPreview;
+
+  computeTotalsPreview();
+  openSheet();
+}
+
+async function uploadPlateFromInput(inputId = 'plateInput') {
+  const input = el(inputId);
+  const file = input.files && input.files[0];
+  if (!file) return;
+
+  setStatus('Estimating…');
+  const imageDataUrl = await fileToDataUrl(file);
+
+  const servings_eaten = 1.0;
+
+  const j = await withThinking(async () => api('entries-estimate-plate-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageDataUrl, servings_eaten, portion_hint: null })
+  }));
+
+  input.value = '';
+  setStatus('');
+
+  pendingPlateEstimate = j;
+
+  // Prefill sheet
+  el('estimateServingsInput').value = String(servings_eaten);
+  el('estimateCaloriesInput').value = j.calories ?? '';
+  el('estimateProteinInput').value = (j.protein_g == null ? '' : String(Math.round(j.protein_g)));
+  el('estimateCarbsInput').value = (j.carbs_g == null ? '' : String(Math.round(j.carbs_g)));
+  el('estimateFatInput').value = (j.fat_g == null ? '' : String(Math.round(j.fat_g)));
+
+  setBadge(j.confidence || 'low');
+
+  const ul = el('estimateAssumptions');
+  ul.innerHTML = '';
+  (j.assumptions || []).forEach(a => {
+    const li = document.createElement('li');
+    li.innerText = a;
+    ul.appendChild(li);
+  });
+  el('estimateNotes').innerText = j.notes ? j.notes : '';
+
+  openEstimateSheet();
+}
+
+async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
+  const input = el(inputId);
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  const imageDataUrl = await fileToDataUrl(file);
+  input.value = '';
+
+  try {
+    setStatus('Analyzing photo…');
+    const j = await withThinking(async () => api('entries-add-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageDataUrl, extract_only: true })
+    }));
+    setStatus('');
+    pendingExtraction = j.extracted;
+    el('servingsEatenInput').value = '1.0';
+    el('calPerServingInput').value = (pendingExtraction.calories_per_serving ?? '').toString();
+    el('proteinPerServingInput').value = pendingExtraction.protein_g_per_serving == null ? '' : String(pendingExtraction.protein_g_per_serving);
+    el('servingsEatenInput').oninput = computeTotalsPreview;
+    el('calPerServingInput').oninput = computeTotalsPreview;
+    el('proteinPerServingInput').oninput = computeTotalsPreview;
+    computeTotalsPreview();
+    openSheet();
+    return;
+  } catch (e) {
+    // If nutrition-label extraction fails, fallback to plate estimate.
+  }
+
+  setStatus('Estimating plate…');
+  const j = await withThinking(async () => api('entries-estimate-plate-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageDataUrl, servings_eaten: 1.0, portion_hint: null })
+  }));
+  setStatus('');
+
+  pendingPlateEstimate = j;
+  el('estimateServingsInput').value = '1';
+  el('estimateCaloriesInput').value = j.calories ?? '';
+  el('estimateProteinInput').value = (j.protein_g == null ? '' : String(Math.round(j.protein_g)));
+  el('estimateCarbsInput').value = (j.carbs_g == null ? '' : String(Math.round(j.carbs_g)));
+  el('estimateFatInput').value = (j.fat_g == null ? '' : String(Math.round(j.fat_g)));
+  setBadge(j.confidence || 'low');
+  const ul = el('estimateAssumptions');
+  ul.innerHTML = '';
+  (j.assumptions || []).forEach((a) => {
+    const li = document.createElement('li');
+    li.innerText = a;
+    ul.appendChild(li);
+  });
+  el('estimateNotes').innerText = j.notes ? j.notes : '';
+  openEstimateSheet();
+}
+
+function showAddFoodPanel(panelId = null) {
+  const ids = ['addFoodPhotoPanel', 'addFoodVoicePanel', 'addFoodQuickFillPanel', 'addFoodManualPanel'];
+  ids.forEach((id) => {
+    const node = el(id);
+    if (!node) return;
+    const active = !!panelId && id === panelId;
+    node.classList.toggle('hidden', !active);
+    node.classList.toggle('modalActive', active);
+  });
+
+  const overlay = el('addFoodOverlay');
+  if (overlay) overlay.classList.toggle('hidden', !panelId);
+
+  // Keep the active panel centered/visible on mobile by preventing page scroll
+  // and resetting scroll position each time a modal is opened.
+  if (panelId) {
+    document.body.style.overflow = 'hidden';
+    try {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    } catch {
+      window.scrollTo(0, 0);
+    }
+  } else {
+    document.body.style.overflow = '';
+  }
+
+  activeAddFoodPanel = panelId;
+}
+
+function stopVoiceRecognition() {
+  if (!voiceRecognition) return;
+  voiceIsListening = false;
+  updateVoiceToggleLabel();
+  try { voiceRecognition.stop(); } catch {}
+}
+
+function updateVoiceToggleLabel() {
+  const btn = el('voiceToggleBtn');
+  if (btn) btn.innerText = voiceIsListening ? '■ Stop Voice Input' : '🎤 Start Voice Input';
+}
+
+function ensureVoiceRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return null;
+  if (voiceRecognition) return voiceRecognition;
+  voiceRecognition = new SR();
+  voiceRecognition.continuous = false;
+  voiceRecognition.interimResults = false;
+  voiceRecognition.lang = 'en-US';
+  voiceRecognition.onresult = (event) => {
+    const text = Array.from(event.results || []).map((r) => r[0]?.transcript || '').join(' ').trim();
+    if (!text) return;
+    const field = el('voiceFoodInput');
+    field.value = [field.value, text].filter(Boolean).join(' ').trim();
+  };
+  voiceRecognition.onend = () => {
+    voiceIsListening = false;
+    updateVoiceToggleLabel();
+    setStatus('');
+    const msg = (el('voiceFoodInput')?.value || '').trim();
+    if (voiceAutoSendPending && msg) sendVoiceFoodMessage().catch((e) => setStatus(e.message));
+    voiceAutoSendPending = false;
+  };
+  voiceRecognition.onerror = () => {
+    voiceIsListening = false;
+    updateVoiceToggleLabel();
+    setStatus('Voice input error. You can type your meal details instead.');
+  };
+  return voiceRecognition;
+}
+
+async function sendVoiceFoodMessage() {
+  const input = el('voiceFoodInput');
+  const message = (input?.value || '').trim();
+  if (!message) return;
+  const out = el('voiceFoodOutput');
+  out.innerText = `${out.innerText ? `${out.innerText}\n\n` : ''}You: ${message}`;
+  input.value = '';
+  setStatus('Asking voice nutrition assistant…');
+  const j = await withThinking(async () => api('voice-food-add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, history: voiceFoodHistory, followups_used: voiceFollowUpCount, followups_limit: 2 })
+  }));
+  setStatus('');
+  voiceFoodHistory.push({ role: 'user', text: message });
+  voiceFoodHistory.push({ role: 'assistant', text: j.reply || '' });
+  out.innerText = `${out.innerText}\nAssistant: ${j.reply || ''}`;
+
+  if (j.needs_follow_up) {
+    voiceFollowUpCount += 1;
+  }
+
+  if (j.suggested_entry) {
+    el('manualCaloriesInput').value = j.suggested_entry.calories ?? '';
+    el('manualProteinInput').value = j.suggested_entry.protein_g ?? '';
+    el('manualCarbsInput').value = j.suggested_entry.carbs_g ?? '';
+    el('manualFatInput').value = j.suggested_entry.fat_g ?? '';
+    el('manualNotesInput').value = j.suggested_entry.notes || 'Voice estimate';
+    voiceFollowUpCount = 0;
+    showAddFoodPanel('addFoodManualPanel');
+  }
+
+  if (j.audio_base64) {
+    const audio = new Audio(`data:${j.audio_mime_type || 'audio/mp3'};base64,${j.audio_base64}`);
+    audio.play().catch(() => {});
+  } else if ('speechSynthesis' in window && j.reply) {
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(j.reply));
+  }
+}
+
+function renderEntries(entries) {
+  const list = el('entriesList');
+  list.innerHTML = '';
+  if (!entries || entries.length === 0) {
+    const li = document.createElement('li');
+    li.innerText = 'No entries yet. Start by adding your first meal below to build momentum.';
+    list.appendChild(li);
+    return;
+  }
+
+  for (const e of entries) {
+    const li = document.createElement('li');
+    const ts = new Date(e.taken_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const text = document.createElement('span');
+    {
+    let suffix = '';
+    if (e.protein_g != null || e.carbs_g != null || e.fat_g != null) {
+      const parts = [];
+      if (e.protein_g != null) parts.push(`P${e.protein_g}`);
+      if (e.carbs_g != null) parts.push(`C${e.carbs_g}`);
+      if (e.fat_g != null) parts.push(`F${e.fat_g}`);
+      suffix = ' (' + parts.join(' ') + ')';
+    }
+    {
+      let tag = '';
+      try {
+        const rx = e.raw_extraction;
+        if (rx && (rx.source === 'plate_photo' || rx.estimated === true)) tag = ' (est)';
+      } catch {}
+      text.innerText = `${ts} — ${e.calories} cal` + suffix + tag;
+    }
+  }
+
+    const editBtn = document.createElement('button');
+    editBtn.innerText = 'Edit';
+    editBtn.onclick = async () => {
+      const c = prompt('Calories (integer):', String(e.calories));
+      if (c == null) return;
+      const p = prompt('Protein g (optional):', e.protein_g ?? '');
+      if (p == null) return;
+      const cb = prompt('Carbs g (optional):', e.carbs_g ?? '');
+      if (cb == null) return;
+      const f = prompt('Fat g (optional):', e.fat_g ?? '');
+      if (f == null) return;
+
+      setStatus('Updating entry…');
+      await api('entry-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: e.id,
+          calories: Number(c),
+          protein_g: p === '' ? null : Number(p),
+          carbs_g: cb === '' ? null : Number(cb),
+          fat_g: f === '' ? null : Number(f)
+        })
+      });
+      setStatus('');
+      await refresh();
+    };
+
+    const delBtn = document.createElement('button');
+    delBtn.innerText = 'Delete';
+    delBtn.onclick = async () => {
+      if (!confirm('Delete this entry?')) return;
+      setStatus('Deleting entry…');
+      await api('entry-delete?id=' + encodeURIComponent(e.id));
+      setStatus('');
+      await refresh();
+    };
+
+    li.appendChild(text);
+    li.appendChild(document.createTextNode(' '));
+    li.appendChild(editBtn);
+    li.appendChild(delBtn);
+    list.appendChild(li);
+  }
+}
+
+
+async function loadToday() {
+  const dateISO = activeEntryDateISO();
+  const j = await api('entries-list-day?date=' + encodeURIComponent(dateISO));
+  const entries = j.entries || [];
+
+  const totalProtein = entries.reduce((sum, e) => sum + (Number(e.protein_g) || 0), 0);
+  const totalCarbs = entries.reduce((sum, e) => sum + (Number(e.carbs_g) || 0), 0);
+  const totalFat = entries.reduce((sum, e) => sum + (Number(e.fat_g) || 0), 0);
+
+  el('todayCalories').innerText = j.total_calories ?? 0;
+  el('todayProtein').innerText = Math.round(totalProtein);
+  el('todayCarbs').innerText = Math.round(totalCarbs);
+  el('todayFat').innerText = Math.round(totalFat);
+  const entriesCountNode = el('todayEntriesCount');
+  if (entriesCountNode) entriesCountNode.innerText = String(entries.length);
+
+  const goal = Number(el('todayGoal').innerText);
+  const p = pct(j.total_calories ?? 0, isFinite(goal) ? goal : 0);
+  el('progressBar').style.width = p + '%';
+
+  const totalCalories = Number(j.total_calories ?? 0);
+  if (Number.isFinite(goal) && goal > 0) {
+    const remaining = Math.round(goal - totalCalories);
+    el('todayRemaining').innerText = remaining >= 0 ? `${remaining} cal left` : `${Math.abs(remaining)} cal over`;
+  } else {
+    el('todayRemaining').innerText = 'Set a goal';
+  }
+
+  const pGoal = Number(el('todayProteinGoal').innerText);
+  const cGoal = Number(el('todayCarbsGoal').innerText);
+  const fGoal = Number(el('todayFatGoal').innerText);
+
+  const proteinPercent = macroPct(totalProtein, pGoal);
+  const carbsPercent = macroPct(totalCarbs, cGoal);
+  const fatPercent = macroPct(totalFat, fGoal);
+
+  const proteinProgressText = el('proteinProgressText');
+  if (proteinProgressText) proteinProgressText.innerText = proteinPercent == null ? 'No goal set' : `${Math.round(totalProtein)} / ${Math.round(pGoal)}g`;
+  const carbsProgressText = el('carbsProgressText');
+  if (carbsProgressText) carbsProgressText.innerText = carbsPercent == null ? 'No goal set' : `${Math.round(totalCarbs)} / ${Math.round(cGoal)}g`;
+  const fatProgressText = el('fatProgressText');
+  if (fatProgressText) fatProgressText.innerText = fatPercent == null ? 'No goal set' : `${Math.round(totalFat)} / ${Math.round(fGoal)}g`;
+
+  el('proteinProgressBar').style.width = `${proteinPercent ?? 0}%`;
+  el('carbsProgressBar').style.width = `${carbsPercent ?? 0}%`;
+  el('fatProgressBar').style.width = `${fatPercent ?? 0}%`;
+
+  renderEntries(entries);
+}
+
+function applyManualPreset(preset) {
+  const p = (profileState.quick_fills || []).find((x) => x.id === preset);
+  if (!p) return;
+  el('manualCaloriesInput').value = p.calories;
+  el('manualProteinInput').value = p.protein_g ?? '';
+  el('manualCarbsInput').value = p.carbs_g ?? '';
+  el('manualFatInput').value = p.fat_g ?? '';
+  el('manualNotesInput').value = p.name || '';
+}
+
+function renderQuickFillButtons() {
+  const row = el('quickFillsRow');
+  const block = el('quickAddsBlock');
+  const ctaRow = el('quickFillsCtaRow');
+  if (!row || !block) return;
+  row.innerHTML = '';
+  const active = (profileState.quick_fills || []).filter((q) => q.enabled);
+  block.classList.toggle('empty', active.length === 0);
+  if (ctaRow) ctaRow.classList.toggle('hidden', active.length > 0);
+
+  for (const q of active) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'quickFillBtn';
+    btn.dataset.preset = q.id;
+    btn.innerText = q.name;
+    btn.onclick = () => applyManualPreset(q.id);
+    row.appendChild(btn);
+  }
+}
+
+function renderQuickFillSettings() {
+  const list = el('quickFillList');
+  if (!list) return;
+  list.innerHTML = '';
+  const fills = profileState.quick_fills || [];
+
+  if (fills.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'muted';
+    li.innerText = 'No quick fills yet.';
+    list.appendChild(li);
+    return;
+  }
+
+  for (const q of fills) {
+    const li = document.createElement('li');
+    li.innerText = `${q.name} — ${q.calories} cal${q.protein_g != null ? `, P${q.protein_g}` : ''}${q.carbs_g != null ? `, C${q.carbs_g}` : ''}${q.fat_g != null ? `, F${q.fat_g}` : ''} (${q.enabled ? 'shown' : 'hidden'})`;
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.innerText = q.enabled ? 'Hide' : 'Show';
+    toggleBtn.onclick = () => updateQuickFill(q.id, { enabled: !q.enabled });
+
+    const delBtn = document.createElement('button');
+    delBtn.innerText = 'Delete';
+    delBtn.onclick = () => deleteQuickFill(q.id);
+
+    li.appendChild(document.createTextNode(' '));
+    li.appendChild(toggleBtn);
+    li.appendChild(delBtn);
+    list.appendChild(li);
+  }
+}
+
+function readQuickFillForm() {
+  const name = (el('quickFillNameInput')?.value || '').trim();
+  const calories = Number(el('quickFillCaloriesInput')?.value);
+  const proteinRaw = el('quickFillProteinInput')?.value;
+  const carbsRaw = el('quickFillCarbsInput')?.value;
+  const fatRaw = el('quickFillFatInput')?.value;
+  const enabled = String(el('quickFillEnabledInput')?.value || 'true') === 'true';
+
+  if (!name) throw new Error('Quick fill name is required.');
+  if (!Number.isFinite(calories) || calories <= 0) throw new Error('Quick fill calories must be > 0.');
+
+  const protein = proteinRaw ? Number(proteinRaw) : null;
+  const carbs = carbsRaw ? Number(carbsRaw) : null;
+  const fat = fatRaw ? Number(fatRaw) : null;
+
+  return {
+    id: `qf_${Date.now()}_${Math.floor(Math.random() * 100000)}`,
+    name: name.slice(0, 40),
+    calories: Math.round(calories),
+    protein_g: Number.isFinite(protein) ? Math.round(protein) : null,
+    carbs_g: Number.isFinite(carbs) ? Math.round(carbs) : null,
+    fat_g: Number.isFinite(fat) ? Math.round(fat) : null,
+    enabled
+  };
+}
+
+function clearQuickFillForm() {
+  el('quickFillNameInput').value = '';
+  el('quickFillCaloriesInput').value = '';
+  el('quickFillProteinInput').value = '';
+  el('quickFillCarbsInput').value = '';
+  el('quickFillFatInput').value = '';
+  el('quickFillEnabledInput').value = 'true';
+}
+
+async function saveQuickFills(next) {
+  await api('profile-set', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ quick_fills: next })
+  });
+  profileState.quick_fills = next;
+  renderQuickFillButtons();
+  renderQuickFillSettings();
+}
+
+async function addQuickFill() {
+  try {
+    const item = readQuickFillForm();
+    const next = [...(profileState.quick_fills || []), item];
+    await saveQuickFills(next);
+    clearQuickFillForm();
+    el('quickFillStatus').innerText = 'Quick fill saved.';
+  } catch (e) {
+    el('quickFillStatus').innerText = e.message || String(e);
+  }
+}
+
+async function updateQuickFill(id, patch) {
+  const next = (profileState.quick_fills || []).map((q) => (q.id === id ? { ...q, ...patch } : q));
+  await saveQuickFills(next);
+}
+
+async function deleteQuickFill(id) {
+  const next = (profileState.quick_fills || []).filter((q) => q.id !== id);
+  await saveQuickFills(next);
+}
+
+async function loadWeight() {
+  const dateISO = activeEntryDateISO();
+  const j = await api('weight-get?date=' + encodeURIComponent(dateISO));
+  const dayLabel = formatDayLabel(selectedDayOffset);
+  el('weightDisplay').innerText = j.weight_lbs != null ? (`${dayLabel}: ` + displayWeight(j.weight_lbs) + ' ' + unitSuffix()) : `No weight logged for ${dayLabel.toLowerCase()}`;
+}
+
+async function saveWeight() {
+  const wLbs = inputToLbs(el('weightInput').value);
+  await api('weight-set', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ weight_lbs: wLbs, date: activeEntryDateISO() })
+  });
+  el('weightInput').value = '';
+  await refresh();
+}
+
+async function loadWeightsList() {
+  const j = await api('weights-list?days=14');
+  const list = el('weightsList');
+  list.innerHTML = '';
+  if (!j.weights || j.weights.length === 0) {
+    const li = document.createElement('li');
+    li.innerText = 'No weights yet.';
+    list.appendChild(li);
+    return;
+  }
+  for (const w of j.weights) {
+    const li = document.createElement('li');
+    li.innerText = `${w.entry_date}: ${displayWeight(w.weight_lbs)} ${unitSuffix()}`;
+    list.appendChild(li);
+  }
+}
+
+async function finishDay() {
+  setStatus('Generating summary…');
+  const j = await api('day-finish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: activeEntryDateISO() }) });
+  const rawScore = Number(j.score);
+  const maxScore = Number.isFinite(rawScore) && rawScore > 10 ? 100 : 10;
+  const scoreText = Number.isFinite(rawScore) ? `${Math.round(rawScore)}/${maxScore}` : '—';
+  el('scoreOutput').innerText = `Score: ${scoreText}\n\n${j.tips}`;
+  setStatus('');
+}
+
+async function sendChat() {
+  const msg = el('chatInput').value.trim();
+  if (!msg) return;
+
+  try {
+    setThinking(true);
+    setStatus('Thinking…');
+    const j = await api('chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg })
+    });
+    el('chatOutput').innerText = j.reply;
+  } finally {
+    setThinking(false);
+    setStatus('');
+  }
+}
+
+
+async function loadWeekly() {
+  const j = await api('week-summary?days=7');
+  const labels = j.series.map(x => x.entry_date.slice(5)); // MM-DD
+  const calories = j.series.map(x => x.total_calories ?? 0);
+  drawBarChart('calChart', labels, calories);
+
+  const weights = j.series.map(x => x.weight_lbs == null ? null : displayWeight(x.weight_lbs));
+  drawLineChart('wtChart', labels, weights);
+}
+
+
+
+
+async function refresh() {
+  await ensureFeedbackGate();
+  if (feedbackGateState.required) return;
+  const goal = await loadGoal();
+  await loadToday();
+  await loadWeight();
+  if (billingController) await billingController.loadBillingStatus();
+  await loadWeightsList();
+  await loadWeekly();
+}
+
+
+async function saveManualEntry() {
+  try {
+    setStatus('');
+    const caloriesRaw = el('manualCaloriesInput')?.value;
+    const calories = Number(caloriesRaw);
+    if (!Number.isFinite(calories) || calories <= 0) throw new Error('Calories must be a number > 0.');
+
+    const proteinRaw = el('manualProteinInput')?.value;
+    const carbsRaw = el('manualCarbsInput')?.value;
+    const fatRaw = el('manualFatInput')?.value;
+
+    const protein_g = proteinRaw ? Number(proteinRaw) : null;
+    const carbs_g = carbsRaw ? Number(carbsRaw) : null;
+    const fat_g = fatRaw ? Number(fatRaw) : null;
+
+    const notes = (el('manualNotesInput')?.value || '').trim();
+
+    const payload = {
+      calories: Math.round(calories),
+      protein_g: (protein_g == null || !Number.isFinite(protein_g)) ? null : protein_g,
+      carbs_g: (carbs_g == null || !Number.isFinite(carbs_g)) ? null : carbs_g,
+      fat_g: (fat_g == null || !Number.isFinite(fat_g)) ? null : fat_g,
+      date: activeEntryDateISO(),
+      raw_extraction_meta: {
+        source: 'manual',
+        estimated: false,
+        confidence: 'high',
+        notes: notes || null
+      }
+    };
+
+    el('manualSaveBtn').disabled = true;
+    await api('entries-add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    // Clear inputs
+    el('manualCaloriesInput').value = '';
+    el('manualProteinInput').value = '';
+    el('manualCarbsInput').value = '';
+    el('manualFatInput').value = '';
+    el('manualNotesInput').value = '';
+
+    await refresh();
+    setStatus('Manual entry saved.');
+  } catch (e) {
+    setStatus(e.message || String(e));
+  } finally {
+    const b = el('manualSaveBtn');
+    if (b) b.disabled = false;
+  }
+}
+
+function bindUI() {
+  setThinking(false);
+  const loginBtn = el('loginBtn');
+  const logoutBtn = el('logoutBtn');
+  if (loginBtn) loginBtn.onclick = () => openIdentityModal('login');
+  if (logoutBtn) logoutBtn.onclick = () => { if (typeof netlifyIdentity !== 'undefined') netlifyIdentity.logout(); };
+  const enterMockBtn = el('enterMockBtn');
+  const resetMockBtn = el('resetMockBtn');
+  if (enterMockBtn) enterMockBtn.onclick = () => initAuthedSession().catch(e => setStatus(e.message));
+  if (resetMockBtn) resetMockBtn.onclick = () => { resetMockState(); setStatus('Local demo data reset. Starting fresh onboarding…'); initAuthedSession().catch(e => setStatus(e.message)); };
+  el('saveGoalBtn').onclick = () => saveGoal().catch(e => setStatus(e.message));
+  const unifiedPhotoInputIds = ['photoUnifiedInput', 'photoUnifiedCameraInput'];
+  unifiedPhotoInputIds.forEach((id) => {
+    const node = el(id);
+    if (!node) return;
+    node.onchange = () => uploadUnifiedPhotoFromInput(id).catch((e) => setStatus(e.message));
+  });
+  el('saveWeightBtn').onclick = () => saveWeight().catch(e => setStatus(e.message));
+  el('finishDayBtn').onclick = () => finishDay().catch(e => setStatus(e.message));
+  el('sendChatBtn').onclick = () => sendChat().catch(e => setStatus(e.message));
+  el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
+
+  // Tabs
+  const tabs = el('tabs');
+  const dashBtn = el('tabDashboardBtn');
+  const setBtn = el('tabSettingsBtn');
+  const panelDash = el('panelDashboard');
+  const panelSet = el('panelSettings');
+
+  function activateTab(which) {
+    const isDash = which === 'dashboard';
+    panelDash.classList.toggle('hidden', !isDash);
+    panelSet.classList.toggle('hidden', isDash);
+    dashBtn.classList.toggle('active', isDash);
+    setBtn.classList.toggle('active', !isDash);
+    if (!isDash) {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }
+
+  dashBtn.onclick = () => activateTab('dashboard');
+  setBtn.onclick = () => activateTab('settings');
+
+  // Settings: unit toggle
+  const unitToggle = el('unitToggle');
+  const unitLabel = el('unitLabel');
+  unitToggle.checked = (weightUnit === 'kg');
+  unitLabel.innerText = unitSuffix();
+
+  const darkModeToggle = el('darkModeToggle');
+  if (darkModeToggle) darkModeToggle.checked = darkModeEnabled;
+
+  const autoLoginToggle = el('autoLoginToggle');
+  const autoLoginLabel = el('autoLoginLabel');
+  if (autoLoginToggle) autoLoginToggle.checked = deviceAutoLoginEnabled;
+  if (autoLoginLabel) autoLoginLabel.innerText = deviceAutoLoginEnabled ? 'On' : 'Off';
+
+  const viewSpanToggle = el('viewSpanToggle');
+  const viewSpanLabel = el('viewSpanLabel');
+  const viewSpanConfig = el('viewSpanConfig');
+  const viewSpanPastInput = el('viewSpanPastInput');
+  const viewSpanFutureInput = el('viewSpanFutureInput');
+  if (viewSpanToggle) viewSpanToggle.checked = viewSpanEnabled;
+  if (viewSpanLabel) viewSpanLabel.innerText = viewSpanEnabled ? 'On' : 'Off';
+  if (viewSpanConfig) viewSpanConfig.classList.toggle('hidden', !viewSpanEnabled);
+  if (viewSpanPastInput) viewSpanPastInput.value = String(viewSpanPastDays);
+  if (viewSpanFutureInput) viewSpanFutureInput.value = String(viewSpanFutureDays);
+
+  applyDarkModeUI();
+  applyFontSizeUI();
+
+  const fontSizeRange = el('fontSizeRange');
+
+  function applyUnitUI() {
+    unitLabel.innerText = unitSuffix();
+    el('weightInput').placeholder = unitSuffix();
+    // Re-render weight display/list if already present
+    loadWeight().catch(() => {});
+    loadWeightsList().catch(() => {});
+  }
+
+  unitToggle.onchange = () => {
+    weightUnit = unitToggle.checked ? 'kg' : 'lbs';
+    localStorage.setItem('weightUnit', weightUnit);
+    applyUnitUI();
+  };
+
+  if (darkModeToggle) {
+    darkModeToggle.onchange = () => {
+      darkModeEnabled = darkModeToggle.checked;
+      localStorage.setItem('darkMode', String(darkModeEnabled));
+      applyDarkModeUI();
+    };
+  }
+
+  if (autoLoginToggle) {
+    autoLoginToggle.onchange = () => {
+      deviceAutoLoginEnabled = !!autoLoginToggle.checked;
+      localStorage.setItem(DEVICE_AUTO_LOGIN_STORAGE_KEY, String(deviceAutoLoginEnabled));
+      if (autoLoginLabel) autoLoginLabel.innerText = deviceAutoLoginEnabled ? 'On' : 'Off';
+      if (!USE_MOCK_API && !currentUser) {
+        if (deviceAutoLoginEnabled) {
+          initAuthedSession().catch((e) => setStatus(e.message));
+        } else {
+          setStatus('Auto log in disabled for this device. You will be asked to sign in next time.');
+        }
+      }
+    };
+  }
+
+  if (viewSpanToggle) {
+    viewSpanToggle.onchange = () => {
+      viewSpanEnabled = !!viewSpanToggle.checked;
+      localStorage.setItem(VIEW_SPAN_ENABLED_KEY, String(viewSpanEnabled));
+      if (viewSpanLabel) viewSpanLabel.innerText = viewSpanEnabled ? 'On' : 'Off';
+      if (viewSpanConfig) viewSpanConfig.classList.toggle('hidden', !viewSpanEnabled);
+      if (!viewSpanEnabled) selectedDayOffset = 0;
+      renderTodayDateNavigator();
+      refresh().catch((e) => setStatus(e.message));
+    };
+  }
+  if (viewSpanPastInput) {
+    viewSpanPastInput.onchange = () => {
+      const next = Math.max(0, Math.min(6, Number(viewSpanPastInput.value) || 0));
+      viewSpanPastDays = next;
+      viewSpanPastInput.value = String(next);
+      localStorage.setItem(VIEW_SPAN_PAST_DAYS_KEY, String(next));
+      renderTodayDateNavigator();
+      refresh().catch((e) => setStatus(e.message));
+    };
+  }
+  if (viewSpanFutureInput) {
+    viewSpanFutureInput.onchange = () => {
+      const next = Math.max(0, Math.min(7, Number(viewSpanFutureInput.value) || 0));
+      viewSpanFutureDays = next;
+      viewSpanFutureInput.value = String(next);
+      localStorage.setItem(VIEW_SPAN_FUTURE_DAYS_KEY, String(next));
+      renderTodayDateNavigator();
+      refresh().catch((e) => setStatus(e.message));
+    };
+  }
+
+  if (fontSizeRange) {
+    fontSizeRange.oninput = () => {
+      appFontSizePct = clampFontSizePct(fontSizeRange.value);
+      localStorage.setItem('appFontSizePct', String(appFontSizePct));
+      applyFontSizeUI();
+    };
+  }
+
+  el('onboardingContinueBtn').onclick = () => showOnboardingScreen('inputs');
+  const onboardingSignInBtn = el('onboardingSignInBtn');
+  if (onboardingSignInBtn) onboardingSignInBtn.onclick = () => {
+    skipOnboardingAfterLogin = true;
+    setOnboardingVisible(false);
+    openIdentityModal('login');
+  };
+  ['aiCurrentWeightInput','aiGoalWeightInput','aiGoalDateInput'].forEach((id) => {
+    const node = el(id);
+    if (!node) return;
+    node.onblur = () => { validateAiGoalFields(); };
+  });
+  el('aiGetPlanBtn').onclick = () => submitAiGoalInputs().catch(e => { el('aiGoalFlowError').innerText = e.message + ' Try again.'; });
+  el('aiAcceptPlanBtn').onclick = () => acceptAiPlan().catch(e => { el('aiSuggestionError').innerText = e.message; });
+  el('aiDeclinePlanBtn').onclick = () => declineAiPlan().catch(e => { el('aiSuggestionError').innerText = e.message; });
+  el('aiEditPlanBtn').onclick = () => { const b = el('aiEditPlanBlock'); if (b) b.classList.toggle('hidden'); };
+  el('aiEditPlanSubmitBtn').onclick = () => submitAiPlanEdit().catch(e => { el('aiSuggestionError').innerText = e.message; });
+  el('settingsAiGoalBtn').onclick = () => openAiGoalFlow('settings');
+
+  // Initialize UI state
+  el('weightInput').placeholder = unitSuffix();
+  activateTab('dashboard');
+  showAddFoodPanel(null);
+  updateVoiceToggleLabel();
+  renderTodayDateNavigator();
+
+  // Click bindings that may not exist until a sheet/modal is rendered
+  const bindClick = (id, handler) => {
+    const node = el(id);
+    if (node) node.onclick = handler;
+  };
+
+  // Servings sheet
+  bindClick('sheetOverlay', () => closeSheet());
+  bindClick('sheetCloseBtn', () => closeSheet());
+  bindClick('sheetCancelBtn', () => closeSheet());
+  bindClick('sheetSaveBtn', () => saveFromSheet());
+
+  // Manual entry
+  bindClick('manualSaveBtn', () => saveManualEntry());
+  bindClick('saveQuickFillBtn', () => addQuickFill());
+  bindClick('addQuickFillsCtaBtn', () => {
+    const sBtn = el('tabSettingsBtn');
+    if (sBtn) sBtn.click();
+    const sec = el('quickFillSettingsSection');
+    if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  bindClick('settingsSignUpBtn', () => openIdentityModal('signup'));
+  bindClick('settingsSignInBtn', () => openIdentityModal('login'));
+
+  bindClick('addFoodPhotoBtn', () => showAddFoodPanel('addFoodPhotoPanel'));
+  bindClick('addFoodVoiceBtn', () => { voiceFollowUpCount = 0; showAddFoodPanel('addFoodVoicePanel'); });
+  bindClick('addFoodQuickFillBtn', () => showAddFoodPanel('addFoodQuickFillPanel'));
+  bindClick('addFoodManualBtn', () => showAddFoodPanel('addFoodManualPanel'));
+  bindClick('addFoodOverlay', () => showAddFoodPanel(null));
+  document.querySelectorAll('.addFoodModalCloseBtn').forEach((n) => { n.onclick = () => showAddFoodPanel(null); });
+
+  bindClick('todayPrevBtn', () => { if (!viewSpanEnabled) return; selectedDayOffset = Math.max(-viewSpanPastDays, selectedDayOffset - 1); renderTodayDateNavigator(); refresh().catch(e => setStatus(e.message)); });
+  bindClick('todayNextBtn', () => { if (!viewSpanEnabled) return; selectedDayOffset = Math.min(viewSpanFutureDays, selectedDayOffset + 1); renderTodayDateNavigator(); refresh().catch(e => setStatus(e.message)); });
+  bindClick('photoUnifiedLibraryBtn', () => { const n = el('photoUnifiedInput'); if (n) n.click(); });
+  bindClick('photoUnifiedCameraBtn', () => { const n = el('photoUnifiedCameraInput'); if (n) n.click(); });
+
+  bindClick('voiceToggleBtn', () => {
+    const recognition = ensureVoiceRecognition();
+    if (!recognition) {
+      setStatus('Voice recognition is not available on this browser. Type your meal details instead.');
+      return;
+    }
+    if (voiceIsListening) {
+      stopVoiceRecognition();
+      return;
+    }
+    voiceIsListening = true;
+    voiceAutoSendPending = true;
+    updateVoiceToggleLabel();
+    setStatus('Listening…');
+    recognition.start();
+  });
+
+  bindClick('toggleDailyGoalsBtn', () => toggleSection('dailyGoalsBody', 'toggleDailyGoalsBtn'));
+  bindClick('toggleAddFoodBtn', () => toggleSection('addFoodBody', 'toggleAddFoodBtn'));
+  bindClick('chatToggleBtn', () => toggleSection('coachChatBody', 'chatToggleBtn', 'Hide', 'Show'));
+  bindClick('upgradeMonthlyBtn', () => billingController && billingController.startUpgradeCheckout('monthly'));
+  bindClick('upgradeYearlyBtn', () => billingController && billingController.startUpgradeCheckout('yearly'));
+  bindClick('manageSubscriptionBtn', () => billingController && billingController.openManageSubscription());
+  bindClick('exportDataBtn', () => billingController && billingController.exportMyData());
+}
+
+
+
+function hideNetlifyIdentityOverlays() {
+  // Netlify Identity injects overlays/modals with varying selectors depending on version.
+  const selectors = [
+    '#netlify-identity-overlay',
+    '#netlify-identity-modal',
+    '#netlify-identity-widget',
+    '.netlify-identity-overlay',
+    '.netlify-identity-modal',
+    '.netlify-identity-widget',
+    '[data-netlify-identity-widget]'
+  ];
+  selectors.forEach((sel) => {
+    document.querySelectorAll(sel).forEach((node) => {
+      try {
+        node.style.display = 'none';
+        node.style.pointerEvents = 'none';
+      } catch {}
+    });
+  });
+  try { document.body.classList.remove('netlify-identity-open'); } catch {}
+}
+
+function hideAllBlockingOverlays() {
+  // Make sure no full-screen overlay can linger and dim/block the UI.
+  const ids = [
+    'onboardingOverlay',
+    'feedbackOverlay',
+    'sheetOverlay',
+    'addFoodOverlay',
+    'estimateOverlay'
+  ];
+  ids.forEach((id) => {
+    const node = el(id);
+    if (!node) return;
+    node.classList.add('hidden');
+    node.style.display = 'none';
+    node.style.pointerEvents = 'none';
+    node.style.opacity = '0';
+    // Some overlays also use the HTML hidden attribute.
+    try { node.hidden = true; } catch {}
+  });
+
+  // Hide sheets/panels if they exist.
+  const sheetIds = ['servingsSheet', 'plateEstimateSheet'];
+  sheetIds.forEach((id) => {
+    const node = el(id);
+    if (!node) return;
+    node.classList.add('hidden');
+    node.style.display = 'none';
+    try { node.hidden = true; } catch {}
+  });
+
+  // Restore scrolling if any modal previously disabled it.
+  try { document.body.style.overflow = ''; } catch {}
+}
+
+
+function openIdentityModal(mode = 'login') {
+  if (typeof netlifyIdentity === 'undefined') {
+    setStatus('Sign in is not available in this environment yet.');
+    return;
+  }
+
+  const onboardingVisible = !el('onboardingOverlay')?.classList.contains('hidden');
+  if (onboardingVisible) setOnboardingVisible(false);
+
+  const raiseIdentityWidget = () => {
+    setTimeout(() => {
+      const widget = document.querySelector('.netlify-identity-widget');
+      if (widget) widget.style.zIndex = '20000';
+      const modal = document.querySelector('.netlify-identity-widget .modal');
+      if (modal) modal.style.zIndex = '20001';
+    }, 0);
+  };
+
+  try {
+    netlifyIdentity.open(mode === 'signup' ? 'signup' : 'login');
+    raiseIdentityWidget();
+  } catch {
+    netlifyIdentity.open();
+    raiseIdentityWidget();
+  }
+}
+
+async function initAuthedSession(opts = {}) {
+  const { skipOnboarding = false, onboardingMode = 'onboarding' } = opts;
+  const landing = el('mockLanding');
+  if (landing) landing.classList.add('hidden');
+  showApp(true);
+  await loadProfile();
+  await loadLinkedDevices();
+  await ensureFeedbackGate();
+  if (feedbackGateState.required) return;
+  if (!skipOnboarding && !profileState.onboarding_completed) {
+    openAiGoalFlow(onboardingMode);
+    return;
+  }
+  setOnboardingVisible(false);
+  await refresh();
+}
+
+if (typeof netlifyIdentity !== 'undefined') {
+  netlifyIdentity.on('init', user => {
+    currentUser = user;
+
+    if (user) {
+      // Logged-in: go straight into the app.
+      showApp(true);
+      setOnboardingVisible(false);
+      setFeedbackOverlay(false, null);
+      initAuthedSession({ skipOnboarding: true }).catch(e => setStatus(e.message));
+      return;
+    }
+
+    // Logged-out: show the app + immediately start the onboarding flow (Step 1).
+    showApp(true);
+    showLoggedOutOnboarding();
+    setFeedbackOverlay(false, null);
+    initAuthedSession({ skipOnboarding: false, onboardingMode: 'onboarding' }).catch(e => setStatus(e.message));
+});
+  netlifyIdentity.on('login', (user) => {
+  currentUser = user;
+  // Always unlock UI after identity login.
+  setOnboardingVisible(false);
+  hideNetlifyIdentityOverlays();
+  hideAllBlockingOverlays();
+  showApp(true);
+  setFeedbackOverlay(false, null);
+
+  // Skip onboarding after a paid user logs in.
+  initAuthedSession({ skipOnboarding: true }).catch(e => setStatus(e.message));
+
+  try { netlifyIdentity.close(); } catch {}
+  setStatus('Logged in.');
+});
+  netlifyIdentity.on('logout', () => {
+    currentUser = null;
+    setFeedbackOverlay(false, null);
+    linkedDevicesState = [];
+    renderDeviceSettings();
+
+    // After logout, fall back to a device session (same-device relogin without identity).
+    initAuthedSession({ skipOnboarding: false, onboardingMode: 'onboarding' }).catch(e => setStatus(e.message));
+    setStatus('Logged out.');
+  });
+  netlifyIdentity.on('close', () => {
+  // Ensure no stale overlay keeps the app dim/blocked.
+  hideNetlifyIdentityOverlays();
+  hideAllBlockingOverlays();
+});
+}
+
+if (window.AppBilling && typeof window.AppBilling.createBillingController === 'function') {
+  billingController = window.AppBilling.createBillingController({
+    api,
+    authHeaders,
+    el,
+    setStatus,
+    getCurrentUser: () => currentUser
+  });
+}
+
+applyDarkModeUI();
+applyFontSizeUI();
+bindUI();
+const mockModeBadge = el('mockModeBadge');
+if (mockModeBadge) {
+  mockModeBadge.classList.toggle('hidden', !MOCK_MODE);
+  mockModeBadge.innerText = 'Mock Mode';
+}
+
+if (MOCK_MODE) {
+  showApp(true);
+  const landing = el('mockLanding');
+  if (landing) landing.classList.add('hidden');
   initAuthedSession().catch(e => setStatus(e.message));
   if (typeof netlifyIdentity !== 'undefined') netlifyIdentity.init();
 } else if (typeof netlifyIdentity !== 'undefined') {
-  // Netlify Identity present: let its init/login/logout events drive the flow.
   netlifyIdentity.init();
+} else if (deviceAutoLoginEnabled) {
+  setOnboardingVisible(false);
+  initAuthedSession({ skipOnboarding: true }).catch(e => setStatus(e.message));
 } else {
-  // No Netlify Identity (e.g., local dev): fall back to device session.
   showApp(false);
-  initAuthedSession({ skipOnboarding: false, onboardingMode: 'onboarding' }).catch(e => setStatus(e.message));
+  showLoggedOutOnboarding();
 }
