@@ -205,3 +205,299 @@ const el = (id) => document.getElementById(id);
     el('broadcastFeedbackBtn').onclick = () => sendCampaign();
     el('disableFeedbackBtn').onclick = () => disableCampaign();
     authorize();
+
+
+// --- Admin UX upgrades (tabs, user lookup, overrides, audit, safer actions) ---
+(function initAdminUxUpgrades() {
+  let selectedUser = null;
+
+  function showToast(message, type = 'success', timeoutMs = 3500) {
+    const t = el('adminToast');
+    if (!t) return;
+    t.className = 'toast ' + (type || '');
+    t.innerText = message || '';
+    t.classList.remove('hidden');
+    if (timeoutMs) {
+      window.clearTimeout(t._hideTimer);
+      t._hideTimer = window.setTimeout(() => t.classList.add('hidden'), timeoutMs);
+    }
+  }
+
+  function setActiveTab(tab) {
+    document.querySelectorAll('.tabBtn').forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-tab') === tab);
+    });
+    ['users','billing','insights','ops'].forEach((k) => {
+      const p = el('tab_' + k);
+      if (p) p.classList.toggle('hidden', k !== tab);
+    });
+    try { location.hash = tab; } catch {}
+  }
+
+  function moveLegacyCards() {
+    const legacy = el('legacyAdminCards');
+    if (!legacy) return;
+    const cards = Array.from(legacy.querySelectorAll(':scope > section.card'));
+    const mapTab = (title) => {
+      const t = (title || '').toLowerCase();
+      if (t.includes('reconcile') || t.includes('billing') || t.includes('subscription')) return 'billing';
+      if (t.includes('ai insights') || t.includes('growth goals') || t.includes('stats') || t.includes('goal')) return 'insights';
+      if (t.includes('feedback') || t.includes('retention') || t.includes('broadcast') || t.includes('export')) return 'ops';
+      if (t.includes('premium pass') || t.includes('access')) return 'users';
+      return 'insights';
+    };
+    cards.forEach((card) => {
+      const title = card.querySelector('h2')?.innerText || '';
+      const tab = mapTab(title);
+      const panel = el('tab_' + tab);
+      if (panel) panel.appendChild(card);
+    });
+
+    // Put advanced tools behind a native accordion in Ops
+    const ops = el('tab_ops');
+    if (ops) {
+      const advanced = document.createElement('details');
+      advanced.className = 'card';
+      advanced.open = false;
+      const sum = document.createElement('summary');
+      sum.innerText = 'Advanced tools';
+      sum.style.fontWeight = '700';
+      advanced.appendChild(sum);
+
+      // Move remaining ops cards (except any that are already user-facing) into advanced.
+      const opsCards = Array.from(ops.querySelectorAll(':scope > section.card'));
+      opsCards.forEach((c) => advanced.appendChild(c));
+      ops.appendChild(advanced);
+    }
+  }
+
+  function renderSelectedUser() {
+    const box = el('userCard');
+    if (!box) return;
+    if (!selectedUser) {
+      box.classList.add('hidden');
+      box.innerHTML = '';
+      return;
+    }
+    const u = selectedUser.user || {};
+    const ent = selectedUser.entitlements || {};
+    const usage = selectedUser.usage_today || {};
+    const devices = selectedUser.devices || {};
+    const premium = ent.is_premium ? 'Premium' : 'Free';
+    const src = ent.premium_source || 'none';
+
+    box.classList.remove('hidden');
+    box.innerHTML = `
+      <div class="grid2">
+        <div><div class="k">Email</div><div class="v">${u.email || '<span class="muted">—</span>'}</div></div>
+        <div><div class="k">User ID</div><div class="v">${u.user_id}</div></div>
+        <div><div class="k">Entitlement</div><div class="v">${premium} <span class="muted">(${src})</span></div></div>
+        <div><div class="k">Pass expires</div><div class="v">${u.premium_pass_expires_at || (u.premium_pass ? 'Unlimited' : '—')}</div></div>
+        <div><div class="k">AI actions today</div><div class="v">${usage.ai_actions ?? 0}</div></div>
+        <div><div class="k">Food entries today</div><div class="v">${usage.food_entries ?? 0}</div></div>
+        <div><div class="k">Linked devices</div><div class="v">${devices.count ?? 0}</div></div>
+        <div><div class="k">Subscription</div><div class="v">${u.subscription_status || 'inactive'}</div></div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button id="copyUserIdBtn" class="secondaryBtn">Copy user_id</button>
+        <button id="copyEmailBtn" class="secondaryBtn">Copy email</button>
+      </div>
+    `;
+    const copy = async (v) => {
+      try { await navigator.clipboard.writeText(v || ''); showToast('Copied.', 'success', 1200); } catch { showToast('Copy failed.', 'error'); }
+    };
+    el('copyUserIdBtn')?.addEventListener('click', () => copy(u.user_id));
+    el('copyEmailBtn')?.addEventListener('click', () => copy(u.email || ''));
+  }
+
+  async function lookupUser() {
+    const q = el('userLookupInput')?.value?.trim();
+    if (!q) return showToast('Enter an email, user_id, or device_id.', 'warn');
+    try {
+      setStatus(el('userLookupStatus'), 'Looking up…');
+      const out = await adminClient.adminApi('admin-user-lookup', { method: 'GET' , headers: { }, });
+      // adminApi doesn't support query params directly; fallback:
+      // We'll call fetch manually so we can pass querystring.
+    } catch (e) {
+      // no-op
+    }
+  }
+
+  async function lookupUser2() {
+    const q = el('userLookupInput')?.value?.trim();
+    if (!q) return showToast('Enter an email, user_id, or device_id.', 'warn');
+    try {
+      setStatus(el('userLookupStatus'), 'Looking up…');
+      const token = adminToken;
+      const r = await fetch(`/api/admin-user-lookup?identifier=${encodeURIComponent(q)}`, {
+        method: 'GET',
+        headers: { 'x-admin-token': token }
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || 'Lookup failed');
+      selectedUser = data;
+      setStatus(el('userLookupStatus'), `Selected: ${data.user?.email || data.user?.user_id}`);
+      renderSelectedUser();
+      await refreshAudit(false);
+      showToast('User loaded.', 'success', 1500);
+    } catch (e) {
+      selectedUser = null;
+      renderSelectedUser();
+      setStatus(el('userLookupStatus'), e.message || String(e));
+      showToast(e.message || String(e), 'error');
+    }
+  }
+
+  function requireSelectedUser() {
+    if (!selectedUser?.user?.user_id) {
+      showToast('Lookup and select a user first.', 'warn');
+      throw new Error('No selected user');
+    }
+    return selectedUser.user;
+  }
+
+  async function grantOverride() {
+    const u = requireSelectedUser();
+    const dur = el('overrideDuration')?.value || '7';
+    const note = (el('overrideNote')?.value || '').trim();
+    if (dur === 'unlimited') {
+      if (!note) {
+        showToast('Note is required for Unlimited.', 'warn');
+        return;
+      }
+      const confirmTxt = prompt('Type UNLIMITED to confirm granting unlimited premium:');
+      if (confirmTxt !== 'UNLIMITED') return;
+    }
+    let expiresAt = null;
+    if (dur !== 'unlimited') {
+      const days = Number(dur || '7');
+      const d = new Date();
+      d.setDate(d.getDate() + days);
+      expiresAt = d.toISOString();
+    }
+
+    try {
+      setStatus(el('overrideStatus'), 'Granting premium…');
+      const out = await adminClient.adminApi('admin-pass-grant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'grant',
+          identifier: u.user_id,
+          expires_at: expiresAt,
+          note: note || (dur === 'unlimited' ? 'unlimited_override' : null)
+        })
+      });
+      setStatus(el('overrideStatus'), `Granted premium to ${out.email || out.user_id}.`);
+      showToast('Premium granted.', 'success');
+      await lookupUser2();
+    } catch (e) {
+      setStatus(el('overrideStatus'), e.message || String(e));
+      showToast(e.message || String(e), 'error');
+    }
+  }
+
+  async function grantTrialFromCard() {
+    const u = requireSelectedUser();
+    const days = Number(prompt('Trial length in days:', '7') || '7');
+    if (!Number.isFinite(days) || days <= 0) return;
+    try {
+      setStatus(el('overrideStatus'), 'Granting trial…');
+      const out = await adminClient.adminApi('admin-pass-trial', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: u.user_id, days })
+      });
+      setStatus(el('overrideStatus'), `Trial granted for ${out.email || out.user_id} (${out.trial_days} days).`);
+      showToast('Trial granted.', 'success');
+      await lookupUser2();
+    } catch (e) {
+      setStatus(el('overrideStatus'), e.message || String(e));
+      showToast(e.message || String(e), 'error');
+    }
+  }
+
+  async function revokeOverride() {
+    const u = requireSelectedUser();
+    const confirmTxt = prompt(`Type REVOKE to confirm removing admin override for ${u.email || u.user_id}:`);
+    if (confirmTxt !== 'REVOKE') return;
+    try {
+      setStatus(el('overrideStatus'), 'Revoking override…');
+      const out = await adminClient.adminApi('admin-pass-grant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'revoke', identifier: u.user_id })
+      });
+      setStatus(el('overrideStatus'), `Override revoked for ${out.email || out.user_id}.`);
+      showToast('Override revoked.', 'success');
+      await lookupUser2();
+    } catch (e) {
+      setStatus(el('overrideStatus'), e.message || String(e));
+      showToast(e.message || String(e), 'error');
+    }
+  }
+
+  async function refreshAudit(filterToUser = null) {
+    try {
+      setStatus(el('auditStatus'), 'Loading…');
+      const token = adminToken;
+      let q = '';
+      if (filterToUser === true) {
+        if (selectedUser?.user?.user_id) q = `&q=${encodeURIComponent(selectedUser.user.user_id)}`;
+      } else if (filterToUser === false) {
+        // no filter
+      } else {
+        // default: if selected user exists, show filtered, else global
+        if (selectedUser?.user?.user_id) q = `&q=${encodeURIComponent(selectedUser.user.user_id)}`;
+      }
+
+      const r = await fetch(`/api/admin-audit-list?limit=50${q}`, { headers: { 'x-admin-token': token } });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || 'Failed to load audit');
+      const items = data.items || [];
+      const list = el('auditList');
+      if (list) {
+        list.innerHTML = items.map((it) => {
+          const details = it.details ? JSON.stringify(it.details, null, 2) : '';
+          return `
+            <div class="auditItem">
+              <div class="meta">
+                <span><strong>${it.action}</strong></span>
+                <span>${new Date(it.created_at).toLocaleString()}</span>
+                <span class="muted">${it.target || ''}</span>
+              </div>
+              ${details ? `<pre>${details}</pre>` : ''}
+            </div>
+          `;
+        }).join('');
+      }
+      setStatus(el('auditStatus'), `${items.length} actions`);
+    } catch (e) {
+      setStatus(el('auditStatus'), e.message || String(e));
+    }
+  }
+
+  // Hook up controls
+  document.querySelectorAll('.tabBtn').forEach((b) => b.addEventListener('click', () => setActiveTab(b.getAttribute('data-tab'))));
+  el('userLookupBtn')?.addEventListener('click', lookupUser2);
+  el('userLookupInput')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') lookupUser2(); });
+
+  el('grantOverrideBtn')?.addEventListener('click', grantOverride);
+  el('grantTrialBtn')?.addEventListener('click', grantTrialFromCard);
+  el('revokeOverrideBtn')?.addEventListener('click', revokeOverride);
+
+  el('refreshAuditBtn')?.addEventListener('click', () => refreshAudit(false));
+  el('filterAuditBtn')?.addEventListener('click', () => refreshAudit(true));
+
+  // Initialize layout once authorized
+  const oldAuthorize = el('authorizeBtn')?.onclick;
+  el('authorizeBtn')?.addEventListener('click', () => {
+    // After existing authorize handler runs, redistribute.
+    window.setTimeout(() => {
+      moveLegacyCards();
+      const tabFromHash = (location.hash || '').replace('#','') || 'users';
+      setActiveTab(['users','billing','insights','ops'].includes(tabFromHash) ? tabFromHash : 'users');
+      showToast('Admin authorized.', 'success', 1500);
+    }, 50);
+  });
+})();

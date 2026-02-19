@@ -23,7 +23,77 @@
     <div id="adminStatus" class="muted"></div>
   </section>
 
+  
   <div id="adminProtected" class="hidden">
+    <div id="adminToast" class="toast hidden"></div>
+
+    <nav class="tabs">
+      <button class="tabBtn" data-tab="users">Users</button>
+      <button class="tabBtn" data-tab="billing">Billing</button>
+      <button class="tabBtn" data-tab="insights">Insights</button>
+      <button class="tabBtn" data-tab="ops">Ops</button>
+    </nav>
+
+    <section id="tab_users" class="tabPanel">
+      <section class="card">
+        <h2>User Lookup</h2>
+        <label>Email, user_id, or device_id</label>
+        <div class="row">
+          <input id="userLookupInput" placeholder="user@example.com" />
+          <button id="userLookupBtn">Lookup</button>
+        </div>
+        <div id="userLookupStatus" class="muted"></div>
+        <div id="userCard" class="userCard hidden"></div>
+      </section>
+
+      <section class="card">
+        <h2>Access Overrides</h2>
+        <div class="grid2">
+          <div>
+            <label>Duration</label>
+            <select id="overrideDuration">
+              <option value="7">7 days</option>
+              <option value="30">30 days</option>
+              <option value="90">90 days</option>
+              <option value="unlimited">Unlimited</option>
+            </select>
+          </div>
+          <div>
+            <label>Note (required for Unlimited)</label>
+            <input id="overrideNote" placeholder="Reason / campaign" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <button id="grantOverrideBtn">Grant Premium</button>
+          <button id="grantTrialBtn" class="secondaryBtn">Grant Trial</button>
+        </div>
+
+        <div class="dangerZone" style="margin-top:14px;">
+          <div class="row">
+            <button id="revokeOverrideBtn" class="dangerBtn">Revoke Override</button>
+          </div>
+          <div class="muted" style="margin-top:6px;">Revoke affects admin pass overrides only. Active subscriptions remain premium.</div>
+        </div>
+
+        <div id="overrideStatus" class="muted"></div>
+      </section>
+
+      <section class="card">
+        <h2>Recent Admin Actions</h2>
+        <div class="row">
+          <button id="refreshAuditBtn" class="secondaryBtn">Refresh</button>
+          <button id="filterAuditBtn" class="secondaryBtn">Filter to selected user</button>
+        </div>
+        <div id="auditStatus" class="muted"></div>
+        <div id="auditList" class="auditList"></div>
+      </section>
+    </section>
+    <section id="tab_billing" class="tabPanel hidden"></section>
+    <section id="tab_insights" class="tabPanel hidden"></section>
+    <section id="tab_ops" class="tabPanel hidden"></section>
+
+    <div id="legacyAdminCards" class="hidden">
+
     <section class="card">
       <h2>Growth Goals</h2>
       <div><strong>Weekly active users goal:</strong> <span id="wauGoalTarget">500</span></div>
@@ -142,7 +212,10 @@
       </div>
       <div id="campaignStatus" class="muted"></div>
     </section>
+
+    </div>
   </div>
+
 
   <script src="admin-api.js?v=1"></script>
   <script src="admin-render.js?v=1"></script>
