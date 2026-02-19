@@ -697,7 +697,32 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
   gap: 8px;
   overflow-x: auto;
   padding-top: 8px;
+  padding-bottom: 2px;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
 }
+.todayDateChips::-webkit-scrollbar { height: 6px; }
+.todayDateChips::-webkit-scrollbar-thumb { background: rgba(0,0,0,.18); border-radius: 999px; }
+.todayDateChips::-webkit-scrollbar-track { background: rgba(0,0,0,.06); border-radius: 999px; }
+
+.todayDateChip {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  line-height: 1;
+  scroll-snap-align: start;
+}
+.todayDateChip.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(30, 115, 255, .12);
+}
+@media (max-width: 520px) {
+  .todayDateChip { padding: 6px 8px; font-size: 12px; }
+  .todayDateChips { gap: 6px; }
+}
+
 .todayDateChip {
   border: 1px solid var(--border, #d9dee8);
   background: var(--card, #fff);
