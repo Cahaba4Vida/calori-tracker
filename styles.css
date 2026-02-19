@@ -765,3 +765,6 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
 [data-netlify-identity-widget] {
   z-index: 99999 !important;
 }
+
+
+.dangerBtn{margin-left:8px;border:1px solid rgba(255,0,0,0.35);background:rgba(255,0,0,0.06);} .dangerBtn:hover{background:rgba(255,0,0,0.10);} .dangerBtn:disabled{opacity:0.5;cursor:not-allowed;}

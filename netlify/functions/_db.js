@@ -155,6 +155,18 @@ async function updateUserDeviceLink({ userId, deviceId, deviceName, isEnabled })
   }
 }
 
+
+async function deleteUserDeviceLink({ userId, deviceId }) {
+  const r = await query(
+    `delete from user_device_links
+      where user_id = $1
+        and device_id = $2`,
+    [userId, deviceId]
+  );
+  return r.rowCount > 0;
+}
+
+
 module.exports = {
   query,
   ensureUserProfile,
