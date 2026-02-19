@@ -959,9 +959,9 @@ async function savePlateEstimateFromSheet() {
     const calories = Number(el('estimateCaloriesInput').value);
     if (!isFinite(calories) || calories <= 0) throw new Error('Calories must be > 0.');
 
-    const protein_g = (() => { const __n = el('estimateProteinInput'); if (__n) __n.value = == '' ? null : Number(el('estimateProteinInput').value); })();
-    const carbs_g = (() => { const __n = el('estimateCarbsInput'); if (__n) __n.value = == '' ? null : Number(el('estimateCarbsInput').value); })();
-    const fat_g = (() => { const __n = el('estimateFatInput'); if (__n) __n.value = == '' ? null : Number(el('estimateFatInput').value); })();
+    const protein_g = (() => { const __n = el('estimateProteinInput'); return (!__n || __n.value === '' ? null : Number(__n.value)); })();
+    const carbs_g = (() => { const __n = el('estimateCarbsInput'); return (!__n || __n.value === '' ? null : Number(__n.value)); })();
+    const fat_g = (() => { const __n = el('estimateFatInput'); return (!__n || __n.value === '' ? null : Number(__n.value)); })();
 
     const meta = {
       confidence: pendingPlateEstimate.confidence,
@@ -998,7 +998,7 @@ async function savePlateEstimateFromSheet() {
 function computeTotalsPreview() {
   const servings = Number(el('servingsEatenInput').value);
   const cal = Number(el('calPerServingInput').value);
-  const prot = (() => { const __n = el('proteinPerServingInput'); if (__n) __n.value = == '' ? null : Number(el('proteinPerServingInput').value); })();
+  const prot = (() => { const __n = el('proteinPerServingInput'); return (!__n || __n.value === '' ? null : Number(__n.value)); })();
 
   if (!isFinite(servings) || servings <= 0 || !isFinite(cal) || cal < 0) {
     el('totalCaloriesComputed').innerText = '—';
@@ -1018,7 +1018,7 @@ async function saveFromSheet() {
     el('sheetError').innerText = '';
     const servings_eaten = Number(el('servingsEatenInput').value);
     const calories_per_serving = Number(el('calPerServingInput').value);
-    const protein_g_per_serving = (() => { const __n = el('proteinPerServingInput'); if (__n) __n.value = == '' ? null : Number(el('proteinPerServingInput').value); })();
+    const protein_g_per_serving = (() => { const __n = el('proteinPerServingInput'); return (!__n || __n.value === '' ? null : Number(__n.value)); })();
 
     if (!pendingExtraction) throw new Error('No extracted data.');
     if (!isFinite(servings_eaten) || servings_eaten <= 0) throw new Error('Servings eaten must be > 0.');
