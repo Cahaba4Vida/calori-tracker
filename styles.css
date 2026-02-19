@@ -697,7 +697,32 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
   gap: 8px;
   overflow-x: auto;
   padding-top: 8px;
+  padding-bottom: 2px;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
 }
+.todayDateChips::-webkit-scrollbar { height: 6px; }
+.todayDateChips::-webkit-scrollbar-thumb { background: rgba(0,0,0,.18); border-radius: 999px; }
+.todayDateChips::-webkit-scrollbar-track { background: rgba(0,0,0,.06); border-radius: 999px; }
+
+.todayDateChip {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  line-height: 1;
+  scroll-snap-align: start;
+}
+.todayDateChip.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(30, 115, 255, .12);
+}
+@media (max-width: 520px) {
+  .todayDateChip { padding: 6px 8px; font-size: 12px; }
+  .todayDateChips { gap: 6px; }
+}
+
 .todayDateChip {
   border: 1px solid var(--border, #d9dee8);
   background: var(--card, #fff);
@@ -848,39 +873,31 @@ body.invertedTheme #trendsCard::before{
 }
 
 
-/* Photo processing overlay (safe: does not reuse existing .overlay) */
-.photoProcessingOverlay{
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.25);
-  z-index: 3000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* --- Aethon header banner --- */
+.appHeader{
+  display:grid;
+  grid-template-columns: 1fr minmax(0, 520px) auto;
+  align-items:center;
+  column-gap:12px;
 }
-.photoProcessingCard{
-  background: rgba(255,255,255,0.94);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 18px 18px;
-  min-width: 220px;
-  max-width: 320px;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.18);
+.headerLeft{
+  width:100%;
+  height:1px;
+}
+.headerBrand{
+  width:100%;
   display:flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
+  align-items:center;
+  justify-content:center;
 }
-.photoProcessingText{
-  font-weight: 600;
-  text-align: center;
+.headerBrand img{
+  width:100%;
+  height:56px;
+  object-fit:contain;
+  display:block;
 }
-.photoSpinner{
-  width: 34px;
-  height: 34px;
-  border: 3px solid rgba(0,0,0,0.15);
-  border-top-color: rgba(0,0,0,0.65);
-  border-radius: 50%;
-  animation: photoSpin 0.9s linear infinite;
-}
-@keyframes photoSpin { to { transform: rotate(360deg); } }
+.headerBrand .bannerDark{ display:none; }
+body.invertedTheme .headerBrand .bannerLight{ display:none; }
+body.invertedTheme .headerBrand .bannerDark{ display:block; }
+
+.appHeader .auth{justify-self:end; display:flex; gap:10px; align-items:center;}
