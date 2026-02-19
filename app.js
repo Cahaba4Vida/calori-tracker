@@ -1401,13 +1401,70 @@ function fileToDataUrl(file) {
   });
 }
 
+// Mobile cameras often produce very large images; sending raw base64 can exceed Netlify's request limits.
+// This helper downscales + compresses images client-side to keep uploads reliable.
+async function fileToDataUrlResized(file, opts = {}) {
+  const {
+    maxDim = 1280,
+    quality = 0.85,
+    mime = 'image/jpeg',
+    // If already small, skip re-encoding (keeps speed + quality).
+    passthroughMaxBytes = 1200 * 1024
+  } = opts;
+
+  try {
+    if (file && Number.isFinite(file.size) && file.size <= passthroughMaxBytes) {
+      return await fileToDataUrl(file);
+    }
+
+    const bitmap = await (async () => {
+      if (typeof createImageBitmap === 'function') return await createImageBitmap(file);
+      // Fallback for older browsers
+      return await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = URL.createObjectURL(file);
+      });
+    })();
+
+    const w = bitmap.width || bitmap.naturalWidth;
+    const h = bitmap.height || bitmap.naturalHeight;
+    if (!w || !h) return await fileToDataUrl(file);
+
+    const scale = Math.min(1, maxDim / Math.max(w, h));
+    const tw = Math.max(1, Math.round(w * scale));
+    const th = Math.max(1, Math.round(h * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = tw;
+    canvas.height = th;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0, tw, th);
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, mime, quality));
+    if (!blob) return await fileToDataUrl(file);
+
+    // Clean up object URL if used
+    try {
+      if (bitmap && bitmap.close) bitmap.close();
+    } catch {}
+
+    return await fileToDataUrl(new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: mime }));
+  } catch (e) {
+    // Fall back to raw file if anything goes wrong
+    return await fileToDataUrl(file);
+  }
+}
+
+
 async function uploadFoodFromInput(inputId = 'photoInput') {
   const input = el(inputId);
   const file = input.files && input.files[0];
   if (!file) return;
 
   setStatus('Extracting nutrition info…');
-  const imageDataUrl = await fileToDataUrl(file);
+  const imageDataUrl = await fileToDataUrlResized(file);
 
   // Extract only (do not insert yet)
   const j = await withThinking(async () => api('entries-add-image', {
@@ -1441,7 +1498,7 @@ async function uploadPlateFromInput(inputId = 'plateInput') {
   if (!file) return;
 
   setStatus('Estimating…');
-  const imageDataUrl = await fileToDataUrl(file);
+  const imageDataUrl = await fileToDataUrlResized(file);
 
   const servings_eaten = 1.0;
 
@@ -1481,7 +1538,7 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
   const input = el(inputId);
   const file = input && input.files && input.files[0];
   if (!file) return;
-  const imageDataUrl = await fileToDataUrl(file);
+  const imageDataUrl = await fileToDataUrlResized(file);
   input.value = '';
 
   try {
