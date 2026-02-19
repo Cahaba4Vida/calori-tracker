@@ -56,7 +56,7 @@ async function findUserId(subscription) {
     const customer = await stripeGet(`customers/${encodeURIComponent(String(subscription.customer))}`);
     const email = customer?.email;
     if (email) {
-      const byEmail = await query(`select user_id from user_profiles where lower(email)=lower($1) order by created_at asc limit 1`, [email]);
+      const byEmail = await query(`select user_id from user_profiles where lower(email)=lower($1) order by created_at desc limit 1`, [email]);
       if (byEmail.rows[0]?.user_id) return byEmail.rows[0].user_id;
     }
   }

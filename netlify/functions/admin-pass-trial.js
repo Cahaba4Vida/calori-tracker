@@ -22,7 +22,7 @@ exports.handler = async (event) => {
   if (!identifier) return json(400, { error: 'identifier is required' });
 
   const found = await query(
-    `select user_id, email from user_profiles where user_id=$1 or lower(email)=lower($1) order by created_at asc limit 1`,
+    `select user_id, email from user_profiles where user_id=$1 or lower(email)=lower($1) order by created_at desc limit 1`,
     [identifier]
   );
   const user = found.rows[0];

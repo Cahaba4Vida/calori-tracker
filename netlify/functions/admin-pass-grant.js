@@ -42,7 +42,7 @@ exports.handler = async (event) => {
       `select user_id, email
        from user_profiles
        where user_id=$1 or lower(email)=lower($1)
-       order by created_at asc
+       order by created_at desc
        limit 1`,
       [identifier]
     );
