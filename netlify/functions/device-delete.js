@@ -10,7 +10,7 @@ exports.handler = async (event, context) => {
   const auth = await requireUser(event, context);
   if (!auth.ok) return auth.response;
 
-  const { userId, email } = auth.user;
+  const { userId, email, device_id: currentDeviceId } = auth.user;
   await ensureUserProfile(userId, email);
 
   let body;
@@ -21,8 +21,14 @@ exports.handler = async (event, context) => {
     return json(400, { error: 'device_id is required and must be valid' });
   }
 
-  const ok = await deleteUserDeviceLink({ userId, deviceId });
-  if (!ok) return json(404, { error: 'Device link not found for this user' });
+  if (currentDeviceId && deviceId === currentDeviceId) {
+    return json(400, { error: 'You cannot delete the current device from itself.' });
+  }
+
+  const deleted = await deleteUserDeviceLink({ userId, deviceId });
+  if (!deleted) {
+    return json(404, { error: 'Device link not found for this user' });
+  }
 
   return json(200, { ok: true });
 };
