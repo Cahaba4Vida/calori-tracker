@@ -779,3 +779,70 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
   box-shadow: none;
   transform: none;
 }
+
+
+/* === Aethon backgrounds (added) ===
+   These are safe, optional backdrops for key cards.
+   Light mode uses *_light.png by default.
+   NOTE: Current app "dark mode" is implemented as a full-page invert filter (body.invertedTheme),
+   which will also invert background images. If you later switch dark mode to a true theme,
+   swap these URLs to the *_dark.png variants. */
+#todayCard, #addFoodCard, #dailyGoalsCard, #trendsCard{
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+#todayCard{ background-image: url("./assets/backgrounds/today_light.png"); }
+#addFoodCard{ background-image: url("./assets/backgrounds/addfood_light.png"); }
+#dailyGoalsCard{ background-image: url("./assets/backgrounds/dailygoals_light.png"); }
+#trendsCard{ background-image: url("./assets/backgrounds/trends_light.png"); }
+/* === /Aethon backgrounds === */
+
+
+
+/* === Aethon Dark Mode Backgrounds (override invert filter) === */
+body.invertedTheme #todayCard,
+body.invertedTheme #addFoodCard,
+body.invertedTheme #dailyGoalsCard,
+body.invertedTheme #trendsCard{
+  position: relative;
+  overflow: hidden;
+  background-image: none !important;
+  background-color: transparent !important;
+}
+
+body.invertedTheme #todayCard > *,
+body.invertedTheme #addFoodCard > *,
+body.invertedTheme #dailyGoalsCard > *,
+body.invertedTheme #trendsCard > *{
+  position: relative;
+  z-index: 1;
+}
+
+body.invertedTheme #todayCard::before,
+body.invertedTheme #addFoodCard::before,
+body.invertedTheme #dailyGoalsCard::before,
+body.invertedTheme #trendsCard::before{
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* Per-section dark assets */
+body.invertedTheme #todayCard::before{
+  background-image: url("./assets/backgrounds/today_dark.png");
+}
+body.invertedTheme #addFoodCard::before{
+  background-image: url("./assets/backgrounds/addfood_dark.png");
+}
+body.invertedTheme #dailyGoalsCard::before{
+  background-image: url("./assets/backgrounds/dailygoals_dark.png");
+}
+body.invertedTheme #trendsCard::before{
+  background-image: url("./assets/backgrounds/trends_dark.png");
+}
