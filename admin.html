@@ -86,6 +86,7 @@
       <label>User email or user_id</label>
       <input id="passIdentifierInput" type="text" placeholder="user@example.com or netlify user id" />
       <label>Expires at (optional, ISO datetime)</label>
+      <div class="muted">Leave blank for <b>unlimited</b> premium access.</div>
       <input id="passExpiresInput" type="text" placeholder="2026-12-31T23:59:59Z" />
       <label>Internal note (optional)</label>
       <input id="passNoteInput" type="text" placeholder="why this pass was granted" />
@@ -93,6 +94,7 @@
       <input id="trialDaysInput" type="number" min="1" max="90" step="1" placeholder="7" />
       <div class="row" style="margin-top:10px;">
         <button id="grantPassBtn">Grant Pass</button>
+        <button id="grantUnlimitedBtn">Grant Unlimited Premium</button>
         <button id="grantTrialBtn">Grant Trial Pass</button>
         <button id="revokePassBtn">Revoke Pass</button>
       </div>

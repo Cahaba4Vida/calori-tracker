@@ -99,6 +99,28 @@ const el = (id) => document.getElementById(id);
       }
     }
 
+    async function grantUnlimited() {
+      try {
+        setStatus(el('passStatus'), 'Granting unlimited premium…');
+        const out = await adminClient.adminApi('admin-pass-grant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: 'grant',
+            identifier: el('passIdentifierInput').value.trim(),
+            expires_at: null,
+            note: (el('passNoteInput').value.trim() || null) || 'unlimited_override'
+          })
+        });
+        setStatus(el('passStatus'), `Unlimited premium granted for ${out.email || out.user_id}.`);
+        await loadStats();
+      } catch (e) {
+        setStatus(el('passStatus'), e.message || String(e));
+      }
+    }
+
+
+
 
     async function reconcileSubscriptions() {
       try {
@@ -175,6 +197,7 @@ const el = (id) => document.getElementById(id);
     el('clearTokenBtn').onclick = () => clearToken();
     el('saveGoalsBtn').onclick = () => saveGoals();
     el('grantPassBtn').onclick = () => setPass('grant');
+    el('grantUnlimitedBtn').onclick = () => grantUnlimited();
     el('grantTrialBtn').onclick = () => grantTrial();
     el('revokePassBtn').onclick = () => setPass('revoke');
     el('reconcileSubsBtn').onclick = () => reconcileSubscriptions();
