@@ -7,12 +7,10 @@
   <link rel="stylesheet" href="styles.css?v=16" />
 </head>
 <body>
-  <header class="row appHeader">
-    <div class="headerBrand">
-      <img class="bannerLight" src="assets/header_banner_light.jpg" alt="Aethon Calorie & Weight Intelligence">
-      <img class="bannerDark" src="assets/header_banner_dark.jpg" alt="Aethon Calorie & Weight Intelligence">
-    </div>
+  <header class="row">
+    <h1>Calorie & Weight Tracker</h1>
     <div class="auth">
+      <a class="adminLink" href="/admin.html">Admin</a>
       <span class="muted" id="mockModeBadge">Mock Mode</span>
     </div>
   </header>
@@ -411,11 +409,6 @@
     </div>
   </main>
 
-  <!-- Admin entrypoint moved to the bottom of the page -->
-  <div id="adminFooter" class="adminFooter">
-    <a class="adminLink" href="/admin.html">Admin</a>
-  </div>
-
 
   <div id="onboardingOverlay" class="onboardingOverlay hidden">
     <div class="onboardingModal">
@@ -591,5 +584,14 @@
   <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
   <script src="app-billing.js?v=1"></script>
   <script src="app.js?v=15"></script>
+
+  <!-- Photo processing overlay -->
+  <div id="photoProcessingOverlay" class="photoProcessingOverlay hidden" aria-live="polite" aria-busy="true">
+    <div class="photoProcessingCard">
+      <div class="photoSpinner" aria-hidden="true"></div>
+      <div id="photoProcessingText" class="photoProcessingText">Processing photo…</div>
+    </div>
+  </div>
+
 </body>
 </html>
