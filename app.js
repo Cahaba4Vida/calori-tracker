@@ -1409,23 +1409,22 @@ function setPhotoProcessing(on, msg) {
   if (t) t.innerText = msg || 'Processing photo…';
 }
 
-// Downscale/compress images before sending to Netlify Functions.
-// Prevents request payload size issues on mobile photos.
+// Downscale/compress images before sending to Functions.
+// Prevents request payload size issues on large mobile photos.
 async function fileToDataUrlResized(file, { maxDim = 1280, quality = 0.85 } = {}) {
-  // Fast path for non-images
-  if (!file || !String(file.type || '').startsWith('image/')) {
-    return await fileToDataUrlResized(file);
+  if (!file) return null;
+  if (!String(file.type || '').startsWith('image/')) {
+    return await fileToDataUrl(file);
   }
 
   // If already small enough, keep original encoding
   const isProbablySmall = (file.size || 0) <= 900_000; // ~0.9MB
   if (isProbablySmall) {
-    return await fileToDataUrlResized(file);
+    return await fileToDataUrl(file);
   }
 
-  const originalUrl = await fileToDataUrlResized(file);
+  const originalUrl = await fileToDataUrl(file);
 
-  // Draw into canvas
   const img = await new Promise((resolve, reject) => {
     const i = new Image();
     i.onload = () => resolve(i);
@@ -1448,19 +1447,19 @@ async function fileToDataUrlResized(file, { maxDim = 1280, quality = 0.85 } = {}
   const ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0, tw, th);
 
-  // Always use jpeg for size; background is white-ish anyway.
   return canvas.toDataURL('image/jpeg', quality);
 }
+
 
 async function uploadFoodFromInput(inputId = 'photoInput') {
   const input = el(inputId);
   const file = input.files && input.files[0];
   if (!file) return;
 
+  
   setPhotoProcessing(true, 'Extracting nutrition…');
   try {
-
-  setStatus('Extracting nutrition info…');
+setStatus('Extracting nutrition info…');
   const imageDataUrl = await fileToDataUrlResized(file);
 
   // Extract only (do not insert yet)
@@ -1498,10 +1497,10 @@ async function uploadPlateFromInput(inputId = 'plateInput') {
   const file = input.files && input.files[0];
   if (!file) return;
 
+  
   setPhotoProcessing(true, 'Analyzing photo…');
   try {
-
-  setStatus('Estimating…');
+setStatus('Estimating…');
   const imageDataUrl = await fileToDataUrlResized(file);
 
   const servings_eaten = 1.0;
@@ -1546,10 +1545,10 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
   const input = el(inputId);
   const file = input && input.files && input.files[0];
   if (!file) return;
-
+  
   setPhotoProcessing(true, 'Analyzing photo…');
   try {
-  const imageDataUrl = await fileToDataUrlResized(file);
+const imageDataUrl = await fileToDataUrlResized(file);
   input.value = '';
 
   try {
@@ -1672,7 +1671,6 @@ function ensureVoiceRecognition() {
   } finally {
     setPhotoProcessing(false);
   }
-
 }
 
 async function sendVoiceFoodMessage() {
