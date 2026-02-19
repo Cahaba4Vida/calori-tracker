@@ -1401,67 +1401,64 @@ function fileToDataUrl(file) {
   });
 }
 
-// Mobile cameras often produce very large images; sending raw base64 can exceed Netlify's request limits.
-// This helper downscales + compresses images client-side to keep uploads reliable.
-async function fileToDataUrlResized(file, opts = {}) {
-  const {
-    maxDim = 1280,
-    quality = 0.85,
-    mime = 'image/jpeg',
-    // If already small, skip re-encoding (keeps speed + quality).
-    passthroughMaxBytes = 1200 * 1024
-  } = opts;
-
-  try {
-    if (file && Number.isFinite(file.size) && file.size <= passthroughMaxBytes) {
-      return await fileToDataUrl(file);
-    }
-
-    const bitmap = await (async () => {
-      if (typeof createImageBitmap === 'function') return await createImageBitmap(file);
-      // Fallback for older browsers
-      return await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-        img.src = URL.createObjectURL(file);
-      });
-    })();
-
-    const w = bitmap.width || bitmap.naturalWidth;
-    const h = bitmap.height || bitmap.naturalHeight;
-    if (!w || !h) return await fileToDataUrl(file);
-
-    const scale = Math.min(1, maxDim / Math.max(w, h));
-    const tw = Math.max(1, Math.round(w * scale));
-    const th = Math.max(1, Math.round(h * scale));
-
-    const canvas = document.createElement('canvas');
-    canvas.width = tw;
-    canvas.height = th;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(bitmap, 0, 0, tw, th);
-
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, mime, quality));
-    if (!blob) return await fileToDataUrl(file);
-
-    // Clean up object URL if used
-    try {
-      if (bitmap && bitmap.close) bitmap.close();
-    } catch {}
-
-    return await fileToDataUrl(new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: mime }));
-  } catch (e) {
-    // Fall back to raw file if anything goes wrong
-    return await fileToDataUrl(file);
-  }
+function setPhotoProcessing(on, msg) {
+  const o = el('photoProcessingOverlay');
+  if (!o) return;
+  o.classList.toggle('hidden', !on);
+  const t = el('photoProcessingText');
+  if (t) t.innerText = msg || 'Processing photo…';
 }
 
+// Downscale/compress images before sending to Netlify Functions.
+// Prevents request payload size issues on mobile photos.
+async function fileToDataUrlResized(file, { maxDim = 1280, quality = 0.85 } = {}) {
+  // Fast path for non-images
+  if (!file || !String(file.type || '').startsWith('image/')) {
+    return await fileToDataUrlResized(file);
+  }
+
+  // If already small enough, keep original encoding
+  const isProbablySmall = (file.size || 0) <= 900_000; // ~0.9MB
+  if (isProbablySmall) {
+    return await fileToDataUrlResized(file);
+  }
+
+  const originalUrl = await fileToDataUrlResized(file);
+
+  // Draw into canvas
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = originalUrl;
+  });
+
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  if (!w || !h) return originalUrl;
+
+  const scale = Math.min(1, maxDim / Math.max(w, h));
+  const tw = Math.max(1, Math.round(w * scale));
+  const th = Math.max(1, Math.round(h * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = tw;
+  canvas.height = th;
+
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, tw, th);
+
+  // Always use jpeg for size; background is white-ish anyway.
+  return canvas.toDataURL('image/jpeg', quality);
+}
 
 async function uploadFoodFromInput(inputId = 'photoInput') {
   const input = el(inputId);
   const file = input.files && input.files[0];
   if (!file) return;
+
+  setPhotoProcessing(true, 'Extracting nutrition…');
+  try {
 
   setStatus('Extracting nutrition info…');
   const imageDataUrl = await fileToDataUrlResized(file);
@@ -1490,12 +1487,19 @@ async function uploadFoodFromInput(inputId = 'photoInput') {
 
   computeTotalsPreview();
   openSheet();
+  } finally {
+    setPhotoProcessing(false);
+  }
+
 }
 
 async function uploadPlateFromInput(inputId = 'plateInput') {
   const input = el(inputId);
   const file = input.files && input.files[0];
   if (!file) return;
+
+  setPhotoProcessing(true, 'Analyzing photo…');
+  try {
 
   setStatus('Estimating…');
   const imageDataUrl = await fileToDataUrlResized(file);
@@ -1532,12 +1536,19 @@ async function uploadPlateFromInput(inputId = 'plateInput') {
   el('estimateNotes').innerText = j.notes ? j.notes : '';
 
   openEstimateSheet();
+  } finally {
+    setPhotoProcessing(false);
+  }
+
 }
 
 async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
   const input = el(inputId);
   const file = input && input.files && input.files[0];
   if (!file) return;
+
+  setPhotoProcessing(true, 'Analyzing photo…');
+  try {
   const imageDataUrl = await fileToDataUrlResized(file);
   input.value = '';
 
@@ -1658,6 +1669,10 @@ function ensureVoiceRecognition() {
     setStatus('Voice input error. You can type your meal details instead.');
   };
   return voiceRecognition;
+  } finally {
+    setPhotoProcessing(false);
+  }
+
 }
 
 async function sendVoiceFoodMessage() {
