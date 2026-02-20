@@ -692,7 +692,7 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
   font-weight: 700;
 }
 .ctaSecondary {
-  background: rgba(0,0,0,0.05);
+  background: rgba(255,255,255,0.12);
   color: #fff;
   border: 1px solid rgba(255,255,255,0.38);
 }
@@ -701,7 +701,7 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
   border-radius: 12px;
   padding: 10px;
   border: 1px solid rgba(255,255,255,0.22);
-  background: rgba(0,0,0,0.05);
+  background: rgba(255,255,255,0.12);
 }
 .mockFeatureCard h3 { margin: 0 0 4px; font-size: 14px; }
 .mockFeatureCard p { margin: 0; font-size: 13px; color: rgba(255,255,255,0.9); }
@@ -972,3 +972,52 @@ body.invertedTheme .headerBrand .bannerDark{ display:block; }
   /* Extra bottom padding so the fixed coach button never covers this link */
   padding: 24px 0 calc(120px + env(safe-area-inset-bottom));
 }
+
+
+/* === Theme-safe rail-matched glass buttons (works with dark-mode invert) === */
+:root {
+  --railGlassBg: rgba(255, 255, 255, 0.06);
+  --railGlassBorder: rgba(255, 255, 255, 0.08);
+  --railGlassBgHover: rgba(255, 255, 255, 0.10);
+}
+
+/* Target the "white buttons" areas explicitly */
+.addFood button,
+.addFoodPanel button,
+#addFood button,
+button.actionBtn,
+button.btn,
+.btn,
+.tabbtn,
+.pillBtn,
+.roundBtn,
+.collapseBtn,
+button {
+  background: var(--railGlassBg) !important;
+  border: 1px solid var(--railGlassBorder) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(2px);
+}
+
+/* Hover/active states stay subtle (no solid white/black slabs) */
+.addFood button:hover,
+.addFoodPanel button:hover,
+#addFood button:hover,
+button.actionBtn:hover,
+button.btn:hover,
+.btn:hover,
+.tabbtn:hover,
+.pillBtn:hover,
+.roundBtn:hover,
+.collapseBtn:hover,
+button:hover {
+  background: var(--railGlassBgHover) !important;
+}
+
+.addFood button:active,
+.addFoodPanel button:active,
+#addFood button:active,
+button:active {
+  background: rgba(255, 255, 255, 0.12) !important;
+}
+
