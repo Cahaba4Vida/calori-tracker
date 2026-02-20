@@ -1401,67 +1401,13 @@ function fileToDataUrl(file) {
   });
 }
 
-function setPhotoProcessing(on, msg) {
-  const o = el('photoProcessingOverlay');
-  if (!o) return;
-  o.classList.toggle('isVisible', !!on);
-  o.classList.toggle('hidden', true); // keep hidden class irrelevant
-const t = el('photoProcessingText');
-  if (t) t.innerText = msg || 'Processing photo…';
-}
-
-// Downscale/compress images before sending to Functions.
-// Prevents request payload size issues on large mobile photos.
-async function fileToDataUrlResized(file, { maxDim = 1280, quality = 0.85 } = {}) {
-  if (!file) return null;
-  if (!String(file.type || '').startsWith('image/')) {
-    return await fileToDataUrl(file);
-  }
-
-  // If already small enough, keep original encoding
-  const isProbablySmall = (file.size || 0) <= 900_000; // ~0.9MB
-  if (isProbablySmall) {
-    return await fileToDataUrl(file);
-  }
-
-  const originalUrl = await fileToDataUrl(file);
-
-  const img = await new Promise((resolve, reject) => {
-    const i = new Image();
-    i.onload = () => resolve(i);
-    i.onerror = reject;
-    i.src = originalUrl;
-  });
-
-  const w = img.naturalWidth || img.width;
-  const h = img.naturalHeight || img.height;
-  if (!w || !h) return originalUrl;
-
-  const scale = Math.min(1, maxDim / Math.max(w, h));
-  const tw = Math.max(1, Math.round(w * scale));
-  const th = Math.max(1, Math.round(h * scale));
-
-  const canvas = document.createElement('canvas');
-  canvas.width = tw;
-  canvas.height = th;
-
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0, tw, th);
-
-  return canvas.toDataURL('image/jpeg', quality);
-}
-
-
 async function uploadFoodFromInput(inputId = 'photoInput') {
   const input = el(inputId);
   const file = input.files && input.files[0];
   if (!file) return;
 
-  
-  setPhotoProcessing(true, 'Extracting nutrition…');
-  try {
-setStatus('Extracting nutrition info…');
-  const imageDataUrl = await fileToDataUrlResized(file);
+  setStatus('Extracting nutrition info…');
+  const imageDataUrl = await fileToDataUrl(file);
 
   // Extract only (do not insert yet)
   const j = await withThinking(async () => api('entries-add-image', {
@@ -1487,10 +1433,6 @@ setStatus('Extracting nutrition info…');
 
   computeTotalsPreview();
   openSheet();
-  } finally {
-    setPhotoProcessing(false);
-  }
-
 }
 
 async function uploadPlateFromInput(inputId = 'plateInput') {
@@ -1498,11 +1440,8 @@ async function uploadPlateFromInput(inputId = 'plateInput') {
   const file = input.files && input.files[0];
   if (!file) return;
 
-  
-  setPhotoProcessing(true, 'Analyzing photo…');
-  try {
-setStatus('Estimating…');
-  const imageDataUrl = await fileToDataUrlResized(file);
+  setStatus('Estimating…');
+  const imageDataUrl = await fileToDataUrl(file);
 
   const servings_eaten = 1.0;
 
@@ -1536,97 +1475,62 @@ setStatus('Estimating…');
   el('estimateNotes').innerText = j.notes ? j.notes : '';
 
   openEstimateSheet();
-  } finally {
-    setPhotoProcessing(false);
-  }
-
 }
 
-async function uploadUnifiedPhotoFromInput(inputId) {
+async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
   const input = el(inputId);
   const file = input && input.files && input.files[0];
   if (!file) return;
-
-  // Show processing overlay (safe; does not affect routing)
-  if (typeof setPhotoProcessing === 'function') setPhotoProcessing(true, 'Processing photo…');
+  const imageDataUrl = await fileToDataUrl(file);
+  input.value = '';
 
   try {
-    const imageDataUrl = (typeof fileToDataUrlResized === 'function')
-      ? await fileToDataUrlResized(file)
-      : await fileToDataUrl(file);
-
-    // allow selecting same file again later
-    if (input) input.value = '';
-
-    // ---- Plate estimate first (best default for "food photo") ----
-    try {
-      setStatus('Estimating plate…');
-      const j = await withThinking(async () => api('entries-estimate-plate-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageDataUrl, servings_eaten: 1.0, portion_hint: null })
-      }));
-      setStatus('');
-
-      pendingPlateEstimate = j;
-
-      const s = el('estimateServingsInput'); if (s) s.value = '1';
-      const c = el('estimateCaloriesInput'); if (c) c.value = (j.calories ?? '');
-      const p = el('estimateProteinInput'); if (p) p.value = (j.protein_g == null ? '' : String(Math.round(j.protein_g)));
-      const cb = el('estimateCarbsInput'); if (cb) cb.value = (j.carbs_g == null ? '' : String(Math.round(j.carbs_g)));
-      const f = el('estimateFatInput'); if (f) f.value = (j.fat_g == null ? '' : String(Math.round(j.fat_g)));
-
-      if (typeof setBadge === 'function') setBadge(j.confidence || 'low');
-
-      // Assumptions list + notes (these ids exist in your base UI)
-      const ul = el('estimateAssumptions');
-      if (ul) {
-        ul.innerHTML = '';
-        (j.assumptions || []).forEach(txt => {
-          const li = document.createElement('li');
-          li.textContent = txt;
-          ul.appendChild(li);
-        });
-      }
-      const notesEl = el('estimateNotes');
-      if (notesEl) notesEl.textContent = j.notes ? j.notes : '';
-
-      openEstimateSheet();
-      return;
-    } catch (plateErr) {
-      console.warn('Plate estimate failed; trying label scan.', plateErr);
-    }
-
-    // ---- Fallback: nutrition label extraction ----
-    setStatus('Scanning label…');
+    setStatus('Analyzing photo…');
     const j = await withThinking(async () => api('entries-add-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ imageDataUrl, extract_only: true })
     }));
     setStatus('');
-
     pendingExtraction = j.extracted;
-
-    const servings = el('servingsEatenInput'); if (servings) servings.value = '1.0';
-    const cal = el('calPerServingInput'); if (cal) cal.value = (pendingExtraction.calories_per_serving ?? '').toString();
-    const prot = el('proteinPerServingInput'); if (prot) prot.value = (pendingExtraction.protein_g_per_serving == null ? '' : String(pendingExtraction.protein_g_per_serving));
-
-    if (servings) servings.oninput = computeTotalsPreview;
-    if (cal) cal.oninput = computeTotalsPreview;
-    if (prot) prot.oninput = computeTotalsPreview;
+    el('servingsEatenInput').value = '1.0';
+    el('calPerServingInput').value = (pendingExtraction.calories_per_serving ?? '').toString();
+    el('proteinPerServingInput').value = pendingExtraction.protein_g_per_serving == null ? '' : String(pendingExtraction.protein_g_per_serving);
+    el('servingsEatenInput').oninput = computeTotalsPreview;
+    el('calPerServingInput').oninput = computeTotalsPreview;
+    el('proteinPerServingInput').oninput = computeTotalsPreview;
     computeTotalsPreview();
-
     openSheet();
+    return;
   } catch (e) {
-    console.error(e);
-    setStatus('');
-    alert('Could not process photo. Please try a clearer photo (or a different angle).');
-  } finally {
-    if (typeof setPhotoProcessing === 'function') setPhotoProcessing(false);
+    // If nutrition-label extraction fails, fallback to plate estimate.
   }
-}
 
+  setStatus('Estimating plate…');
+  const j = await withThinking(async () => api('entries-estimate-plate-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageDataUrl, servings_eaten: 1.0, portion_hint: null })
+  }));
+  setStatus('');
+
+  pendingPlateEstimate = j;
+  el('estimateServingsInput').value = '1';
+  el('estimateCaloriesInput').value = j.calories ?? '';
+  el('estimateProteinInput').value = (j.protein_g == null ? '' : String(Math.round(j.protein_g)));
+  el('estimateCarbsInput').value = (j.carbs_g == null ? '' : String(Math.round(j.carbs_g)));
+  el('estimateFatInput').value = (j.fat_g == null ? '' : String(Math.round(j.fat_g)));
+  setBadge(j.confidence || 'low');
+  const ul = el('estimateAssumptions');
+  ul.innerHTML = '';
+  (j.assumptions || []).forEach((a) => {
+    const li = document.createElement('li');
+    li.innerText = a;
+    ul.appendChild(li);
+  });
+  el('estimateNotes').innerText = j.notes ? j.notes : '';
+  openEstimateSheet();
+}
 
 function showAddFoodPanel(panelId = null) {
   const ids = ['addFoodPhotoPanel', 'addFoodVoicePanel', 'addFoodQuickFillPanel', 'addFoodManualPanel'];
@@ -2380,11 +2284,46 @@ function bindUI() {
 
   bindClick('toggleDailyGoalsBtn', () => toggleSection('dailyGoalsBody', 'toggleDailyGoalsBtn'));
   bindClick('toggleAddFoodBtn', () => toggleSection('addFoodBody', 'toggleAddFoodBtn'));
-  bindClick('chatToggleBtn', () => toggleSection('coachChatBody', 'chatToggleBtn', 'Hide', 'Show'));
+  // Coach chat is now opened/closed via a floating button (bottom-right).
+  // Keep the existing "Hide" button as a close control.
+  bindClick('chatToggleBtn', () => {
+    const card = el('coachChatCard');
+    if (card) card.classList.remove('open');
+    const fab = el('coachFab');
+    if (fab) fab.setAttribute('aria-expanded', 'false');
+  });
   bindClick('upgradeMonthlyBtn', () => billingController && billingController.startUpgradeCheckout('monthly'));
   bindClick('upgradeYearlyBtn', () => billingController && billingController.startUpgradeCheckout('yearly'));
   bindClick('manageSubscriptionBtn', () => billingController && billingController.openManageSubscription());
   bindClick('exportDataBtn', () => billingController && billingController.exportMyData());
+
+  // Floating coach button toggles the chat window.
+  const coachFab = el('coachFab');
+  if (coachFab) {
+    coachFab.onclick = () => {
+      const card = el('coachChatCard');
+      if (!card) return;
+      const isOpen = card.classList.contains('open');
+      if (isOpen) {
+        card.classList.remove('open');
+        coachFab.setAttribute('aria-expanded', 'false');
+      } else {
+        card.classList.add('open');
+        coachFab.setAttribute('aria-expanded', 'true');
+        // focus input for fast typing
+        const input = el('chatInput');
+        if (input) input.focus();
+      }
+    };
+  }
+
+  // Close coach chat with Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const card = el('coachChatCard');
+    if (card) card.classList.remove('open');
+    if (coachFab) coachFab.setAttribute('aria-expanded', 'false');
+  });
 }
 
 
