@@ -1405,8 +1405,9 @@ function setPhotoProcessing(on, msg) {
   const o = el('photoProcessingOverlay');
   if (!o) return;
   o.classList.toggle('isVisible', !!on);
-  o.classList.toggle('hidden', true); // keep hidden class irrelevant
-const t = el('photoProcessingText');
+  o.classList.toggle('hidden', !on);
+
+  const t = el('photoProcessingText');
   if (t) t.innerText = msg || 'Processing photo…';
 }
 
@@ -1572,20 +1573,30 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
       el('estimateCarbsInput').value = (j.carbs_g == null ? '' : String(Math.round(j.carbs_g)));
       el('estimateFatInput').value = (j.fat_g == null ? '' : String(Math.round(j.fat_g)));
       setBadge(j.confidence || 'low');
-      const ul = el('estimateItemsList');
+      const ul = el('estimateAssumptions');
       if (ul) {
         ul.innerHTML = '';
-        (j.items || []).forEach(name => {
+        const list = (j.assumptions && j.assumptions.length) ? j.assumptions : (j.items || []);
+        list.forEach((txt) => {
           const li = document.createElement('li');
-          li.textContent = name;
+          li.textContent = txt;
           ul.appendChild(li);
         });
       }
-      el('estimateNotesText').value = j.notes ? j.notes : '';
+      const notes = el('estimateNotes');
+      if (notes) notes.innerText = j.notes ? j.notes : '';
       openEstimateSheet();
       return;
     } catch (plateErr) {
-      // Fall back to nutrition-label scan if plate estimate fails.
+      // Plate photos are common; but label-scan is only useful if the photo is actually a nutrition label.
+      // If the plate-estimator says "try a clearer photo", show that message instead of silently failing over.
+      const msg = plateErr?.message || String(plateErr || '');
+      if (msg && /could not estimate calories|try a clearer photo/i.test(msg)) {
+        setStatus('');
+        alert(msg);
+        return;
+      }
+      // Otherwise, fall back to nutrition-label scan (e.g., transient errors, function timeout).
       console.warn('Plate estimate failed; trying label scan.', plateErr);
     }
 
@@ -1601,19 +1612,23 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
     el('servingsEatenInput').value = '1.0';
     el('calPerServingInput').value = (pendingExtraction.calories_per_serving ?? '').toString();
     el('proteinPerServingInput').value = pendingExtraction.protein_g_per_serving == null ? '' : String(pendingExtraction.protein_g_per_serving);
-    el('carbPerServingInput').value = pendingExtraction.carbs_g_per_serving == null ? '' : String(pendingExtraction.carbs_g_per_serving);
-    el('fatPerServingInput').value = pendingExtraction.fat_g_per_serving == null ? '' : String(pendingExtraction.fat_g_per_serving);
+    const carbEl = el('carbPerServingInput');
+    if (carbEl) carbEl.value = pendingExtraction.carbs_g_per_serving == null ? '' : String(pendingExtraction.carbs_g_per_serving);
+    const fatEl = el('fatPerServingInput');
+    if (fatEl) fatEl.value = pendingExtraction.fat_g_per_serving == null ? '' : String(pendingExtraction.fat_g_per_serving);
     el('servingsEatenInput').oninput = computeTotalsPreview;
     el('calPerServingInput').oninput = computeTotalsPreview;
     el('proteinPerServingInput').oninput = computeTotalsPreview;
-    el('carbPerServingInput').oninput = computeTotalsPreview;
-    el('fatPerServingInput').oninput = computeTotalsPreview;
+    const carbEl2 = el('carbPerServingInput');
+    if (carbEl2) carbEl2.oninput = computeTotalsPreview;
+    const fatEl2 = el('fatPerServingInput');
+    if (fatEl2) fatEl2.oninput = computeTotalsPreview;
     computeTotalsPreview();
     openSheet();
   } catch (e) {
     console.error(e);
     setStatus('');
-    alert('Could not process photo. Please try a clearer photo (or a different angle).');
+    alert(e?.message || 'Could not process photo. Please try a clearer photo (or a different angle).');
   } finally {
     setPhotoProcessing(false);
   }
