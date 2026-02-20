@@ -771,33 +771,41 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
 .todayDateChips::-webkit-scrollbar-track { background: rgba(0,0,0,.06); border-radius: 999px; }
 
 .todayDateChip {
-  flex: 0 0 auto;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 13px;
-  line-height: 1;
-  scroll-snap-align: start;
-}
-.todayDateChip.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(30, 115, 255, .12);
-}
-@media (max-width: 520px) {
-  .todayDateChip { padding: 6px 8px; font-size: 12px; }
-  .todayDateChips { gap: 6px; }
-}
-
-.todayDateChip {
-  border: 1px solid var(--border, #d9dee8);
-  background: var(--card, #fff);
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.05);
   border-radius: 999px;
   padding: 4px 10px;
   white-space: nowrap;
   font-size: 12px;
 }
 .todayDateChip.active {
-  border-color: #3a63ff;
-  background: rgba(58,99,255,0.12);
+  border-color: rgba(0,0,0,0.12);
+  background: rgba(0,0,0,0.08);
+  font-weight: 600;
+}
+@media (max-width: 520px) {
+  .todayDateChip {
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.05);
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+  .todayDateChips { gap: 6px; }
+}
+
+.todayDateChip {
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.05);
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.todayDateChip.active {
+  border-color: rgba(0,0,0,0.12);
+  background: rgba(0,0,0,0.08);
   font-weight: 600;
 }
 
@@ -990,3 +998,38 @@ body.invertedTheme .headerBrand .bannerDark{ display:block; }
   border: 1px solid rgba(0,0,0,0.10) !important;
   color: inherit !important;
 }
+
+
+/* === FINAL OVERRIDES: make Today UI match ultra-subtle rail glass (light + inverted dark) === */
+.tabbtn {
+  background: rgba(0,0,0,0.05) !important;
+  border: 1px solid rgba(0,0,0,0.08) !important;
+  box-shadow: none !important;
+}
+.tabbtn.active {
+  background: rgba(0,0,0,0.08) !important;
+  border: 1px solid rgba(0,0,0,0.10) !important;
+  color: inherit !important;
+  box-shadow: none !important;
+}
+
+/* Date chips (Yesterday/Today/Tomorrow) */
+.todayDateChip {
+  background: rgba(0,0,0,0.05) !important;
+  border: 1px solid rgba(0,0,0,0.08) !important;
+  box-shadow: none !important;
+}
+.todayDateChip.active {
+  background: rgba(0,0,0,0.08) !important;
+  border-color: rgba(0,0,0,0.12) !important;
+}
+
+/* Today stats tiles (e.g., Remaining card) */
+.statTile,
+.statStrip .statTile,
+.todayGrid .statTile {
+  background: rgba(0,0,0,0.05) !important;
+  border: 1px solid rgba(0,0,0,0.08) !important;
+  box-shadow: none !important;
+}
+
