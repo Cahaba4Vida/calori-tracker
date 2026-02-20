@@ -902,9 +902,9 @@ async function submitFeedbackResponse() {
 }
 
 
-let currentPhotoUploadMode = 'plate'; // 'plate' or 'label'
 let pendingExtraction = null;
 let pendingPlateEstimate = null;
+let currentPhotoUploadMode = null; // 'plate' | 'label'
 
 
 function openSheet() {
@@ -1407,8 +1407,7 @@ function setPhotoProcessing(on, msg) {
   if (!o) return;
   o.classList.toggle('isVisible', !!on);
   o.classList.toggle('hidden', !on);
-
-  const t = el('photoProcessingText');
+const t = el('photoProcessingText');
   if (t) t.innerText = msg || 'Processing photo…';
 }
 
@@ -1458,8 +1457,6 @@ async function uploadFoodFromInput(inputId = 'photoInput') {
   const input = el(inputId);
   const file = input.files && input.files[0];
   if (!file) return;
-
-  mode = mode || currentPhotoUploadMode || 'plate';
 
   
   setPhotoProcessing(true, 'Extracting nutrition…');
@@ -1551,13 +1548,7 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput', mode =
   const file = input && input.files && input.files[0];
   if (!file) return;
 
-  // Mode defaults to the currently selected tile (Plate vs Label)
-  mode = mode || currentPhotoUploadMode;
-  if (!mode) {
-    setPhotoProcessing(false);
-    alert('Choose Plate or Label first.');
-    return;
-  }
+  const effectiveMode = mode || currentPhotoUploadMode || (inputId === 'photoUnifiedCameraInput' ? 'plate' : 'label');
 
   setPhotoProcessing(true, 'Processing photo…');
   try {
@@ -1567,9 +1558,8 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput', mode =
     // Close the Add Food modal so the draft sheet can appear above everything
     try { showAddFoodPanel(null); } catch (e) {}
 
-    if (mode !== 'label') {
-    // Plate estimate first (most common "food photo" case)
-    try {
+    // --- Plate flow ---
+    if (effectiveMode === 'plate') {
       setStatus('Estimating plate…');
       const j = await withThinking(async () => api('entries-estimate-plate-image', {
         method: 'POST',
@@ -1585,6 +1575,7 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput', mode =
       el('estimateCarbsInput').value = (j.carbs_g == null ? '' : String(Math.round(j.carbs_g)));
       el('estimateFatInput').value = (j.fat_g == null ? '' : String(Math.round(j.fat_g)));
       setBadge(j.confidence || 'low');
+
       const ul = el('estimateAssumptions');
       if (ul) {
         ul.innerHTML = '';
@@ -1595,44 +1586,15 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput', mode =
           ul.appendChild(li);
         });
       }
+
       const notes = el('estimateNotes');
       if (notes) notes.innerText = j.notes ? j.notes : '';
+
       openEstimateSheet();
       return;
-    } catch (plateErr) {
-      // Plate photos are common; but label-scan is only useful if the photo is actually a nutrition label.
-      // If the plate-estimator says "try a clearer photo", show that message instead of silently failing over.
-      const msg = plateErr?.message || String(plateErr || '');
-      if (msg && /could not estimate calories|try a clearer photo/i.test(msg)) {
-        // Land on the plate-estimate sheet anyway so the user can manually fill values,
-        // instead of dead-ending on an alert.
-        setStatus('');
-        pendingPlateEstimate = { calories: null, protein_g: null, carbs_g: null, fat_g: null, confidence: 'low', assumptions: [], notes: '' };
-        el('estimateServingsInput').value = '1';
-        el('estimateCaloriesInput').value = '';
-        el('estimateProteinInput').value = '';
-        el('estimateCarbsInput').value = '';
-        el('estimateFatInput').value = '';
-        setBadge('low');
-        const ul = el('estimateAssumptions');
-        if (ul) {
-          ul.innerHTML = '';
-          const li = document.createElement('li');
-          li.textContent = msg;
-          ul.appendChild(li);
-        }
-        const notes = el('estimateNotes');
-        if (notes) notes.innerText = '';
-        el('estimateError').innerText = msg;
-        openEstimateSheet();
-        return;
-      }
-      // Otherwise, fall back to nutrition-label scan (e.g., transient errors, function timeout).
-      console.warn('Plate estimate failed; trying label scan.', plateErr);
     }
 
-    }
-
+    // --- Label flow ---
     setStatus('Scanning label…');
     const j = await withThinking(async () => api('entries-add-image', {
       method: 'POST',
@@ -1645,49 +1607,33 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput', mode =
     el('servingsEatenInput').value = '1.0';
     el('calPerServingInput').value = (pendingExtraction.calories_per_serving ?? '').toString();
     el('proteinPerServingInput').value = pendingExtraction.protein_g_per_serving == null ? '' : String(pendingExtraction.protein_g_per_serving);
+
     const carbEl = el('carbPerServingInput');
     if (carbEl) carbEl.value = pendingExtraction.carbs_g_per_serving == null ? '' : String(pendingExtraction.carbs_g_per_serving);
+
     const fatEl = el('fatPerServingInput');
     if (fatEl) fatEl.value = pendingExtraction.fat_g_per_serving == null ? '' : String(pendingExtraction.fat_g_per_serving);
+
     el('servingsEatenInput').oninput = computeTotalsPreview;
     el('calPerServingInput').oninput = computeTotalsPreview;
     el('proteinPerServingInput').oninput = computeTotalsPreview;
-    const carbEl2 = el('carbPerServingInput');
-    if (carbEl2) carbEl2.oninput = computeTotalsPreview;
-    const fatEl2 = el('fatPerServingInput');
-    if (fatEl2) fatEl2.oninput = computeTotalsPreview;
+    if (carbEl) carbEl.oninput = computeTotalsPreview;
+    if (fatEl) fatEl.oninput = computeTotalsPreview;
+
     computeTotalsPreview();
     openSheet();
   } catch (e) {
     console.error(e);
     setStatus('');
-    alert(e?.message || (mode === 'label' ? 'Could not read the nutrition label. Try a clearer, closer photo (flat, well-lit).' : 'Could not process photo. Please try a clearer photo (or a different angle).'));
+    alert(e && e.message ? e.message : 'Could not process photo. Please try a clearer photo (or a different angle).');
   } finally {
     setPhotoProcessing(false);
+    currentPhotoUploadMode = null;
   }
 }
 
 
-
-function updatePhotoUploadModeLabel() {
-  const n = el('photoUploadModeLabel');
-  const plateTile = el('photoModePlateTile');
-  const labelTile = el('photoModeLabelTile');
-  if (plateTile) plateTile.classList.toggle('isSelected', currentPhotoUploadMode === 'plate');
-  if (labelTile) labelTile.classList.toggle('isSelected', currentPhotoUploadMode === 'label');
-  if (!n) return;
-  if (!currentPhotoUploadMode) {
-    n.innerText = 'Tap Plate or Label to open your camera/library picker.';
-    return;
-  }
-  if (currentPhotoUploadMode === 'label') {
-    n.innerText = 'Nutrition label: flat, well-lit, fill the frame.';
-  } else {
-    n.innerText = 'Plate photo: top-down, good lighting, include full plate.';
-  }
-}
 function showAddFoodPanel(panelId = null) {
-  if (panelId === 'addFoodPhotoPanel') updatePhotoUploadModeLabel();
   const ids = ['addFoodPhotoPanel', 'addFoodVoicePanel', 'addFoodQuickFillPanel', 'addFoodManualPanel'];
   ids.forEach((id) => {
     const node = el(id);
@@ -2222,7 +2168,7 @@ function bindUI() {
   unifiedPhotoInputIds.forEach((id) => {
     const node = el(id);
     if (!node) return;
-    node.onchange = () => uploadUnifiedPhotoFromInput(id, currentPhotoUploadMode).catch((e) => setStatus(e.message));
+    node.onchange = () => uploadUnifiedPhotoFromInput(id).catch((e) => setStatus(e.message));
   });
   el('saveWeightBtn').onclick = () => saveWeight().catch(e => setStatus(e.message));
   el('finishDayBtn').onclick = () => finishDay().catch(e => setStatus(e.message));
@@ -2408,9 +2354,18 @@ function bindUI() {
   bindClick('settingsSignUpBtn', () => openIdentityModal('signup'));
   bindClick('settingsSignInBtn', () => openIdentityModal('login'));
 
-  bindClick('addFoodPhotoBtn', () => { currentPhotoUploadMode = null; showAddFoodPanel('addFoodPhotoPanel'); updatePhotoUploadModeLabel(); });
-  bindClick('photoModePlateTile', () => { currentPhotoUploadMode = 'plate'; updatePhotoUploadModeLabel(); const input = el('photoUnifiedCameraInput'); if (input) input.click(); });
-  bindClick('photoModeLabelTile', () => { currentPhotoUploadMode = 'label'; updatePhotoUploadModeLabel(); const input = el('photoUnifiedInput'); if (input) input.click(); });
+  bindClick('addFoodPhotoBtn', () => { currentPhotoUploadMode = null; showAddFoodPanel('addFoodPhotoPanel'); });
+  bindClick('photoModePlateTile', () => {
+    currentPhotoUploadMode = 'plate';
+    const n = el('photoUnifiedCameraInput');
+    if (n) n.click();
+  });
+  bindClick('photoModeLabelTile', () => {
+    currentPhotoUploadMode = 'label';
+    const n = el('photoUnifiedInput');
+    if (n) n.click();
+  });
+
   bindClick('addFoodVoiceBtn', () => { voiceFollowUpCount = 0; showAddFoodPanel('addFoodVoicePanel'); });
   bindClick('addFoodQuickFillBtn', () => showAddFoodPanel('addFoodQuickFillPanel'));
   bindClick('addFoodManualBtn', () => showAddFoodPanel('addFoodManualPanel'));
