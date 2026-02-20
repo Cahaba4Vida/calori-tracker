@@ -117,17 +117,8 @@ ul { margin: 8px 0 0 18px; }
 }
 
 .tabs { display: flex; gap: 8px; margin: 10px 0 14px; }
-.tabbtn {
-  padding: 8px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(0,0,0,0.08);
-  background: rgba(0,0,0,0.05);
-}
-.tabbtn.active {
-  background: rgba(0,0,0,0.08);
-  border: 1px solid rgba(0,0,0,0.10);
-  color: inherit;
-}
+.tabbtn { padding: 8px 10px; border-radius: 999px; border: 1px solid rgba(0,0,0,0.08); background: rgba(0,0,0,0.05); }
+.tabbtn.active { background: #111; color: white; border-color: #111; }
 
 .switch { position: relative; display: inline-block; width: 48px; height: 28px; }
 .switch input { opacity: 0; width: 0; height: 0; }
@@ -985,4 +976,17 @@ body.invertedTheme .headerBrand .bannerDark{ display:block; }
   justify-content: center;
   /* Extra bottom padding so the fixed coach button never covers this link */
   padding: 24px 0 calc(120px + env(safe-area-inset-bottom));
+}
+
+
+/* Force Today tab to match ultra-subtle rail styling */
+.tabbtn {
+  background: rgba(0,0,0,0.05) !important;
+  border: 1px solid rgba(0,0,0,0.08) !important;
+}
+
+.tabbtn.active {
+  background: rgba(0,0,0,0.08) !important;
+  border: 1px solid rgba(0,0,0,0.10) !important;
+  color: inherit !important;
 }
