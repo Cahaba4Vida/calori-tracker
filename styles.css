@@ -4,7 +4,7 @@ body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   max-width: 860px;
   margin: auto;
-  padding: 16px;
+  padding: 16px 16px 92px;
   color: var(--ink);
   background:
     radial-gradient(1200px 500px at 12% -12%, rgba(59,130,246,0.20), transparent 60%),
@@ -266,13 +266,50 @@ label {
 }
 
 .floatingChat {
+  /* Coach chat is an always-available floating window */
   position: fixed;
-  right: 18px;
-  bottom: 18px;
-  width: min(380px, calc(100vw - 24px));
+  right: 16px;
+  bottom: 86px; /* leaves room for the floating coach button */
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(520px, calc(100vh - 140px));
+  overflow: hidden;
   margin: 0;
   z-index: 1100;
   box-shadow: 0 12px 28px rgba(0,0,0,0.2);
+  display: none; /* toggled open/closed */
+}
+
+.floatingChat.open {
+  display: block;
+}
+
+/* Floating Coach Action Button */
+.coachFab {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  z-index: 1200;
+}
+
+.coachFab img {
+  width: 32px;
+  height: 32px;
+  display: block;
+}
+
+.coachFab:active {
+  transform: translateY(1px);
 }
 
 @media (min-width: 1100px) {
@@ -312,12 +349,10 @@ label {
   #finishDayCard { grid-row: 3; }
   #coachChatCard { grid-row: 4; }
 
+  /* Coach chat is floating on all screen sizes; keep it out of the grid flow */
   #coachChatCard {
-    position: static;
-    right: auto;
-    bottom: auto;
-    width: 100%;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+    grid-column: auto;
+    grid-row: auto;
   }
 }
 
@@ -331,15 +366,7 @@ label {
 }
 
 @media (max-width: 640px) {
-  .floatingChat {
-    position: static;
-    right: auto;
-    left: auto;
-    bottom: auto;
-    width: 100%;
-    margin-top: 12px;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
-  }
+  /* Keep the coach chat floating even on small screens */
 
   #coachChatBody .row {
     flex-wrap: wrap;
@@ -697,7 +724,32 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
   gap: 8px;
   overflow-x: auto;
   padding-top: 8px;
+  padding-bottom: 2px;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
 }
+.todayDateChips::-webkit-scrollbar { height: 6px; }
+.todayDateChips::-webkit-scrollbar-thumb { background: rgba(0,0,0,.18); border-radius: 999px; }
+.todayDateChips::-webkit-scrollbar-track { background: rgba(0,0,0,.06); border-radius: 999px; }
+
+.todayDateChip {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  line-height: 1;
+  scroll-snap-align: start;
+}
+.todayDateChip.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(30, 115, 255, .12);
+}
+@media (max-width: 520px) {
+  .todayDateChip { padding: 6px 8px; font-size: 12px; }
+  .todayDateChips { gap: 6px; }
+}
+
 .todayDateChip {
   border: 1px solid var(--border, #d9dee8);
   background: var(--card, #fff);
@@ -848,40 +900,43 @@ body.invertedTheme #trendsCard::before{
 }
 
 
-/* Photo processing overlay (safe: does not reuse existing .overlay) */
-.photoProcessingOverlay{
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.25);
-  z-index: 3000;
-  display: none;
-  align-items: center;
-  justify-content: center;
-}
-.photoProcessingOverlay.isVisible{display:flex;}
-.photoProcessingCard{
-  background: rgba(255,255,255,0.94);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 18px 18px;
-  min-width: 220px;
-  max-width: 320px;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.18);
+/* --- Aethon header banner --- */
+.appHeader{
   display:flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
+  flex-direction:column;
+  align-items:stretch;
+  gap:10px;
 }
-.photoProcessingText{
-  font-weight: 600;
-  text-align: center;
+.headerBrand{
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
-.photoSpinner{
-  width: 34px;
-  height: 34px;
-  border: 3px solid rgba(0,0,0,0.15);
-  border-top-color: rgba(0,0,0,0.65);
-  border-radius: 50%;
-  animation: photoSpin 0.9s linear infinite;
+.headerBrand img{
+  width:100%;
+  height:74px;
+  object-fit:cover;
+  border-radius:18px;
+  display:block;
 }
-@keyframes photoSpin { to { transform: rotate(360deg); } }
+.headerBrand .bannerDark{ display:none; }
+body.invertedTheme .headerBrand .bannerLight{ display:none; }
+body.invertedTheme .headerBrand .bannerDark{ display:block; }
+
+.appHeader .auth{align-self:flex-end; display:flex; gap:10px; align-items:center;}
+
+/* Admin button moved to bottom */
+.adminFooter{
+  /* Keep this in normal document flow so users must scroll to reach it */
+  position: static;
+  transform: none;
+  left: auto;
+  bottom: auto;
+  z-index: auto;
+
+  display: flex;
+  justify-content: center;
+  /* Extra bottom padding so the fixed coach button never covers this link */
+  padding: 24px 0 calc(120px + env(safe-area-inset-bottom));
+}
