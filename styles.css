@@ -37,11 +37,11 @@ button {
   padding: 9px 12px;
   border-radius: 11px;
   border: 1px solid var(--border);
-  background: rgba(255,255,255,0.10);
+  background: white;
   cursor: pointer;
   transition: transform .08s ease, box-shadow .15s ease, border-color .15s ease;
 }
-button:hover { transform: translateY(-1px); box-shadow: none; border-color: #b8c9f3; }
+button:hover { transform: translateY(-1px); box-shadow: 0 6px 14px rgba(37,99,235,0.14); border-color: #b8c9f3; }
 input { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); min-width: 220px; }
 .muted { color: var(--muted); font-size: 13px; margin-top: 6px; }
 .hidden { display: none; }
@@ -90,7 +90,7 @@ ul { margin: 8px 0 0 18px; }
 .auth button { min-width: 120px; }
 
 .statStrip { display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 8px; }
-.statTile { border: 1px solid var(--border); border-radius: 10px; padding: 8px; background: rgba(255,255,255,0.10); }
+.statTile { border: 1px solid var(--border); border-radius: 10px; padding: 8px; background: #fdfdfd; }
 .statLabel { font-size: 12px; color: var(--muted); }
 .statValue { font-size: 18px; font-weight: 700; margin-top: 2px; }
 
@@ -112,7 +112,7 @@ ul { margin: 8px 0 0 18px; }
 }
 
 .tabs { display: flex; gap: 8px; margin: 10px 0 14px; }
-.tabbtn { padding: 8px 10px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255,255,255,0.10); }
+.tabbtn { padding: 8px 10px; border-radius: 999px; border: 1px solid var(--border); background: white; }
 .tabbtn.active { background: #111; color: white; border-color: #111; }
 
 .switch { position: relative; display: inline-block; width: 48px; height: 28px; }
@@ -226,7 +226,7 @@ label {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 10px;
-  background: rgba(255,255,255,0.10);
+  background: #fff;
 }
 
 
@@ -692,7 +692,7 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
   font-weight: 700;
 }
 .ctaSecondary {
-  background: rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.05);
   color: #fff;
   border: 1px solid rgba(255,255,255,0.38);
 }
@@ -701,7 +701,7 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
   border-radius: 12px;
   padding: 10px;
   border: 1px solid rgba(255,255,255,0.22);
-  background: rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.05);
 }
 .mockFeatureCard h3 { margin: 0 0 4px; font-size: 14px; }
 .mockFeatureCard p { margin: 0; font-size: 13px; color: rgba(255,255,255,0.9); }
