@@ -904,7 +904,6 @@ async function submitFeedbackResponse() {
 
 let pendingExtraction = null;
 let pendingPlateEstimate = null;
-let currentPhotoUploadMode = null; // 'plate' | 'label'
 
 
 function openSheet() {
@@ -935,12 +934,7 @@ function openEstimateSheet() {
   const saveBtn = el('estimateSaveBtn');
 
   if (overlay) {
-    const openedAt = Date.now();
-    overlay.onclick = (ev) => {
-      // Prevent the tap that closed the camera/library picker from immediately closing the sheet.
-      if (Date.now() - openedAt < 450) return;
-      closeEstimateSheet();
-    };
+    overlay.onclick = () => closeEstimateSheet();
   }
   if (closeBtn) {
     closeBtn.onclick = () => closeEstimateSheet();
@@ -1407,67 +1401,13 @@ function fileToDataUrl(file) {
   });
 }
 
-function setPhotoProcessing(on, msg) {
-  const o = el('photoProcessingOverlay');
-  if (!o) return;
-  o.classList.toggle('isVisible', !!on);
-  o.classList.toggle('hidden', !on);
-const t = el('photoProcessingText');
-  if (t) t.innerText = msg || 'Processing photo…';
-}
-
-// Downscale/compress images before sending to Functions.
-// Prevents request payload size issues on large mobile photos.
-async function fileToDataUrlResized(file, { maxDim = 1280, quality = 0.85 } = {}) {
-  if (!file) return null;
-  if (!String(file.type || '').startsWith('image/')) {
-    return await fileToDataUrl(file);
-  }
-
-  // If already small enough, keep original encoding
-  const isProbablySmall = (file.size || 0) <= 900_000; // ~0.9MB
-  if (isProbablySmall) {
-    return await fileToDataUrl(file);
-  }
-
-  const originalUrl = await fileToDataUrl(file);
-
-  const img = await new Promise((resolve, reject) => {
-    const i = new Image();
-    i.onload = () => resolve(i);
-    i.onerror = reject;
-    i.src = originalUrl;
-  });
-
-  const w = img.naturalWidth || img.width;
-  const h = img.naturalHeight || img.height;
-  if (!w || !h) return originalUrl;
-
-  const scale = Math.min(1, maxDim / Math.max(w, h));
-  const tw = Math.max(1, Math.round(w * scale));
-  const th = Math.max(1, Math.round(h * scale));
-
-  const canvas = document.createElement('canvas');
-  canvas.width = tw;
-  canvas.height = th;
-
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0, tw, th);
-
-  return canvas.toDataURL('image/jpeg', quality);
-}
-
-
 async function uploadFoodFromInput(inputId = 'photoInput') {
   const input = el(inputId);
   const file = input.files && input.files[0];
   if (!file) return;
 
-  
-  setPhotoProcessing(true, 'Extracting nutrition…');
-  try {
-setStatus('Extracting nutrition info…');
-  const imageDataUrl = await fileToDataUrlResized(file);
+  setStatus('Extracting nutrition info…');
+  const imageDataUrl = await fileToDataUrl(file);
 
   // Extract only (do not insert yet)
   const j = await withThinking(async () => api('entries-add-image', {
@@ -1493,10 +1433,6 @@ setStatus('Extracting nutrition info…');
 
   computeTotalsPreview();
   openSheet();
-  } finally {
-    setPhotoProcessing(false);
-  }
-
 }
 
 async function uploadPlateFromInput(inputId = 'plateInput') {
@@ -1504,11 +1440,8 @@ async function uploadPlateFromInput(inputId = 'plateInput') {
   const file = input.files && input.files[0];
   if (!file) return;
 
-  
-  setPhotoProcessing(true, 'Analyzing photo…');
-  try {
-setStatus('Estimating…');
-  const imageDataUrl = await fileToDataUrlResized(file);
+  setStatus('Estimating…');
+  const imageDataUrl = await fileToDataUrl(file);
 
   const servings_eaten = 1.0;
 
@@ -1542,101 +1475,62 @@ setStatus('Estimating…');
   el('estimateNotes').innerText = j.notes ? j.notes : '';
 
   openEstimateSheet();
-  } finally {
-    setPhotoProcessing(false);
-  }
-
 }
 
-async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput', mode = null) {
+async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
   const input = el(inputId);
   const file = input && input.files && input.files[0];
   if (!file) return;
+  const imageDataUrl = await fileToDataUrl(file);
+  input.value = '';
 
-  const effectiveMode = mode || currentPhotoUploadMode || (inputId === 'photoUnifiedCameraInput' ? 'plate' : 'label');
-
-  setPhotoProcessing(true, 'Processing photo…');
   try {
-    const imageDataUrl = await fileToDataUrlResized(file);
-    // allow selecting same file again later
-    input.value = '';
-    // Close the Add Food modal so the draft sheet can appear above everything
-    try { showAddFoodPanel(null); } catch (e) {}
-
-    // --- Plate flow ---
-    if (effectiveMode === 'plate') {
-      setStatus('Estimating plate…');
-      const j = await withThinking(async () => api('entries-estimate-plate-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageDataUrl, servings_eaten: 1.0, portion_hint: null })
-      }));
-      setStatus('');
-
-      pendingPlateEstimate = j;
-      el('estimateServingsInput').value = '1';
-      el('estimateCaloriesInput').value = j.calories ?? '';
-      el('estimateProteinInput').value = (j.protein_g == null ? '' : String(Math.round(j.protein_g)));
-      el('estimateCarbsInput').value = (j.carbs_g == null ? '' : String(Math.round(j.carbs_g)));
-      el('estimateFatInput').value = (j.fat_g == null ? '' : String(Math.round(j.fat_g)));
-      setBadge(j.confidence || 'low');
-
-      const ul = el('estimateAssumptions');
-      if (ul) {
-        ul.innerHTML = '';
-        const list = (j.assumptions && j.assumptions.length) ? j.assumptions : (j.items || []);
-        list.forEach((txt) => {
-          const li = document.createElement('li');
-          li.textContent = txt;
-          ul.appendChild(li);
-        });
-      }
-
-      const notes = el('estimateNotes');
-      if (notes) notes.innerText = j.notes ? j.notes : '';
-
-      openEstimateSheet();
-      return;
-    }
-
-    // --- Label flow ---
-    setStatus('Scanning label…');
+    setStatus('Analyzing photo…');
     const j = await withThinking(async () => api('entries-add-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ imageDataUrl, extract_only: true })
     }));
     setStatus('');
-
     pendingExtraction = j.extracted;
     el('servingsEatenInput').value = '1.0';
     el('calPerServingInput').value = (pendingExtraction.calories_per_serving ?? '').toString();
     el('proteinPerServingInput').value = pendingExtraction.protein_g_per_serving == null ? '' : String(pendingExtraction.protein_g_per_serving);
-
-    const carbEl = el('carbPerServingInput');
-    if (carbEl) carbEl.value = pendingExtraction.carbs_g_per_serving == null ? '' : String(pendingExtraction.carbs_g_per_serving);
-
-    const fatEl = el('fatPerServingInput');
-    if (fatEl) fatEl.value = pendingExtraction.fat_g_per_serving == null ? '' : String(pendingExtraction.fat_g_per_serving);
-
     el('servingsEatenInput').oninput = computeTotalsPreview;
     el('calPerServingInput').oninput = computeTotalsPreview;
     el('proteinPerServingInput').oninput = computeTotalsPreview;
-    if (carbEl) carbEl.oninput = computeTotalsPreview;
-    if (fatEl) fatEl.oninput = computeTotalsPreview;
-
     computeTotalsPreview();
     openSheet();
+    return;
   } catch (e) {
-    console.error(e);
-    setStatus('');
-    alert(e && e.message ? e.message : 'Could not process photo. Please try a clearer photo (or a different angle).');
-  } finally {
-    setPhotoProcessing(false);
-    currentPhotoUploadMode = null;
+    // If nutrition-label extraction fails, fallback to plate estimate.
   }
-}
 
+  setStatus('Estimating plate…');
+  const j = await withThinking(async () => api('entries-estimate-plate-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageDataUrl, servings_eaten: 1.0, portion_hint: null })
+  }));
+  setStatus('');
+
+  pendingPlateEstimate = j;
+  el('estimateServingsInput').value = '1';
+  el('estimateCaloriesInput').value = j.calories ?? '';
+  el('estimateProteinInput').value = (j.protein_g == null ? '' : String(Math.round(j.protein_g)));
+  el('estimateCarbsInput').value = (j.carbs_g == null ? '' : String(Math.round(j.carbs_g)));
+  el('estimateFatInput').value = (j.fat_g == null ? '' : String(Math.round(j.fat_g)));
+  setBadge(j.confidence || 'low');
+  const ul = el('estimateAssumptions');
+  ul.innerHTML = '';
+  (j.assumptions || []).forEach((a) => {
+    const li = document.createElement('li');
+    li.innerText = a;
+    ul.appendChild(li);
+  });
+  el('estimateNotes').innerText = j.notes ? j.notes : '';
+  openEstimateSheet();
+}
 
 function showAddFoodPanel(panelId = null) {
   const ids = ['addFoodPhotoPanel', 'addFoodVoicePanel', 'addFoodQuickFillPanel', 'addFoodManualPanel'];
@@ -2359,18 +2253,7 @@ function bindUI() {
   bindClick('settingsSignUpBtn', () => openIdentityModal('signup'));
   bindClick('settingsSignInBtn', () => openIdentityModal('login'));
 
-  bindClick('addFoodPhotoBtn', () => { currentPhotoUploadMode = null; showAddFoodPanel('addFoodPhotoPanel'); });
-  bindClick('photoModePlateTile', () => {
-    currentPhotoUploadMode = 'plate';
-    const n = el('photoUnifiedCameraInput');
-    if (n) { if (typeof n.showPicker === 'function') n.showPicker(); else n.click(); }
-  });
-  bindClick('photoModeLabelTile', () => {
-    currentPhotoUploadMode = 'label';
-    const n = el('photoUnifiedInput');
-    if (n) { if (typeof n.showPicker === 'function') n.showPicker(); else n.click(); }
-  });
-
+  bindClick('addFoodPhotoBtn', () => showAddFoodPanel('addFoodPhotoPanel'));
   bindClick('addFoodVoiceBtn', () => { voiceFollowUpCount = 0; showAddFoodPanel('addFoodVoicePanel'); });
   bindClick('addFoodQuickFillBtn', () => showAddFoodPanel('addFoodQuickFillPanel'));
   bindClick('addFoodManualBtn', () => showAddFoodPanel('addFoodManualPanel'));
@@ -2379,8 +2262,8 @@ function bindUI() {
 
   bindClick('todayPrevBtn', () => { if (!viewSpanEnabled) return; selectedDayOffset = Math.max(-viewSpanPastDays, selectedDayOffset - 1); renderTodayDateNavigator(); refresh().catch(e => setStatus(e.message)); });
   bindClick('todayNextBtn', () => { if (!viewSpanEnabled) return; selectedDayOffset = Math.min(viewSpanFutureDays, selectedDayOffset + 1); renderTodayDateNavigator(); refresh().catch(e => setStatus(e.message)); });
-  bindClick('photoUnifiedLibraryBtn', () => { const n = el('photoUnifiedInput'); if (n) { if (typeof n.showPicker === 'function') n.showPicker(); else n.click(); } });
-  bindClick('photoUnifiedCameraBtn', () => { const n = el('photoUnifiedCameraInput'); if (n) { if (typeof n.showPicker === 'function') n.showPicker(); else n.click(); } });
+  bindClick('photoUnifiedLibraryBtn', () => { const n = el('photoUnifiedInput'); if (n) n.click(); });
+  bindClick('photoUnifiedCameraBtn', () => { const n = el('photoUnifiedCameraInput'); if (n) n.click(); });
 
   bindClick('voiceToggleBtn', () => {
     const recognition = ensureVoiceRecognition();
@@ -2401,11 +2284,46 @@ function bindUI() {
 
   bindClick('toggleDailyGoalsBtn', () => toggleSection('dailyGoalsBody', 'toggleDailyGoalsBtn'));
   bindClick('toggleAddFoodBtn', () => toggleSection('addFoodBody', 'toggleAddFoodBtn'));
-  bindClick('chatToggleBtn', () => toggleSection('coachChatBody', 'chatToggleBtn', 'Hide', 'Show'));
+  // Coach chat is now opened/closed via a floating button (bottom-right).
+  // Keep the existing "Hide" button as a close control.
+  bindClick('chatToggleBtn', () => {
+    const card = el('coachChatCard');
+    if (card) card.classList.remove('open');
+    const fab = el('coachFab');
+    if (fab) fab.setAttribute('aria-expanded', 'false');
+  });
   bindClick('upgradeMonthlyBtn', () => billingController && billingController.startUpgradeCheckout('monthly'));
   bindClick('upgradeYearlyBtn', () => billingController && billingController.startUpgradeCheckout('yearly'));
   bindClick('manageSubscriptionBtn', () => billingController && billingController.openManageSubscription());
   bindClick('exportDataBtn', () => billingController && billingController.exportMyData());
+
+  // Floating coach button toggles the chat window.
+  const coachFab = el('coachFab');
+  if (coachFab) {
+    coachFab.onclick = () => {
+      const card = el('coachChatCard');
+      if (!card) return;
+      const isOpen = card.classList.contains('open');
+      if (isOpen) {
+        card.classList.remove('open');
+        coachFab.setAttribute('aria-expanded', 'false');
+      } else {
+        card.classList.add('open');
+        coachFab.setAttribute('aria-expanded', 'true');
+        // focus input for fast typing
+        const input = el('chatInput');
+        if (input) input.focus();
+      }
+    };
+  }
+
+  // Close coach chat with Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const card = el('coachChatCard');
+    if (card) card.classList.remove('open');
+    if (coachFab) coachFab.setAttribute('aria-expanded', 'false');
+  });
 }
 
 
@@ -2595,3 +2513,14 @@ if (MOCK_MODE) {
   showApp(false);
   showLoggedOutOnboarding();
 }
+
+// Ensure Coach Chat is a true viewport overlay on mobile.
+// If it's nested inside a scroll container in some builds/browsers, move it to <body>.
+(() => {
+  try {
+    const coachCard = document.getElementById('coachChatCard');
+    if (coachCard && coachCard.parentElement && coachCard.parentElement !== document.body) {
+      document.body.appendChild(coachCard);
+    }
+  } catch (_) {}
+})();
