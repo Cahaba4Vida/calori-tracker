@@ -4,7 +4,7 @@ body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   max-width: 860px;
   margin: auto;
-  padding: 16px;
+  padding: 16px 16px 92px;
   color: var(--ink);
   background:
     radial-gradient(1200px 500px at 12% -12%, rgba(59,130,246,0.20), transparent 60%),
@@ -47,16 +47,44 @@ input { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border);
 .hidden { display: none; }
 
 body.invertedTheme {
-  filter: invert(1) hue-rotate(180deg);
+  /* Dark mode is implemented via an invert filter, but applying filter on <body>
+     breaks position:fixed in some browsers (it creates a containing block).
+     So we keep body unfiltered and invert only the scrollable UI layers. */
   background: #111;
 }
 
-body.invertedTheme img,
-body.invertedTheme video {
+
+/* Inverted scope for dark mode (keeps fixed-position elements working) */
+body.invertedTheme header,
+body.invertedTheme main,
+body.invertedTheme #adminFooter,
+body.invertedTheme #coachChatCard,
+body.invertedTheme .addFoodOverlay,
+body.invertedTheme .addFoodPanel.modalActive,
+body.invertedTheme #onboardingOverlay {
   filter: invert(1) hue-rotate(180deg);
 }
+
+body.invertedTheme header img,
+body.invertedTheme header video,
+body.invertedTheme main img,
+body.invertedTheme main video,
+body.invertedTheme #adminFooter img,
+body.invertedTheme #coachChatCard img,
+body.invertedTheme #adminFooter video,
+body.invertedTheme #coachChatCard video,
+body.invertedTheme .addFoodOverlay img,
+body.invertedTheme .addFoodOverlay video,
+body.invertedTheme .addFoodPanel.modalActive img,
+body.invertedTheme .addFoodPanel.modalActive video,
+body.invertedTheme #onboardingOverlay img,
+body.invertedTheme #onboardingOverlay video {
+  /* re-invert media so photos/icons don't look like negatives */
+  filter: invert(1) hue-rotate(180deg);
+}
+
 .pre { white-space: pre-wrap; background: #f6f6f6; padding: 10px; border-radius: 10px; border: 1px solid var(--border); }
-.progress { height: 10px; background: #f0f0f0; border-radius: 999px; overflow: hidden; margin: 10px 0; border: 1px solid var(--border); }
+.progress { height: 10px; background: rgba(0,0,0,0.05); border-radius: 999px; overflow: hidden; margin: 10px 0; border: 1px solid rgba(0,0,0,0.08); box-shadow: none; }
 #progressBar { height: 100%; width: 0%; background: #111; }
 ul { margin: 8px 0 0 18px; }
 .auth button { min-width: 120px; }
@@ -68,7 +96,7 @@ ul { margin: 8px 0 0 18px; }
 
 .macroProgressList { margin-top: 4px; margin-bottom: 4px; }
 .macroProgressRow { display: grid; grid-template-columns: 1fr; gap: 6px; align-items: center; margin-top: 8px; }
-.microProgress { height: 7px; border-radius: 999px; background: #efefef; overflow: hidden; border: 1px solid var(--border); }
+.microProgress { height: 7px; border-radius: 999px; background: rgba(0,0,0,0.05); overflow: hidden; border: 1px solid rgba(0,0,0,0.08); box-shadow: none; }
 .microProgress > div { height: 100%; width: 0%; background: linear-gradient(90deg, #2f6fff, #6aa0ff); }
 .macroLabelCell { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
 
@@ -100,7 +128,7 @@ ul { margin: 8px 0 0 18px; }
 .overlay {
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.35);
-  z-index: 1400;
+  z-index: 1000;
 }
 .sheet {
   position: fixed; left: 0; right: 0; bottom: 0;
@@ -108,7 +136,7 @@ ul { margin: 8px 0 0 18px; }
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
   border: 1px solid var(--border);
-  z-index: 1401;
+  z-index: 1001;
   max-width: 820px;
   margin: 0 auto;
   box-shadow: 0 -8px 24px rgba(0,0,0,0.15);
@@ -266,13 +294,54 @@ label {
 }
 
 .floatingChat {
+  /* Coach chat is an always-available floating window */
   position: fixed;
-  right: 18px;
-  bottom: 18px;
-  width: min(380px, calc(100vw - 24px));
+  right: 16px;
+  bottom: 86px; /* leaves room for the floating coach button */
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(520px, calc(100vh - 140px));
+  overflow: hidden;
   margin: 0;
   z-index: 1100;
   box-shadow: 0 12px 28px rgba(0,0,0,0.2);
+  display: none; /* toggled open/closed */
+}
+
+.floatingChat.open {
+  display: block;
+}
+
+/* Floating Coach Action Button */
+.coachFab {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 64px;
+  height: 64px;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  z-index: 1200;
+}
+
+.coachFab img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  background: transparent;
+  pointer-events: none;
+}
+
+.coachFab:active {
+  transform: translateY(1px);
 }
 
 @media (min-width: 1100px) {
@@ -312,12 +381,10 @@ label {
   #finishDayCard { grid-row: 3; }
   #coachChatCard { grid-row: 4; }
 
+  /* Coach chat is floating on all screen sizes; keep it out of the grid flow */
   #coachChatCard {
-    position: static;
-    right: auto;
-    bottom: auto;
-    width: 100%;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+    grid-column: auto;
+    grid-row: auto;
   }
 }
 
@@ -331,15 +398,7 @@ label {
 }
 
 @media (max-width: 640px) {
-  .floatingChat {
-    position: static;
-    right: auto;
-    left: auto;
-    bottom: auto;
-    width: 100%;
-    margin-top: 12px;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
-  }
+  /* Keep the coach chat floating even on small screens */
 
   #coachChatBody .row {
     flex-wrap: wrap;
@@ -432,11 +491,11 @@ label {
 
 /* Plate estimate sheet layering: overlay blocks background, sheet stays clickable */
 #estimateOverlay {
-  z-index: 1500;
+  z-index: 1000;
   pointer-events: auto;
 }
 #plateEstimateSheet {
-  z-index: 1501;
+  z-index: 1001;
   max-height: calc(100vh - 24px);
   display: flex;
   flex-direction: column;
@@ -697,7 +756,32 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
   gap: 8px;
   overflow-x: auto;
   padding-top: 8px;
+  padding-bottom: 2px;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
 }
+.todayDateChips::-webkit-scrollbar { height: 6px; }
+.todayDateChips::-webkit-scrollbar-thumb { background: rgba(0,0,0,.18); border-radius: 999px; }
+.todayDateChips::-webkit-scrollbar-track { background: rgba(0,0,0,.06); border-radius: 999px; }
+
+.todayDateChip {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  line-height: 1;
+  scroll-snap-align: start;
+}
+.todayDateChip.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(30, 115, 255, .12);
+}
+@media (max-width: 520px) {
+  .todayDateChip { padding: 6px 8px; font-size: 12px; }
+  .todayDateChips { gap: 6px; }
+}
+
 .todayDateChip {
   border: 1px solid var(--border, #d9dee8);
   background: var(--card, #fff);
@@ -848,40 +932,43 @@ body.invertedTheme #trendsCard::before{
 }
 
 
-/* Photo processing overlay (safe: does not reuse existing .overlay) */
-.photoProcessingOverlay{
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.25);
-  z-index: 3000;
-  display: none;
-  align-items: center;
-  justify-content: center;
-}
-.photoProcessingOverlay.isVisible{display:flex;}
-.photoProcessingCard{
-  background: rgba(255,255,255,0.94);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 18px 18px;
-  min-width: 220px;
-  max-width: 320px;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.18);
+/* --- Aethon header banner --- */
+.appHeader{
   display:flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
+  flex-direction:column;
+  align-items:stretch;
+  gap:10px;
 }
-.photoProcessingText{
-  font-weight: 600;
-  text-align: center;
+.headerBrand{
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
-.photoSpinner{
-  width: 34px;
-  height: 34px;
-  border: 3px solid rgba(0,0,0,0.15);
-  border-top-color: rgba(0,0,0,0.65);
-  border-radius: 50%;
-  animation: photoSpin 0.9s linear infinite;
+.headerBrand img{
+  width:100%;
+  height:74px;
+  object-fit:cover;
+  border-radius:18px;
+  display:block;
 }
-@keyframes photoSpin { to { transform: rotate(360deg); } }
+.headerBrand .bannerDark{ display:none; }
+body.invertedTheme .headerBrand .bannerLight{ display:none; }
+body.invertedTheme .headerBrand .bannerDark{ display:block; }
+
+.appHeader .auth{align-self:flex-end; display:flex; gap:10px; align-items:center;}
+
+/* Admin button moved to bottom */
+.adminFooter{
+  /* Keep this in normal document flow so users must scroll to reach it */
+  position: static;
+  transform: none;
+  left: auto;
+  bottom: auto;
+  z-index: auto;
+
+  display: flex;
+  justify-content: center;
+  /* Extra bottom padding so the fixed coach button never covers this link */
+  padding: 24px 0 calc(120px + env(safe-area-inset-bottom));
+}
