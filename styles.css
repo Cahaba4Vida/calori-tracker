@@ -47,14 +47,39 @@ input { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border);
 .hidden { display: none; }
 
 body.invertedTheme {
-  filter: invert(1) hue-rotate(180deg);
+  /* Dark mode is implemented via an invert filter, but applying filter on <body>
+     breaks position:fixed in some browsers (it creates a containing block).
+     So we keep body unfiltered and invert only the scrollable UI layers. */
   background: #111;
 }
 
-body.invertedTheme img,
-body.invertedTheme video {
+
+/* Inverted scope for dark mode (keeps fixed-position elements working) */
+body.invertedTheme header,
+body.invertedTheme main,
+body.invertedTheme #adminFooter,
+body.invertedTheme .addFoodOverlay,
+body.invertedTheme .addFoodPanel.modalActive,
+body.invertedTheme #onboardingOverlay {
   filter: invert(1) hue-rotate(180deg);
 }
+
+body.invertedTheme header img,
+body.invertedTheme header video,
+body.invertedTheme main img,
+body.invertedTheme main video,
+body.invertedTheme #adminFooter img,
+body.invertedTheme #adminFooter video,
+body.invertedTheme .addFoodOverlay img,
+body.invertedTheme .addFoodOverlay video,
+body.invertedTheme .addFoodPanel.modalActive img,
+body.invertedTheme .addFoodPanel.modalActive video,
+body.invertedTheme #onboardingOverlay img,
+body.invertedTheme #onboardingOverlay video {
+  /* re-invert media so photos/icons don't look like negatives */
+  filter: invert(1) hue-rotate(180deg);
+}
+
 .pre { white-space: pre-wrap; background: #f6f6f6; padding: 10px; border-radius: 10px; border: 1px solid var(--border); }
 .progress { height: 10px; background: #f0f0f0; border-radius: 999px; overflow: hidden; margin: 10px 0; border: 1px solid var(--border); }
 #progressBar { height: 100%; width: 0%; background: #111; }
