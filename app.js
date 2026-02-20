@@ -902,6 +902,7 @@ async function submitFeedbackResponse() {
 }
 
 
+let currentPhotoUploadMode = 'plate'; // 'plate' or 'label'
 let pendingExtraction = null;
 let pendingPlateEstimate = null;
 
@@ -1458,6 +1459,8 @@ async function uploadFoodFromInput(inputId = 'photoInput') {
   const file = input.files && input.files[0];
   if (!file) return;
 
+  mode = mode || currentPhotoUploadMode || 'plate';
+
   
   setPhotoProcessing(true, 'Extracting nutrition…');
   try {
@@ -1543,10 +1546,18 @@ setStatus('Estimating…');
 
 }
 
-async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
+async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput', mode = null) {
   const input = el(inputId);
   const file = input && input.files && input.files[0];
   if (!file) return;
+
+  // Mode defaults to the currently selected tile (Plate vs Label)
+  mode = mode || currentPhotoUploadMode;
+  if (!mode) {
+    setPhotoProcessing(false);
+    alert('Choose Plate or Label first.');
+    return;
+  }
 
   setPhotoProcessing(true, 'Processing photo…');
   try {
@@ -1556,6 +1567,7 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
     // Close the Add Food modal so the draft sheet can appear above everything
     try { showAddFoodPanel(null); } catch (e) {}
 
+    if (mode !== 'label') {
     // Plate estimate first (most common "food photo" case)
     try {
       setStatus('Estimating plate…');
@@ -1592,12 +1604,33 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
       // If the plate-estimator says "try a clearer photo", show that message instead of silently failing over.
       const msg = plateErr?.message || String(plateErr || '');
       if (msg && /could not estimate calories|try a clearer photo/i.test(msg)) {
+        // Land on the plate-estimate sheet anyway so the user can manually fill values,
+        // instead of dead-ending on an alert.
         setStatus('');
-        alert(msg);
+        pendingPlateEstimate = { calories: null, protein_g: null, carbs_g: null, fat_g: null, confidence: 'low', assumptions: [], notes: '' };
+        el('estimateServingsInput').value = '1';
+        el('estimateCaloriesInput').value = '';
+        el('estimateProteinInput').value = '';
+        el('estimateCarbsInput').value = '';
+        el('estimateFatInput').value = '';
+        setBadge('low');
+        const ul = el('estimateAssumptions');
+        if (ul) {
+          ul.innerHTML = '';
+          const li = document.createElement('li');
+          li.textContent = msg;
+          ul.appendChild(li);
+        }
+        const notes = el('estimateNotes');
+        if (notes) notes.innerText = '';
+        el('estimateError').innerText = msg;
+        openEstimateSheet();
         return;
       }
       // Otherwise, fall back to nutrition-label scan (e.g., transient errors, function timeout).
       console.warn('Plate estimate failed; trying label scan.', plateErr);
+    }
+
     }
 
     setStatus('Scanning label…');
@@ -1628,14 +1661,33 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
   } catch (e) {
     console.error(e);
     setStatus('');
-    alert(e?.message || 'Could not process photo. Please try a clearer photo (or a different angle).');
+    alert(e?.message || (mode === 'label' ? 'Could not read the nutrition label. Try a clearer, closer photo (flat, well-lit).' : 'Could not process photo. Please try a clearer photo (or a different angle).'));
   } finally {
     setPhotoProcessing(false);
   }
 }
 
 
+
+function updatePhotoUploadModeLabel() {
+  const n = el('photoUploadModeLabel');
+  const plateTile = el('photoModePlateTile');
+  const labelTile = el('photoModeLabelTile');
+  if (plateTile) plateTile.classList.toggle('isSelected', currentPhotoUploadMode === 'plate');
+  if (labelTile) labelTile.classList.toggle('isSelected', currentPhotoUploadMode === 'label');
+  if (!n) return;
+  if (!currentPhotoUploadMode) {
+    n.innerText = 'Tap Plate or Label to open your camera/library picker.';
+    return;
+  }
+  if (currentPhotoUploadMode === 'label') {
+    n.innerText = 'Nutrition label: flat, well-lit, fill the frame.';
+  } else {
+    n.innerText = 'Plate photo: top-down, good lighting, include full plate.';
+  }
+}
 function showAddFoodPanel(panelId = null) {
+  if (panelId === 'addFoodPhotoPanel') updatePhotoUploadModeLabel();
   const ids = ['addFoodPhotoPanel', 'addFoodVoicePanel', 'addFoodQuickFillPanel', 'addFoodManualPanel'];
   ids.forEach((id) => {
     const node = el(id);
@@ -2170,7 +2222,7 @@ function bindUI() {
   unifiedPhotoInputIds.forEach((id) => {
     const node = el(id);
     if (!node) return;
-    node.onchange = () => uploadUnifiedPhotoFromInput(id).catch((e) => setStatus(e.message));
+    node.onchange = () => uploadUnifiedPhotoFromInput(id, currentPhotoUploadMode).catch((e) => setStatus(e.message));
   });
   el('saveWeightBtn').onclick = () => saveWeight().catch(e => setStatus(e.message));
   el('finishDayBtn').onclick = () => finishDay().catch(e => setStatus(e.message));
@@ -2356,7 +2408,9 @@ function bindUI() {
   bindClick('settingsSignUpBtn', () => openIdentityModal('signup'));
   bindClick('settingsSignInBtn', () => openIdentityModal('login'));
 
-  bindClick('addFoodPhotoBtn', () => showAddFoodPanel('addFoodPhotoPanel'));
+  bindClick('addFoodPhotoBtn', () => { currentPhotoUploadMode = null; showAddFoodPanel('addFoodPhotoPanel'); updatePhotoUploadModeLabel(); });
+  bindClick('photoModePlateTile', () => { currentPhotoUploadMode = 'plate'; updatePhotoUploadModeLabel(); const input = el('photoUnifiedCameraInput'); if (input) input.click(); });
+  bindClick('photoModeLabelTile', () => { currentPhotoUploadMode = 'label'; updatePhotoUploadModeLabel(); const input = el('photoUnifiedInput'); if (input) input.click(); });
   bindClick('addFoodVoiceBtn', () => { voiceFollowUpCount = 0; showAddFoodPanel('addFoodVoicePanel'); });
   bindClick('addFoodQuickFillBtn', () => showAddFoodPanel('addFoodQuickFillPanel'));
   bindClick('addFoodManualBtn', () => showAddFoodPanel('addFoodManualPanel'));

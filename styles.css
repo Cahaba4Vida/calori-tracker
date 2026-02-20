@@ -885,3 +885,22 @@ body.invertedTheme #trendsCard::before{
   animation: photoSpin 0.9s linear infinite;
 }
 @keyframes photoSpin { to { transform: rotate(360deg); } }
+
+
+/* Photo mode tiles */
+.photoModeTiles{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 10px 0 14px 0;
+}
+.photoModeTile{
+  padding: 14px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  font-size: 16px;
+}
+.photoModeTile.isSelected{
+  outline: 2px solid rgba(255,255,255,0.35);
+}
