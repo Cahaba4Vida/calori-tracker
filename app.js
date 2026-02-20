@@ -1646,6 +1646,17 @@ async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput', mode =
       return;
     }
 
+    // Heuristic: if the model says this isn't a nutrition label (or is low-confidence and user didn't explicitly choose label),
+    // fall back to plate estimation so we still show an estimate sheet like the working build.
+    const extracted = j && j.extracted ? j.extracted : null;
+    const basis = (extracted && (extracted.nutrition_basis || extracted.basis) ? String(extracted.nutrition_basis || extracted.basis) : '').toLowerCase();
+    const conf = (extracted && extracted.confidence ? String(extracted.confidence) : '').toLowerCase();
+    const explicitlyChoseLabel = (effectiveMode === 'label') && (mode === 'label' || currentPhotoUploadMode === 'label');
+    if (!explicitlyChoseLabel) {
+      if (basis && basis !== 'label') throw new Error('Photo does not appear to be a nutrition label.');
+      if (conf === 'low') throw new Error('Low-confidence label extraction; falling back to plate estimate.');
+    }
+
     pendingExtraction = j.extracted;
     el('servingsEatenInput').value = '1.0';
     el('calPerServingInput').value = (pendingExtraction.calories_per_serving ?? '').toString();
