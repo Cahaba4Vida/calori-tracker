@@ -2318,12 +2318,17 @@ function bindUI() {
   bindClick('todayPrevBtn', () => { if (!viewSpanEnabled) return; selectedDayOffset = Math.max(-viewSpanPastDays, selectedDayOffset - 1); renderTodayDateNavigator(); refresh().catch(e => setStatus(e.message)); });
   bindClick('todayNextBtn', () => { if (!viewSpanEnabled) return; selectedDayOffset = Math.min(viewSpanFutureDays, selectedDayOffset + 1); renderTodayDateNavigator(); refresh().catch(e => setStatus(e.message)); });
 
-  // Photo mode selection
-  bindClick('photoModeLabelBtn', () => setPhotoMode('label'));
-  bindClick('photoModePlateBtn', () => setPhotoMode('plate'));
-
-  bindClick('photoUnifiedLibraryBtn', () => { const n = el('photoUnifiedInput'); if (n) n.click(); });
-  bindClick('photoUnifiedCameraBtn', () => { const n = el('photoUnifiedCameraInput'); if (n) n.click(); });
+  // Photo mode selection (tap Label/Plate -> immediately open camera)
+  function startPhotoCapture(mode) {
+    setPhotoMode(mode);
+    // Prefer camera capture; on desktop this may fall back to file picker.
+    const cam = el('photoUnifiedCameraInput');
+    const lib = el('photoUnifiedInput');
+    if (cam) cam.click();
+    else if (lib) lib.click();
+  }
+  bindClick('photoModeLabelBtn', () => startPhotoCapture('label'));
+  bindClick('photoModePlateBtn', () => startPhotoCapture('plate'));
 
   bindClick('voiceToggleBtn', () => {
     const recognition = ensureVoiceRecognition();
