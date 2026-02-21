@@ -904,6 +904,11 @@ async function submitFeedbackResponse() {
 
 let pendingExtraction = null;
 let pendingPlateEstimate = null;
+// Controls how the unified photo uploader behaves.
+// 'label' -> nutrition label extraction only
+// 'plate' -> plate estimate only
+// 'auto'  -> try label extraction, fallback to plate estimate
+let photoUploadMode = 'label';
 
 
 function openSheet() {
@@ -1432,7 +1437,6 @@ async function uploadFoodFromInput(inputId = 'photoInput') {
   el('proteinPerServingInput').oninput = computeTotalsPreview;
 
   computeTotalsPreview();
-  showAddFoodPanel(null);
   openSheet();
 }
 
@@ -1475,17 +1479,101 @@ async function uploadPlateFromInput(inputId = 'plateInput') {
   });
   el('estimateNotes').innerText = j.notes ? j.notes : '';
 
-  showAddFoodPanel(null);
   openEstimateSheet();
 }
 
+async function uploadUnifiedPhotoFromInput(inputId = 'photoUnifiedInput') {
+  const input = el(inputId);
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  const imageDataUrl = await fileToDataUrl(file);
+  input.value = '';
 
-async function uploadUnifiedPhotoFromInput(inputId = 'photoLabelInput') {
-  if (inputId === 'photoPlateInput' || inputId === 'photoPlateCameraInput') {
-    await uploadPlateFromInput(inputId);
+  // IMPORTANT: Close the Add Food modal before opening any estimate sheet.
+  // Otherwise the modal overlay can block the sheet on mobile.
+  showAddFoodPanel(null);
+
+  // Explicit plate mode: skip label extraction entirely.
+  if (photoUploadMode === 'plate') {
+    setStatus('Estimating plate…');
+    const j = await withThinking(async () => api('entries-estimate-plate-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageDataUrl, servings_eaten: 1.0, portion_hint: null })
+    }));
+    setStatus('');
+
+    pendingPlateEstimate = j;
+    el('estimateServingsInput').value = '1';
+    el('estimateCaloriesInput').value = j.calories ?? '';
+    el('estimateProteinInput').value = (j.protein_g == null ? '' : String(Math.round(j.protein_g)));
+    el('estimateCarbsInput').value = (j.carbs_g == null ? '' : String(Math.round(j.carbs_g)));
+    el('estimateFatInput').value = (j.fat_g == null ? '' : String(Math.round(j.fat_g)));
+    setBadge(j.confidence || 'low');
+    const ul = el('estimateAssumptions');
+    ul.innerHTML = '';
+    (j.assumptions || []).forEach((a) => {
+      const li = document.createElement('li');
+      li.innerText = a;
+      ul.appendChild(li);
+    });
+    el('estimateNotes').innerText = j.notes ? j.notes : '';
+    openEstimateSheet();
     return;
   }
-  await uploadFoodFromInput(inputId);
+
+  try {
+    setStatus('Analyzing photo…');
+    const j = await withThinking(async () => api('entries-add-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageDataUrl, extract_only: true })
+    }));
+    setStatus('');
+    pendingExtraction = j.extracted;
+    el('servingsEatenInput').value = '1.0';
+    el('calPerServingInput').value = (pendingExtraction.calories_per_serving ?? '').toString();
+    el('proteinPerServingInput').value = pendingExtraction.protein_g_per_serving == null ? '' : String(pendingExtraction.protein_g_per_serving);
+    el('servingsEatenInput').oninput = computeTotalsPreview;
+    el('calPerServingInput').oninput = computeTotalsPreview;
+    el('proteinPerServingInput').oninput = computeTotalsPreview;
+    computeTotalsPreview();
+    openSheet();
+    return;
+  } catch (e) {
+    // If nutrition-label extraction fails:
+    // - in explicit 'label' mode, stop and let the user retry / switch modes
+    // - in 'auto' mode, fall back to plate estimate
+    if (photoUploadMode === 'label') {
+      setStatus('Could not read a nutrition label from that photo. Try Plate mode or retake the photo.');
+      return;
+    }
+  }
+
+  setStatus('Estimating plate…');
+  const j = await withThinking(async () => api('entries-estimate-plate-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageDataUrl, servings_eaten: 1.0, portion_hint: null })
+  }));
+  setStatus('');
+
+  pendingPlateEstimate = j;
+  el('estimateServingsInput').value = '1';
+  el('estimateCaloriesInput').value = j.calories ?? '';
+  el('estimateProteinInput').value = (j.protein_g == null ? '' : String(Math.round(j.protein_g)));
+  el('estimateCarbsInput').value = (j.carbs_g == null ? '' : String(Math.round(j.carbs_g)));
+  el('estimateFatInput').value = (j.fat_g == null ? '' : String(Math.round(j.fat_g)));
+  setBadge(j.confidence || 'low');
+  const ul = el('estimateAssumptions');
+  ul.innerHTML = '';
+  (j.assumptions || []).forEach((a) => {
+    const li = document.createElement('li');
+    li.innerText = a;
+    ul.appendChild(li);
+  });
+  el('estimateNotes').innerText = j.notes ? j.notes : '';
+  openEstimateSheet();
 }
 
 function showAddFoodPanel(panelId = null) {
@@ -1515,6 +1603,14 @@ function showAddFoodPanel(panelId = null) {
   }
 
   activeAddFoodPanel = panelId;
+}
+
+function setPhotoMode(mode) {
+  photoUploadMode = mode;
+  const labelBtn = el('photoModeLabelBtn');
+  const plateBtn = el('photoModePlateBtn');
+  if (labelBtn) labelBtn.setAttribute('aria-pressed', mode === 'label' ? 'true' : 'false');
+  if (plateBtn) plateBtn.setAttribute('aria-pressed', mode === 'plate' ? 'true' : 'false');
 }
 
 function stopVoiceRecognition() {
@@ -2019,7 +2115,7 @@ function bindUI() {
   if (enterMockBtn) enterMockBtn.onclick = () => initAuthedSession().catch(e => setStatus(e.message));
   if (resetMockBtn) resetMockBtn.onclick = () => { resetMockState(); setStatus('Local demo data reset. Starting fresh onboarding…'); initAuthedSession().catch(e => setStatus(e.message)); };
   el('saveGoalBtn').onclick = () => saveGoal().catch(e => setStatus(e.message));
-  const unifiedPhotoInputIds = ['photoLabelInput', 'photoLabelCameraInput', 'photoPlateInput', 'photoPlateCameraInput'];
+  const unifiedPhotoInputIds = ['photoUnifiedInput', 'photoUnifiedCameraInput'];
   unifiedPhotoInputIds.forEach((id) => {
     const node = el(id);
     if (!node) return;
@@ -2209,7 +2305,7 @@ function bindUI() {
   bindClick('settingsSignUpBtn', () => openIdentityModal('signup'));
   bindClick('settingsSignInBtn', () => openIdentityModal('login'));
 
-  bindClick('addFoodPhotoBtn', () => showAddFoodPanel('addFoodPhotoPanel'));
+  bindClick('addFoodPhotoBtn', () => { setPhotoMode('label'); showAddFoodPanel('addFoodPhotoPanel'); });
   bindClick('addFoodVoiceBtn', () => { voiceFollowUpCount = 0; showAddFoodPanel('addFoodVoicePanel'); });
   bindClick('addFoodQuickFillBtn', () => showAddFoodPanel('addFoodQuickFillPanel'));
   bindClick('addFoodManualBtn', () => showAddFoodPanel('addFoodManualPanel'));
@@ -2218,10 +2314,13 @@ function bindUI() {
 
   bindClick('todayPrevBtn', () => { if (!viewSpanEnabled) return; selectedDayOffset = Math.max(-viewSpanPastDays, selectedDayOffset - 1); renderTodayDateNavigator(); refresh().catch(e => setStatus(e.message)); });
   bindClick('todayNextBtn', () => { if (!viewSpanEnabled) return; selectedDayOffset = Math.min(viewSpanFutureDays, selectedDayOffset + 1); renderTodayDateNavigator(); refresh().catch(e => setStatus(e.message)); });
-  bindClick('photoLabelLibraryBtn', () => { const n = el('photoLabelInput'); if (n) n.click(); });
-  bindClick('photoLabelCameraBtn', () => { const n = el('photoLabelCameraInput'); if (n) n.click(); });
-  bindClick('photoPlateLibraryBtn', () => { const n = el('photoPlateInput'); if (n) n.click(); });
-  bindClick('photoPlateCameraBtn', () => { const n = el('photoPlateCameraInput'); if (n) n.click(); });
+
+  // Photo mode selection
+  bindClick('photoModeLabelBtn', () => setPhotoMode('label'));
+  bindClick('photoModePlateBtn', () => setPhotoMode('plate'));
+
+  bindClick('photoUnifiedLibraryBtn', () => { const n = el('photoUnifiedInput'); if (n) n.click(); });
+  bindClick('photoUnifiedCameraBtn', () => { const n = el('photoUnifiedCameraInput'); if (n) n.click(); });
 
   bindClick('voiceToggleBtn', () => {
     const recognition = ensureVoiceRecognition();
