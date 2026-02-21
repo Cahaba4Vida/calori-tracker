@@ -110,14 +110,26 @@
 <div class="addFoodOverlay hidden" id="addFoodOverlay"></div>
 <div class="addFoodPanel hidden" id="addFoodPhotoPanel">
 <div class="row end"><button class="addFoodModalCloseBtn" type="button">Close</button></div>
-<div class="muted">Pick how to upload your food photo.</div>
+<div class="muted">Choose photo type, then upload from camera roll or camera.</div>
+<div class="photoModeBlock">
+<div><strong>Label</strong></div>
 <div class="row photoActions">
-<button id="photoUnifiedLibraryBtn" type="button">Choose from camera roll</button>
-<button id="photoUnifiedCameraBtn" type="button">Use camera</button>
+<button id="photoLabelLibraryBtn" type="button">Choose from camera roll</button>
+<button id="photoLabelCameraBtn" type="button">Use camera</button>
 </div>
 </div>
-<input accept="image/*" class="hiddenFileInput" id="photoUnifiedInput" type="file"/>
-<input accept="image/*" capture="environment" class="hiddenFileInput" id="photoUnifiedCameraInput" type="file"/>
+<div class="photoModeBlock">
+<div><strong>Plate</strong></div>
+<div class="row photoActions">
+<button id="photoPlateLibraryBtn" type="button">Choose from camera roll</button>
+<button id="photoPlateCameraBtn" type="button">Use camera</button>
+</div>
+</div>
+</div>
+<input accept="image/*" class="hiddenFileInput" id="photoLabelInput" type="file"/>
+<input accept="image/*" capture="environment" class="hiddenFileInput" id="photoLabelCameraInput" type="file"/>
+<input accept="image/*" class="hiddenFileInput" id="photoPlateInput" type="file"/>
+<input accept="image/*" capture="environment" class="hiddenFileInput" id="photoPlateCameraInput" type="file"/>
 <div class="addFoodPanel hidden" id="addFoodVoicePanel">
 <div class="row end"><button class="addFoodModalCloseBtn" type="button">Close</button></div>
 <div class="muted">Describe what you ate. The assistant will ask follow-up questions if needed.</div>
