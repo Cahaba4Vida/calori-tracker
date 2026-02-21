@@ -5,7 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>Calorie &amp; Weight Tracker</title>
-<link href="styles.css?v=18" rel="stylesheet"/>
+<link href="styles.css?v=16" rel="stylesheet"/>
 </head>
 <body>
 <header class="row appHeader">
@@ -534,6 +534,6 @@
 </div>
 <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 <script src="app-billing.js?v=1"></script>
-<script src="app.js?v=18"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>
