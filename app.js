@@ -908,7 +908,9 @@ let pendingPlateEstimate = null;
 // 'label' -> nutrition label extraction only
 // 'plate' -> plate estimate only
 // 'auto'  -> try label extraction, fallback to plate estimate
-let photoUploadMode = 'label';
+// Default photo mode should match the most common use case:
+// users photographing a plate, not a nutrition label.
+let photoUploadMode = 'plate';
 
 
 function openSheet() {
@@ -2305,7 +2307,8 @@ function bindUI() {
   bindClick('settingsSignUpBtn', () => openIdentityModal('signup'));
   bindClick('settingsSignInBtn', () => openIdentityModal('login'));
 
-  bindClick('addFoodPhotoBtn', () => { setPhotoMode('label'); showAddFoodPanel('addFoodPhotoPanel'); });
+  // Open the photo panel without forcing Label mode; default to Plate (or the last chosen mode).
+  bindClick('addFoodPhotoBtn', () => { setPhotoMode(photoUploadMode); showAddFoodPanel('addFoodPhotoPanel'); });
   bindClick('addFoodVoiceBtn', () => { voiceFollowUpCount = 0; showAddFoodPanel('addFoodVoicePanel'); });
   bindClick('addFoodQuickFillBtn', () => showAddFoodPanel('addFoodQuickFillPanel'));
   bindClick('addFoodManualBtn', () => showAddFoodPanel('addFoodManualPanel'));
