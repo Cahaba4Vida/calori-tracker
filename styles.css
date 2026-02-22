@@ -1075,4 +1075,6 @@ body.invertedTheme #tabs .tabbtn.active {
 #coachChatCard::before{content:"";position:absolute;inset:0;background-image:url("assets/backgrounds/coachchat_light.png");background-size:cover;background-position:center;opacity:0.22;pointer-events:none;}
 #coachChatCard > *{position:relative;z-index:1;}
 body.invertedTheme #coachChatCard::before{background-image:url("assets/backgrounds/coachchat_dark.png");filter:invert(1) hue-rotate(180deg);opacity:0.30;}
-\n.estimate-overlay.hidden{ display:none; }\n
+.estimate-overlay.hidden{ display:none; }
+.estimate-overlay[hidden]{ display:none; }
+
