@@ -1007,7 +1007,11 @@ function setBadge(conf) {
   else b.classList.add('low');
 }
 
-async function savePlateEstimateFromSheet() {
+async let __plateSubmitInProgress = false; // PLATE_SUBMIT_LOCK_v49
+
+function savePlateEstimateFromSheet() {
+  if (__plateSubmitInProgress) return;
+  __plateSubmitInProgress = true;
   const saveBtn = el('estimateSaveBtn');
   const prevText = saveBtn ? saveBtn.innerText : '';
   try {
@@ -1056,6 +1060,7 @@ async function savePlateEstimateFromSheet() {
     setStatus('');
     try { el('estimateError').innerText = e.message; } catch {}
   } finally {
+    __plateSubmitInProgress = false;
     if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = prevText || 'Save Entry'; }
   }
 }
@@ -2615,7 +2620,7 @@ if (MOCK_MODE) {
     if (!b) return;
     b.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); closeEstimateSheet(); });
   });
-  const saveIds = ['estimateSaveBtn','plateEstimateSaveBtn','plateEstimateSave'];
+  const saveIds = ['plateEstimateSaveBtn','plateEstimateSave']; // v49: avoid double-binding estimateSaveBtn
   saveIds.forEach((id)=>{
     const b = el(id);
     if (!b) return;
