@@ -1726,7 +1726,8 @@ function renderEntries(entries) {
         const rx = e.raw_extraction;
         if (rx && (rx.source === 'plate_photo' || rx.estimated === true)) tag = ' (est)';
       } catch {}
-      text.innerText = `${ts} — ${e.calories} cal` + suffix + tag;
+      const name = entryFriendlyName(e);
+      text.innerText = `${ts} — ${name} • ${e.calories} cal` + suffix + tag;
     }
   }
 
@@ -1837,6 +1838,28 @@ function applyManualPreset(preset) {
   el('manualNotesInput').value = p.name || '';
 }
 
+// ===============================
+// QUICK FILL AUTO LOG (v42)
+// ===============================
+async function applyQuickFillAndLog(presetId) {
+  // Fill the manual inputs from the preset, then immediately save the entry.
+  applyManualPreset(presetId);
+  // Ensure notes defaults to the preset name if empty
+  const p = (profileState.quick_fills || []).find((x) => x.id === presetId);
+  const notesEl = el('manualNotesInput');
+  if (notesEl && (!notesEl.value || !String(notesEl.value).trim()) && p?.name) {
+    notesEl.value = p.name;
+  }
+  try {
+    await saveManualEntry();
+  } catch (e) {
+    // saveManualEntry already sets status; keep console for debugging
+    console.error('Quick Fill save failed', e);
+  }
+}
+
+
+
 function renderQuickFillButtons() {
   const row = el('quickFillsRow');
   const block = el('quickAddsBlock');
@@ -1853,7 +1876,7 @@ function renderQuickFillButtons() {
     btn.className = 'quickFillBtn';
     btn.dataset.preset = q.id;
     btn.innerText = q.name;
-    btn.onclick = () => applyManualPreset(q.id);
+    btn.onclick = () => applyQuickFillAndLog(q.id);
     row.appendChild(btn);
   }
 }
@@ -2664,3 +2687,306 @@ if (MOCK_MODE) {
     });
   });
 })();
+
+
+// ===============================
+// CHEAT DAY (v35)
+// ===============================
+function getCheatDayConfig() {
+  return {
+    enabled: localStorage.getItem('cheat_day_enabled') === '1',
+    dow: parseInt(localStorage.getItem('cheat_day_dow') || '6', 10), // default Saturday
+    extra: parseInt(localStorage.getItem('cheat_day_extra') || '0', 10),
+  };
+}
+
+function getBaseDailyCalorieGoal() {
+  const v = getTodaysCalorieGoal();
+  return isNaN(v) ? 0 : v;
+}
+
+// Returns today's adjusted calorie goal (cheat day pulls calories from other days)
+function getTodaysCalorieGoal() {
+  const base = getBaseDailyCalorieGoal();
+  const cfg = getCheatDayConfig();
+  if (!base || !cfg.enabled || !cfg.extra) return base;
+
+  const todayDow = new Date().getDay(); // 0=Sun..6=Sat
+  const deltaOther = Math.round(cfg.extra / 6);
+
+  let adjusted = base;
+  if (todayDow === cfg.dow) adjusted = base + cfg.extra;
+  else adjusted = base - deltaOther;
+
+  // Safety clamp (prevent extremely low targets)
+  const minFloor = 1200;
+  if (adjusted < minFloor) adjusted = minFloor;
+  return adjusted;
+}
+
+function getWeeklyCaloriePlanText() {
+  const base = getBaseDailyCalorieGoal();
+  const cfg = getCheatDayConfig();
+  if (!base) return '';
+  if (!cfg.enabled || !cfg.extra) return `Daily goal: ${base} kcal`;
+  const other = Math.max(0, base - Math.round(cfg.extra / 6));
+  const cheat = base + cfg.extra;
+  return `Cheat day: ${cheat} kcal • Other days: ${other} kcal`;
+}
+
+function wireCheatDaySettings() {
+  const toggle = document.getElementById('cheatDayToggle');
+  const select = document.getElementById('cheatDaySelect');
+  const extraInput = document.getElementById('cheatDayExtraInput');
+  const status = document.getElementById('cheatDayStatus');
+
+  if (!toggle || !select || !extraInput) return;
+
+  const cfg = getCheatDayConfig();
+  toggle.checked = cfg.enabled;
+  select.value = String(isNaN(cfg.dow) ? 6 : cfg.dow);
+  extraInput.value = String(isNaN(cfg.extra) ? 0 : cfg.extra);
+
+  function refreshStatus() {
+    if (!status) return;
+    status.textContent = getWeeklyCaloriePlanText();
+  }
+
+  toggle.addEventListener('change', () => {
+    localStorage.setItem('cheat_day_enabled', toggle.checked ? '1' : '0');
+    refreshStatus();
+    if (typeof renderAll === 'function') renderAll();
+  });
+
+  select.addEventListener('change', () => {
+    localStorage.setItem('cheat_day_dow', String(parseInt(select.value, 10)));
+    refreshStatus();
+    if (typeof renderAll === 'function') renderAll();
+  });
+
+  extraInput.addEventListener('change', () => {
+    const v = Math.max(0, parseInt(extraInput.value || '0', 10) || 0);
+    localStorage.setItem('cheat_day_extra', String(v));
+    refreshStatus();
+    if (typeof renderAll === 'function') renderAll();
+  });
+
+  refreshStatus();
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{ try { wireCheatDaySettings(); } catch(e) {} });
+
+
+// ===============================
+// CHEAT DAY MACROS (v36)
+// ===============================
+function getBaseMacroGoals() {
+  const p = getTodaysMacroGoals().protein_g || 0;
+  const c = getTodaysMacroGoals().carbs_g || 0;
+  const f = getTodaysMacroGoals().fat_g || 0;
+  return { protein_g: p, carbs_g: c, fat_g: f };
+}
+function macroCalories(macros) {
+  return (macros.protein_g * 4) + (macros.carbs_g * 4) + (macros.fat_g * 9);
+}
+function getTodaysMacroGoals() {
+  const baseCals = getBaseDailyCalorieGoal();
+  const todayCals = getTodaysCalorieGoal();
+  const base = getBaseMacroGoals();
+  if (!base.protein_g && !base.carbs_g && !base.fat_g) return base;
+  const baseMacroCals = macroCalories(base);
+  if (!baseMacroCals || !baseCals) return base;
+
+  const scale = todayCals / baseCals;
+  let p = Math.round(base.protein_g * scale);
+  let c = Math.round(base.carbs_g * scale);
+  let f = Math.round(base.fat_g * scale);
+
+  const cfg = getCheatDayConfig();
+  const todayDow = new Date().getDay();
+  const isCheat = cfg.enabled && cfg.extra && (todayDow === cfg.dow);
+  if (isCheat && base.protein_g) p = Math.max(p, base.protein_g);
+
+  const target = todayCals;
+  const c0 = Math.round(base.carbs_g * scale);
+  const f0 = Math.round(base.fat_g * scale);
+  const cMin = Math.max(0, Math.floor(c0 * 0.95));
+  const cMax = Math.ceil(c0 * 1.05);
+  const fMin = Math.max(0, Math.floor(f0 * 0.95));
+  const fMax = Math.ceil(f0 * 1.05);
+
+  function current() { return (p*4)+(c*4)+(f*9); }
+
+  let iter = 0;
+  while (iter < 500) {
+    const diff = target - current();
+    if (Math.abs(diff) <= 15) break;
+    if (diff > 0) {
+      if (c < cMax) c += 1;
+      else if (f < fMax) f += 1;
+      else break;
+    } else {
+      if (c > cMin) c -= 1;
+      else if (f > fMin) f -= 1;
+      else break;
+    }
+    iter += 1;
+  }
+  return { protein_g: p, carbs_g: c, fat_g: f };
+}
+
+function initSettingsTabs_v37() {
+  const tabs = document.querySelectorAll('.settingsTab');
+  const panes = document.querySelectorAll('.settingsTabPane');
+  tabs.forEach(tab=>{
+    tab.addEventListener('click', ()=>{
+      tabs.forEach(t=>t.classList.remove('active'));
+      panes.forEach(p=>p.classList.add('hidden'));
+      tab.classList.add('active');
+      const target = tab.getAttribute('data-tab');
+      document.querySelector('[data-tab-content="'+target+'"]').classList.remove('hidden');
+    });
+  });
+
+  const sections = document.querySelectorAll('.settingsSection');
+  sections.forEach(section=>{
+    if(section.id === "cheatDaySettings") {
+      document.querySelector('[data-tab-content="nutrition"]').appendChild(section);
+    }
+    else if(section.innerText && section.innerText.includes("Autopilot")) {
+      document.querySelector('[data-tab-content="autopilot"]').appendChild(section);
+    }
+    else {
+      document.querySelector('[data-tab-content="profile"]').appendChild(section);
+    }
+  });
+}
+document.addEventListener("DOMContentLoaded", ()=>{
+  try { initSettingsTabs_v37(); } catch(e) {}
+});
+
+
+// ===============================
+// AUTOPILOT READINESS + PLAN GRAPH (v38)
+// ===============================
+function _apParseDate(d){try{if(!d)return null;if(typeof d==='number')return new Date(d);if(typeof d==='string'){const dt=new Date(d);if(!isNaN(dt.getTime()))return dt;}if(typeof d==='object'&&d.ts)return new Date(d.ts);}catch(e){}return null;}
+function _apStartOfDay(dt){const d=new Date(dt.getTime());d.setHours(0,0,0,0);return d;}
+function _apIsoYmd(dt){const d=_apStartOfDay(dt);const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,'0');const day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;}
+function _apGetLastNDaysKeys(n){const keys=[];const today=_apStartOfDay(new Date());for(let i=n-1;i>=0;i--){const d=new Date(today.getTime()-i*86400000);keys.push(_apIsoYmd(d));}return keys;}
+function _apLoadEntries(){try{return JSON.parse(localStorage.getItem('entries')||'[]');}catch(e){return [];}} 
+function _apLoadWeights(){try{return JSON.parse(localStorage.getItem('weights')||'[]');}catch(e){return [];}} 
+function _apFoodDaysLast7(){const entries=_apLoadEntries();const keys=new Set(_apGetLastNDaysKeys(7));const days=new Set();entries.forEach(e=>{const dt=_apParseDate(e.date||e.ts||e.created_at||e.createdAt);if(!dt)return;const k=_apIsoYmd(dt);if(keys.has(k))days.add(k);});return days.size;}
+function _apWeightsLast14(){const weights=_apLoadWeights();const keys=new Set(_apGetLastNDaysKeys(14));const points=[];weights.forEach(w=>{const dt=_apParseDate(w.date||w.ts||w.created_at||w.createdAt);if(!dt)return;const k=_apIsoYmd(dt);if(keys.has(k))points.push({k,dt,w:(w.weight??w.value??w.lbs??w.kg)});});points.sort((a,b)=>a.dt-b.dt);return points;}
+function _apHasGoalConfigured(){const gw=parseFloat(localStorage.getItem('goal_weight')||localStorage.getItem('goal_weight_lbs')||'');const gd=localStorage.getItem('goal_date')||localStorage.getItem('goalDate')||'';const okW=!isNaN(gw)&&gw>0;const okD=!!gd&&!isNaN(new Date(gd).getTime());return okW&&okD;}
+function computeAutopilotReadiness_v38(){const foodDays=_apFoodDaysLast7();const weightPts=_apWeightsLast14();const hasGoal=_apHasGoalConfigured();const foodScore=Math.min(1,foodDays/4)*40;let weightScore=0;if(weightPts.length>=2){let ok=false;for(let i=0;i<weightPts.length;i++){for(let j=i+1;j<weightPts.length;j++){const days=Math.abs((weightPts[j].dt-weightPts[i].dt)/86400000);if(days>=6){ok=true;break;}}if(ok)break;}weightScore=ok?40:25;}else if(weightPts.length===1){weightScore=15;}const goalScore=hasGoal?20:0;const score=Math.round(foodScore+weightScore+goalScore);const missing=[];if(foodDays<4)missing.push(`${4-foodDays} more food days`);if(weightPts.length<2)missing.push(`${2-weightPts.length} weigh-in(s)`);if(weightPts.length>=2){let ok=false;for(let i=0;i<weightPts.length;i++){for(let j=i+1;j<weightPts.length;j++){const days=Math.abs((weightPts[j].dt-weightPts[i].dt)/86400000);if(days>=6){ok=true;break;}}if(ok)break;}if(!ok)missing.push(`weigh-ins need 6+ days apart`);}if(!hasGoal)missing.push(`target weight + goal date`);let label='Ready';if(score<40)label='Not ready';else if(score<70)label='Almost ready';else if(score<90)label='Ready';else label='Very ready';return {score,label,missing,foodDays,weightPtsCount:weightPts.length};}
+function renderAutopilotReadiness_v38(){const s=computeAutopilotReadiness_v38();const badge=document.getElementById('apReadinessScore');const fill=document.getElementById('apReadinessFill');const label=document.getElementById('apReadinessLabel');const sub=document.getElementById('apReadinessSub');if(!badge||!fill||!label)return;badge.textContent=String(s.score);fill.style.width=`${Math.max(0,Math.min(100,s.score))}%`;label.textContent=`Readiness: ${s.label}`;if(sub){sub.textContent=s.missing.length?`To enable weekly reviews: log ${s.missing.join(', ')}.`:`You have enough data for weekly Autopilot reviews.`;}}
+function getPlannedCaloriesForDow_v38(dow){const base=parseInt(localStorage.getItem('calorie_goal')||'0',10)||0;if(!base)return 0;let cfg=null;try{cfg=(typeof getCheatDayConfig==='function')?getCheatDayConfig():null;}catch(e){}if(!cfg||!cfg.enabled||!cfg.extra)return base;const deltaOther=Math.round(cfg.extra/6);const isCheat=dow===cfg.dow;const minFloor=1200;const v=isCheat?(base+cfg.extra):(base-deltaOther);return Math.max(minFloor,v);}
+function _apActualCaloriesByDayKeyLast7(){const entries=_apLoadEntries();const keys=_apGetLastNDaysKeys(7);const map={};keys.forEach(k=>map[k]=0);entries.forEach(e=>{const dt=_apParseDate(e.date||e.ts||e.created_at||e.createdAt);if(!dt)return;const k=_apIsoYmd(dt);if(!(k in map))return;const cals=(e.calories??e.kcal??e.cals??e.totalCalories);const n=parseFloat(cals);if(!isNaN(n))map[k]+=n;});return {keys,map};}
+function drawCaloriePlanGraph_v38(){const canvas=document.getElementById('apPlanCanvas');if(!canvas)return;const ctx=canvas.getContext('2d');if(!ctx)return;const rect=canvas.getBoundingClientRect();const dpr=window.devicePixelRatio||1;canvas.width=Math.max(300,Math.floor(rect.width*dpr));canvas.height=Math.floor(180*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);const W=rect.width;const H=180;ctx.clearRect(0,0,W,H);const padding=14;const chartTop=10;const chartBottom=H-24;const chartH=chartBottom-chartTop;const keys=_apGetLastNDaysKeys(7);const data=_apActualCaloriesByDayKeyLast7();const planned=keys.map(k=>{const dt=new Date(k+'T00:00:00');return getPlannedCaloriesForDow_v38(dt.getDay());});const actual=keys.map(k=>data.map[k]||0);const maxV=Math.max(1,...planned,...actual);const barGap=8;const barW=(W-padding*2-barGap*6)/7;ctx.fillStyle='rgba(255,255,255,0.06)';ctx.fillRect(padding,chartTop+chartH*0.5,W-padding*2,1);for(let i=0;i<7;i++){const x=padding+i*(barW+barGap);const pv=planned[i]||0;const av=actual[i]||0;const ph=(pv/maxV)*chartH;const ah=(av/maxV)*chartH;ctx.fillStyle='rgba(255,255,255,0.20)';ctx.fillRect(x,chartBottom-ph,barW,ph);ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=2;const inset=3;ctx.strokeRect(x+inset,chartBottom-ah,barW-inset*2,ah);const dt=new Date(keys[i]+'T00:00:00');const lbl=dt.toLocaleDateString(undefined,{weekday:'short'}).slice(0,3);ctx.fillStyle='rgba(255,255,255,0.75)';ctx.font='12px system-ui, -apple-system, Segoe UI, Roboto, Arial';ctx.textAlign='center';ctx.fillText(lbl,x+barW/2,H-8);}const sub=document.getElementById('apPlanSub');if(sub){const base=parseInt(localStorage.getItem('calorie_goal')||'0',10)||0;sub.textContent=base?'Planned vs. logged (last 7 days)':'Set a base calorie goal to see the preview.';}}
+function initAutopilotWidgets_v38(){renderAutopilotReadiness_v38();drawCaloriePlanGraph_v38();const btn=document.getElementById('apPlanRefreshBtn');if(btn&&!btn.__apBound){btn.__apBound=true;btn.addEventListener('click',()=>{renderAutopilotReadiness_v38();drawCaloriePlanGraph_v38();});}if(!window.__apResizeBound){window.__apResizeBound=true;window.addEventListener('resize',()=>{try{drawCaloriePlanGraph_v38();}catch(e){}});}if(typeof window.renderAll==='function'&&!window.renderAll.__apWrapped){const _orig=window.renderAll;const wrapped=function(){const r=_orig.apply(this,arguments);try{renderAutopilotReadiness_v38();drawCaloriePlanGraph_v38();}catch(e){}return r;};wrapped.__apWrapped=true;window.renderAll=wrapped;}}
+document.addEventListener('DOMContentLoaded',()=>{try{initAutopilotWidgets_v38();}catch(e){}});
+
+
+// ===============================
+// GLOBAL AI LOADING (v39)
+// ===============================
+function showAiLoading(message) {
+  const ov = document.getElementById('aiGlobalLoading');
+  const txt = document.getElementById('aiGlobalLoadingText');
+  if (txt) txt.textContent = message || 'AI is working…';
+  if (!ov) return;
+  ov.classList.remove('hidden');
+  ov.removeAttribute('hidden');
+}
+function hideAiLoading() {
+  const ov = document.getElementById('aiGlobalLoading');
+  if (!ov) return;
+  ov.classList.add('hidden');
+  ov.setAttribute('hidden','true');
+}
+
+// Wrap fetch so AI endpoints show loader
+(function(){
+  if (window.__aiFetchWrapped) return;
+  window.__aiFetchWrapped = true;
+  const origFetch = window.fetch.bind(window);
+  window.fetch = async function(input, init) {
+    try {
+      const url = (typeof input === 'string') ? input : (input && input.url) || '';
+      const isAi = /entries-(estimate-plate-image|add-image|chat|coach|analyze|estimate|label)/i.test(url)
+        || /\/.netlify\/functions\//i.test(url) && /entries-/.test(url);
+      if (isAi) showAiLoading('AI is working…');
+      const res = await origFetch(input, init);
+      return res;
+    } finally {
+      // Only hide if we showed it. If multiple AI calls overlap, keep it simple:
+      // hide after each completes; if another starts, it will re-show.
+      hideAiLoading();
+    }
+  };
+})();
+
+
+// ===============================
+// LABEL SUBMIT LOCK (v41)
+// ===============================
+let __labelSubmitInProgress = false;
+
+document.addEventListener('click', function(e){
+  const btn = e.target.closest('#saveLabelEntryBtn, .saveLabelEntryBtn');
+  if(!btn) return;
+
+  if(__labelSubmitInProgress){
+    e.preventDefault();
+    return;
+  }
+
+  __labelSubmitInProgress = true;
+  btn.disabled = true;
+
+  // auto-unlock after short delay as safety
+  setTimeout(function(){
+    __labelSubmitInProgress = false;
+    btn.disabled = false;
+  }, 2000);
+}, true);
+
+
+// ===============================
+// ENTRY FRIENDLY NAME (v43)
+// ===============================
+function entryFriendlyName(e) {
+  try {
+    // 1) Explicit notes (best)
+    if (e?.notes && String(e.notes).trim()) return String(e.notes).trim();
+
+    // 2) Nutrition label extraction
+    const ex = e?.extracted || null;
+    if (ex) {
+      const name = ex.product_name || ex.food_name || ex.name || ex.title;
+      if (name && String(name).trim()) return String(name).trim();
+      if (ex.brand && String(ex.brand).trim()) return String(ex.brand).trim() + ' (label)';
+      return 'Nutrition label';
+    }
+
+    // 3) Plate photo estimate
+    const rx = e?.raw_extraction || null;
+    const meta = e?.raw_extraction_meta || null;
+
+    if (meta?.notes && String(meta.notes).trim()) return String(meta.notes).trim();
+    if (meta?.assumptions && Array.isArray(meta.assumptions) && meta.assumptions.length) {
+      // Use first 1–2 assumptions, cleaned
+      const a = meta.assumptions.slice(0,2).map(s => String(s).replace(/^assumed\s*/i,'').trim()).filter(Boolean);
+      if (a.length) return a.join(' + ');
+    }
+
+    if (rx && (rx.source === 'plate_photo' || rx.estimated === true)) return 'Plate estimate';
+
+    // 4) Manual quick add
+    if (rx && rx.source === 'manual') return 'Quick add';
+
+    return 'Food entry';
+  } catch (err) {
+    return 'Food entry';
+  }
+}

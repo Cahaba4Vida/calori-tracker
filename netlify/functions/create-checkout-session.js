@@ -28,5 +28,5 @@ exports.handler = async (event, context) => {
     return json(503, { error: 'Stripe payment links are not configured.' });
   }
 
-  return json(200, { checkout_url: checkoutUrl, interval });
+  return json(200, { url: checkoutUrl, checkout_url: checkoutUrl, interval });
 };

@@ -28,7 +28,7 @@
       const manageBtn = el('manageSubscriptionBtn');
 
       if (tierEl) tierEl.innerText = tier;
-      if (usageEl) usageEl.innerText = usage ? `Food entries today: ${usage.food_entries_today || 0} • AI actions today: ${usage.ai_actions_today || 0}` : '—';
+      if (usageEl) usageEl.innerText = usage ? `Food entries today: ${usage.food_entries || 0} • AI actions today: ${usage.ai_actions || 0}` : '—';
       if (limitsEl) limitsEl.innerText = limits ? `Food/day: ${limits.food_entries_per_day ?? 'Unlimited'} • AI/day: ${limits.ai_actions_per_day ?? 'Unlimited'} • History: ${limits.history_days ?? 'Unlimited'} days` : '—';
       if (monthlyBtn && billingState?.monthly_price_usd) monthlyBtn.innerText = `Upgrade Monthly ($${billingState.monthly_price_usd})`;
       if (yearlyBtn && billingState?.yearly_price_usd) yearlyBtn.innerText = `Upgrade Yearly ($${billingState.yearly_price_usd})`;
@@ -41,8 +41,8 @@
       }
 
       if (!billingState?.is_premium && usage) {
-        const foodLeft = Math.max(0, Number(limits?.food_entries_per_day || 0) - Number(usage.food_entries_today || 0));
-        const aiLeft = Math.max(0, Number(limits?.ai_actions_per_day || 0) - Number(usage.ai_actions_today || 0));
+        const foodLeft = Math.max(0, Number(limits?.food_entries_per_day || 0) - Number(usage.food_entries || 0));
+        const aiLeft = Math.max(0, Number(limits?.ai_actions_per_day || 0) - Number(usage.ai_actions || 0));
         const near = (foodLeft <= 2) || (aiLeft <= 1);
         if (near && upgradeHint) {
           upgradeHint.classList.remove('hidden');
@@ -99,18 +99,43 @@
     async function exportMyData() {
       try {
         setStatus('Preparing export…');
-        trackEvent('export_data_click', { format: 'json' });
-        const data = await api('export-data');
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `calori-tracker-export-${new Date().toISOString().slice(0, 10)}.json`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        setStatus('Export downloaded.');
+        trackEvent('export_data_click', { format: 'txt' });
+
+        const today = new Date().toISOString().slice(0, 10);
+        const data = await api(`export-data?format=csv`);
+
+        const downloadText = (filename, text, mime = 'text/plain') => {
+          const blob = new Blob([text || ''], { type: `${mime};charset=utf-8` });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        };
+
+        // Single Notepad-friendly TXT file (no JSON).
+        const parts = [];
+        parts.push(`AETHON EXPORT  (${today})`);
+        parts.push('');
+        parts.push('=== PROFILE ===');
+        parts.push(data.profile_csv || '(none)');
+        parts.push('');
+        parts.push('=== GOALS ===');
+        parts.push(data.goals_csv || '(none)');
+        parts.push('');
+        parts.push('=== WEIGHTS ===');
+        parts.push(data.weights_csv || '(none)');
+        parts.push('');
+        parts.push('=== ENTRIES ===');
+        parts.push(data.entries_csv || '(none)');
+        parts.push('');
+
+        downloadText(`aethon-export-${today}.txt`, parts.join('\n'), 'text/plain');
+
+        setStatus('Export downloaded (TXT).');
       } catch (e) {
         setStatus(e.message || 'Could not export data');
       }

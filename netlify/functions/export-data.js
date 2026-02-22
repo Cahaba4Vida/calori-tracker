@@ -59,10 +59,21 @@ exports.handler = async (event, context) => {
   ]);
 
   if (format === 'csv') {
+    const profileRow = profile.rows[0] || {};
+    const goalsRow = goals.rows[0] || {};
+
+    // Provide CSVs that are easy to open in Google Sheets / Excel.
+    // (We keep entries + weights as full tables, and profile + goals as one-row tables.)
     const payload = {
+      format: 'csv',
+      exported_at: new Date().toISOString(),
+      filter: { from: from || null, to: to || null },
       entries_csv: toCsv(entries.rows),
-      weights_csv: toCsv(weights.rows)
+      weights_csv: toCsv(weights.rows),
+      profile_csv: toCsv([profileRow]),
+      goals_csv: toCsv([goalsRow])
     };
+
     return json(200, payload);
   }
 

@@ -792,6 +792,34 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
   white-space: nowrap;
   font-size: 12px;
 }
+
+
+/* --- View span date chips: prevent squished/overlapped labels on mobile --- */
+.todayDateChips button.todayDateChip{
+  padding: 6px 12px !important;
+  border-radius: 999px !important;
+  line-height: 1.2 !important;
+  flex: 0 0 auto;
+  min-width: 64px;
+  text-align: center;
+  scroll-snap-align: center;
+}
+.todayDateChips button.todayDateChip.active{
+  border-color: rgba(37,99,235,0.55);
+  background: rgba(37,99,235,0.12);
+}
+/* slightly larger tap targets on phones */
+@media (max-width: 480px){
+  .todayDateChips{
+    gap: 10px;
+    padding-top: 10px;
+  }
+  .todayDateChips button.todayDateChip{
+    min-width: 72px;
+    font-size: 13px;
+  }
+}
+
 .todayDateChip.active {
   border-color: rgba(0,0,0,0.12);
   background: rgba(0,0,0,0.08);
@@ -1129,3 +1157,74 @@ body.invertedTheme #finishDayCard::before {
   background-position: center !important;
 }
 
+
+/* v32: crop/zoom weight + finishday backgrounds to remove baked-in frame 'side strip' */
+
+/* v35 Cheat Day settings */
+#cheatDaySettings .goalAdjust { display: grid; grid-template-columns: 1fr; gap: 8px; }
+
+.settingsTabsBar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  background: rgba(255,255,255,0.05);
+  padding: 6px;
+  border-radius: 14px;
+}
+.settingsTab {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all .2s ease;
+}
+.settingsTab.active {
+  background: rgba(255,255,255,0.15);
+  backdrop-filter: blur(8px);
+}
+.settingsTabPane.hidden { display:none; }
+
+/* Autopilot Readiness (v38) */
+#autopilotReadinessSection .apReadinessRow{display:flex;gap:12px;align-items:center;margin-bottom:10px;}
+#autopilotReadinessSection .apScoreBadge{min-width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;background: rgba(255,255,255,0.10);border: 1px solid rgba(255,255,255,0.10);}
+#autopilotReadinessSection .apReadinessLabel{font-weight:700;}
+#autopilotReadinessSection .apReadinessSub{opacity:0.8;font-size:12px;margin-top:2px;}
+#autopilotReadinessSection .apBarWrap{width:100%;height:10px;border-radius:999px;background: rgba(255,255,255,0.08);overflow:hidden;border: 1px solid rgba(255,255,255,0.08);margin-bottom:14px;}
+#autopilotReadinessSection .apBarFill{height:100%;border-radius:999px;background: rgba(255,255,255,0.25);transition: width .25s ease;}
+#autopilotReadinessSection .apPlanHeader{display:flex;align-items:center;justify-content:space-between;gap:10px;margin: 6px 0 8px 0;}
+#autopilotReadinessSection .apPlanTitle{font-weight:800;}
+#autopilotReadinessSection .apPlanSub{opacity:0.8;font-size:12px;margin-top:2px;}
+#autopilotReadinessSection .apPlanRefresh{padding:8px 10px;border-radius:10px;border: 1px solid rgba(255,255,255,0.10);background: rgba(255,255,255,0.06);}
+#autopilotReadinessSection .apCanvasWrap{width:100%;border-radius:14px;border: 1px solid rgba(255,255,255,0.10);background: rgba(0,0,0,0.10);overflow:hidden;}
+#autopilotReadinessSection canvas{width:100%;display:block;}
+#autopilotReadinessSection .apLegend{display:flex;gap:14px;align-items:center;margin-top:8px;opacity:0.85;font-size:12px;}
+#autopilotReadinessSection .apLegendItem{display:flex;gap:6px;align-items:center;}
+#autopilotReadinessSection .apSwatch{width:12px;height:12px;border-radius:4px;display:inline-block;border:1px solid rgba(255,255,255,0.18);}
+#autopilotReadinessSection .apSwatchPlan{background: rgba(255,255,255,0.22);}
+#autopilotReadinessSection .apSwatchActual{background: rgba(255,255,255,0.00);border:2px solid rgba(255,255,255,0.32);}
+
+/* v39 Global AI loading overlay (reuses Coach Chat thinking dots) */
+.aiGlobalLoading.hidden { display: none; }
+.aiGlobalLoading {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.25);
+  backdrop-filter: blur(6px);
+}
+.aiGlobalLoadingCard {
+  border-radius: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.10);
+}
+body.invertedTheme .aiGlobalLoadingCard {
+  background: rgba(0,0,0,0.35);
+  border-color: rgba(255,255,255,0.10);
+}

@@ -5,7 +5,12 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>Calorie &amp; Weight Tracker</title>
-<link href="styles.css?v=31" rel="stylesheet"/>
+<link href="styles.css?v=45" rel="stylesheet"/>
+
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
 <header class="row appHeader">
@@ -297,7 +302,7 @@
 <button id="upgradeMonthlyBtn">Upgrade Monthly ($5)</button>
 <button id="upgradeYearlyBtn">Upgrade Yearly ($50)</button>
 <button id="manageSubscriptionBtn">Manage Subscription</button>
-<button id="exportDataBtn">Export My Data</button>
+          <button id="exportDataBtn">Export My Data (CSV)</button>
 </div>
 <div class="muted" id="planStatus"></div>
 </section>
@@ -533,6 +538,84 @@
 </div>
 <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 <script src="app-billing.js?v=1"></script>
-<script src="app.js?v=31"></script>
+<script src="app.js?v=45"></script>
+
+
+<div id="settingsTabsBar" class="settingsTabsBar">
+  <button data-tab="profile" class="settingsTab active">Profile</button>
+  <button data-tab="nutrition" class="settingsTab">Nutrition</button>
+  <button data-tab="autopilot" class="settingsTab">Autopilot</button>
+  <button data-tab="system" class="settingsTab">System</button>
+</div>
+
+<div id="settingsTabContent">
+  <div data-tab-content="profile" class="settingsTabPane"></div>
+  <div data-tab-content="nutrition" class="settingsTabPane hidden"></div>
+  <div data-tab-content="autopilot" class="settingsTabPane hidden"></div>
+  <div data-tab-content="system" class="settingsTabPane hidden"></div>
+</div>
+
+<div class="settingsSection" id="cheatDaySettings">
+  <h3>Cheat Day</h3>
+  <label><input type="checkbox" id="cheatDayToggle"> Enable Cheat Day</label>
+  <div class="goalAdjust">
+    <label>Cheat Day</label>
+    <select id="cheatDaySelect">
+      <option value="0">Sunday</option>
+      <option value="1">Monday</option>
+      <option value="2">Tuesday</option>
+      <option value="3">Wednesday</option>
+      <option value="4">Thursday</option>
+      <option value="5">Friday</option>
+      <option value="6">Saturday</option>
+    </select>
+
+    <label>Extra Calories</label>
+    <input type="number" id="cheatDayExtraInput" placeholder="e.g., 500" min="0" step="10">
+  </div>
+  <div id="cheatDayStatus" class="mutedText"></div>
+</div>
+
+
+<div class="settingsSection" id="autopilotReadinessSection">
+  <h3>Autopilot Readiness</h3>
+  <div class="apReadinessRow">
+    <div class="apScoreBadge" id="apReadinessScore">--</div>
+    <div class="apReadinessMeta">
+      <div class="apReadinessLabel" id="apReadinessLabel">Checking…</div>
+      <div class="apReadinessSub" id="apReadinessSub"></div>
+    </div>
+  </div>
+  <div class="apBarWrap" aria-label="Autopilot readiness">
+    <div class="apBarFill" id="apReadinessFill" style="width:0%"></div>
+  </div>
+
+  <div class="apPlanHeader">
+    <div>
+      <div class="apPlanTitle">7‑Day Calorie Plan Preview</div>
+      <div class="apPlanSub" id="apPlanSub">Planned vs. logged (last 7 days)</div>
+    </div>
+    <button class="apPlanRefresh" id="apPlanRefreshBtn" type="button">Refresh</button>
+  </div>
+
+  <div class="apCanvasWrap">
+    <canvas id="apPlanCanvas" height="180"></canvas>
+  </div>
+  <div class="apLegend">
+    <span class="apLegendItem"><span class="apSwatch apSwatchPlan"></span>Planned</span>
+    <span class="apLegendItem"><span class="apSwatch apSwatchActual"></span>Logged</span>
+  </div>
+</div>
+
+
+<div id="aiGlobalLoading" class="aiGlobalLoading hidden" role="status" aria-live="polite" aria-label="AI is working">
+  <div class="aiGlobalLoadingCard">
+    <div class="thinking" style="margin:0;">
+      <span aria-hidden="true" class="thinkingDots"><span></span><span></span><span></span></span>
+      <span id="aiGlobalLoadingText">AI is working…</span>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
