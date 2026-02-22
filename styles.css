@@ -1118,3 +1118,14 @@ body.invertedTheme #finishDayCard::before {
   border-radius: inherit !important;
 }
 
+
+
+/* v31: center background focal point for Weight + Finish Day (removes 'side strip' look) */
+#weightCard, #finishDayCard {
+  background-position: center !important;
+}
+body.invertedTheme #weightCard::before,
+body.invertedTheme #finishDayCard::before {
+  background-position: center !important;
+}
+
