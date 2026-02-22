@@ -435,11 +435,13 @@ label {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.25);
-  z-index: 9999;
-  display: block;
-  padding: 16px;
-  overflow: auto;
+  z-index: 1000;
 }
+.estimate-overlay.hidden,
+.estimate-overlay[hidden]{
+  display: none;
+}
+
 .estimate-sheet{
   background: #fff;
   max-width: 720px;
