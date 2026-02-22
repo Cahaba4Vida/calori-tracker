@@ -1,4 +1,4 @@
-console.log("APP_VERSION v11");
+console.log("APP_VERSION v12");
 let currentUser = null;
 let skipOnboardingAfterLogin = false;
 const QUERY = new URLSearchParams(window.location.search);
@@ -2276,7 +2276,6 @@ function bindUI() {
   bindClick('todayNextBtn', () => { if (!viewSpanEnabled) return; selectedDayOffset = Math.min(viewSpanFutureDays, selectedDayOffset + 1); renderTodayDateNavigator(); refresh().catch(e => setStatus(e.message)); });
   bindClick('photoLabelBtn', () => { activePhotoMode = 'label'; const n = el('photoModeCameraInput'); if (n) n.click(); });
   bindClick('photoPlateBtn', () => { activePhotoMode = 'plate'; const n = el('photoModeCameraInput'); if (n) n.click(); });
-  if (n) n.click(); });
 
   bindClick('voiceToggleBtn', () => {
     const recognition = ensureVoiceRecognition();
