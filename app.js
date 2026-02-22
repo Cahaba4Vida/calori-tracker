@@ -2306,7 +2306,7 @@ function bindUI() {
   // Click bindings that may not exist until a sheet/modal is rendered
   const bindClick = (id, handler) => {
     const node = el(id);
-    if (node) node.onclick = handler;
+    if (node) { node.onclick = handler; node.__aethonSaveBound = true; }
   };
 
   // Servings sheet
@@ -2620,6 +2620,7 @@ if (MOCK_MODE) {
     const b = el(id);
     if (!b) return;
     if (b.__aethonSaveBound) return;
+    if (typeof b.onclick === 'function') return;
     b.__aethonSaveBound = true;
     b.addEventListener('click', (e)=>{
       e.preventDefault();
@@ -2643,6 +2644,7 @@ if (MOCK_MODE) {
     const b = el(id);
     if (!b) return;
     if (b.__aethonSaveBound) return;
+    if (typeof b.onclick === 'function') return;
     b.__aethonSaveBound = true;
     b.addEventListener('click', (e)=>{
       e.preventDefault();
@@ -2670,14 +2672,12 @@ if (MOCK_MODE) {
     });
   });
 
-  const saveIds = [
-    'sheetSaveBtn','servingsSaveBtn',
-    'labelEstimateSave','labelEstimateSaveBtn'
-  ];
+  const saveIds = ['labelEstimateSave','labelEstimateSaveBtn'];
   saveIds.forEach((id)=>{
     const b = el(id);
     if (!b) return;
     if (b.__aethonSaveBound) return;
+    if (typeof b.onclick === 'function') return;
     b.__aethonSaveBound = true;
     b.addEventListener('click', (e)=>{
       e.preventDefault();
