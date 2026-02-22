@@ -1080,3 +1080,11 @@ body.invertedTheme #coachChatCard::before{background-image:url("assets/backgroun
 .estimate-overlay.hidden{ display:none; }
 .estimate-overlay[hidden]{ display:none; }
 
+
+/* v24 Scroll Fix */
+.sheet {
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
