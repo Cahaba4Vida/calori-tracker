@@ -898,7 +898,7 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
    NOTE: Current app "dark mode" is implemented as a full-page invert filter (body.invertedTheme),
    which will also invert background images. If you later switch dark mode to a true theme,
    swap these URLs to the *_dark.png variants. */
-#todayCard, #addFoodCard, #dailyGoalsCard, #trendsCard, #weightCard{
+#todayCard, #addFoodCard, #dailyGoalsCard, #trendsCard, #weightCard, #finishDayCard{
   background-size: cover;
   background-position: right center;
   background-repeat: no-repeat;
@@ -908,6 +908,7 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
 #dailyGoalsCard{ background-image: url("./assets/backgrounds/dailygoals_light.png"); }
 #trendsCard{ background-image: url("./assets/backgrounds/trends_light.png"); }
 #weightCard{ background-image: url("./assets/backgrounds/weight_light.png"); }
+#finishDayCard{ background-image: url("./assets/backgrounds/finishday_light.png"); }
 /* === /Aethon backgrounds === */
 
 
@@ -917,7 +918,8 @@ body.invertedTheme #todayCard,
 body.invertedTheme #addFoodCard,
 body.invertedTheme #dailyGoalsCard,
 body.invertedTheme #trendsCard,
-body.invertedTheme #weightCard{
+body.invertedTheme #weightCard,
+body.invertedTheme #finishDayCard{
   position: relative;
   overflow: hidden;
   background-image: none !important;
@@ -928,7 +930,8 @@ body.invertedTheme #todayCard > *,
 body.invertedTheme #addFoodCard > *,
 body.invertedTheme #dailyGoalsCard > *,
 body.invertedTheme #trendsCard > *,
-body.invertedTheme #weightCard > *{
+body.invertedTheme #weightCard > *,
+body.invertedTheme #finishDayCard > *{
   position: relative;
   z-index: 1;
 }
@@ -937,7 +940,8 @@ body.invertedTheme #todayCard::before,
 body.invertedTheme #addFoodCard::before,
 body.invertedTheme #dailyGoalsCard::before,
 body.invertedTheme #trendsCard::before,
-body.invertedTheme #weightCard::before{
+body.invertedTheme #weightCard::before,
+body.invertedTheme #finishDayCard::before{
   content: "";
   position: absolute;
   inset: 0;
@@ -963,6 +967,9 @@ body.invertedTheme #trendsCard::before{
 }
 body.invertedTheme #weightCard::before{
   background-image: url("./assets/backgrounds/weight_dark.png");
+}
+body.invertedTheme #finishDayCard::before{
+  background-image: url("./assets/backgrounds/finishday_dark.png");
 }
 
 

@@ -967,14 +967,23 @@ function openEstimateSheet() {
   }
 }
 function closeEstimateSheet() {
-  const overlayEl = el('estimateOverlay');
-  const sheetEl = el('plateEstimateSheet');
-  overlayEl.classList.add('hidden');
-  sheetEl.classList.add('hidden');
-  overlayEl.hidden = true;
-  sheetEl.hidden = true;
-  overlayEl.onclick = null;
-  pendingPlateEstimate = null;
+  const overlay = el('estimateOverlay');
+  const sheet = el('plateEstimateSheet');
+  if (sheet) {
+    sheet.classList.add('hidden');
+    sheet.setAttribute('hidden', 'true');
+    sheet.style.display = 'none';
+  }
+  if (overlay) {
+    overlay.classList.add('hidden');
+    overlay.setAttribute('hidden', 'true');
+    overlay.style.display = 'none';
+    overlay.style.opacity = '0';
+    overlay.style.pointerEvents = 'none';
+  }
+  // Restore page scroll lock state
+  document.body.style.overflow = '';
+
 }
 function setBadge(conf) {
   const b = el('estimateBadge');
@@ -2560,4 +2569,50 @@ if (MOCK_MODE) {
       document.body.appendChild(coachCard);
     }
   } catch (_) {}
+})();
+
+// v27: ensure estimate sheet closes on cancel/x/save
+(function(){
+  const closeIds = ['estimateCancelBtn','estimateCloseBtn','plateEstimateCancelBtn','plateEstimateCloseBtn','plateEstimateCancel','plateEstimateClose'];
+  closeIds.forEach((id)=>{
+    const b = el(id);
+    if (!b) return;
+    b.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); closeEstimateSheet(); });
+  });
+  const saveIds = ['estimateSaveBtn','plateEstimateSaveBtn','plateEstimateSave'];
+  saveIds.forEach((id)=>{
+    const b = el(id);
+    if (!b) return;
+    if (b.__aethonSaveBound) return;
+    b.__aethonSaveBound = true;
+    b.addEventListener('click', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      const p = (typeof savePlateEstimateFromSheet === 'function') ? savePlateEstimateFromSheet() : null;
+      Promise.resolve(p).finally(()=> closeEstimateSheet());
+    });
+  });
+})();
+
+// v27: ensure servings sheet closes on cancel/x/save
+(function(){
+  const closeIds = ['sheetCancelBtn','sheetCloseBtn','servingsCancelBtn','servingsCloseBtn','servingsCancel','servingsClose'];
+  closeIds.forEach((id)=>{
+    const b = el(id);
+    if (!b) return;
+    b.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); closeSheet(); });
+  });
+  const saveIds = ['sheetSaveBtn','servingsSaveBtn','servingsSave'];
+  saveIds.forEach((id)=>{
+    const b = el(id);
+    if (!b) return;
+    if (b.__aethonSaveBound) return;
+    b.__aethonSaveBound = true;
+    b.addEventListener('click', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      const p = (typeof saveFromSheet === 'function') ? saveFromSheet() : null;
+      Promise.resolve(p).finally(()=> closeSheet());
+    });
+  });
 })();
