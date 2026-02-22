@@ -5,7 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>Calorie &amp; Weight Tracker</title>
-<link href="styles.css?v=18" rel="stylesheet"/>
+<link href="styles.css?v=19" rel="stylesheet"/>
 </head>
 <body>
 <header class="row appHeader">
@@ -111,13 +111,12 @@
 <div class="addFoodPanel hidden" id="addFoodPhotoPanel">
 <div class="row end"><button class="addFoodModalCloseBtn" type="button">Close</button></div>
 <div class="muted">Pick what kind of photo you're uploading.</div>
-<div class="row photoModeRow">
-  <button aria-pressed="true" id="photoModeLabelBtn" type="button">Label</button>
-  <button aria-pressed="false" id="photoModePlateBtn" type="button">Plate</button>
+<div class="row photoActions">
+  <button id="photoLabelBtn" type="button">Label</button>
+  <button id="photoPlateBtn" type="button">Plate</button>
 </div>
 </div>
-<input accept="image/*" class="hiddenFileInput" id="photoUnifiedInput" type="file"/>
-<input accept="image/*" capture="environment" class="hiddenFileInput" id="photoUnifiedCameraInput" type="file"/>
+<input accept="image/*" capture="environment" class="hiddenFileInput" id="photoModeCameraInput" type="file"/>
 <div class="addFoodPanel hidden" id="addFoodVoicePanel">
 <div class="row end"><button class="addFoodModalCloseBtn" type="button">Close</button></div>
 <div class="muted">Describe what you ate. The assistant will ask follow-up questions if needed.</div>
@@ -534,6 +533,6 @@
 </div>
 <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 <script src="app-billing.js?v=1"></script>
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

@@ -435,13 +435,11 @@ label {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.25);
-  /* Use display:block by default; visibility is controlled via .hidden */
-  z-index: 1999;
+  z-index: 9999;
   display: block;
   padding: 16px;
   overflow: auto;
 }
-.estimate-overlay.hidden{ display: none; }
 .estimate-sheet{
   background: #fff;
   max-width: 720px;
@@ -510,13 +508,11 @@ label {
 
 /* Plate estimate sheet layering: overlay blocks background, sheet stays clickable */
 #estimateOverlay {
-  /* Keep above the Add Food modal overlay (z-index:1300) */
-  z-index: 1999;
+  z-index: 1000;
   pointer-events: auto;
 }
 #plateEstimateSheet {
-  /* Keep above the Add Food modal panel (z-index:1301) */
-  z-index: 2000;
+  z-index: 1001;
   max-height: calc(100vh - 24px);
   display: flex;
   flex-direction: column;
@@ -1079,3 +1075,4 @@ body.invertedTheme #tabs .tabbtn.active {
 #coachChatCard::before{content:"";position:absolute;inset:0;background-image:url("assets/backgrounds/coachchat_light.png");background-size:cover;background-position:center;opacity:0.22;pointer-events:none;}
 #coachChatCard > *{position:relative;z-index:1;}
 body.invertedTheme #coachChatCard::before{background-image:url("assets/backgrounds/coachchat_dark.png");filter:invert(1) hue-rotate(180deg);opacity:0.30;}
+\n.estimate-overlay.hidden{ display:none; }\n
