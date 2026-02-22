@@ -926,9 +926,22 @@ function openSheet() {
 }
 
 function closeSheet() {
-  el('sheetOverlay').classList.add('hidden');
-  el('servingsSheet').classList.add('hidden');
-  pendingExtraction = null;
+  const overlay = el('sheetOverlay');
+  const sheet = el('servingsSheet');
+  if (sheet) {
+    sheet.classList.add('hidden');
+    sheet.setAttribute('hidden', 'true');
+    sheet.style.display = 'none';
+  }
+  if (overlay) {
+    overlay.classList.add('hidden');
+    overlay.setAttribute('hidden', 'true');
+    overlay.style.display = 'none';
+    overlay.style.opacity = '0';
+    overlay.style.pointerEvents = 'none';
+  }
+  document.body.style.overflow = '';
+
 }
 
 function openEstimateSheet() {
@@ -2603,6 +2616,41 @@ if (MOCK_MODE) {
     b.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); closeSheet(); });
   });
   const saveIds = ['sheetSaveBtn','servingsSaveBtn','servingsSave'];
+  saveIds.forEach((id)=>{
+    const b = el(id);
+    if (!b) return;
+    if (b.__aethonSaveBound) return;
+    b.__aethonSaveBound = true;
+    b.addEventListener('click', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      const p = (typeof saveFromSheet === 'function') ? saveFromSheet() : null;
+      Promise.resolve(p).finally(()=> closeSheet());
+    });
+  });
+})();
+
+// v29: ensure nutrition label estimate sheet closes on cancel/x/save
+(function(){
+  const closeIds = [
+    'sheetCancelBtn','sheetCloseBtn',
+    'servingsCancelBtn','servingsCloseBtn',
+    'labelEstimateCancel','labelEstimateClose'
+  ];
+  closeIds.forEach((id)=>{
+    const b = el(id);
+    if (!b) return;
+    b.addEventListener('click', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      closeSheet();
+    });
+  });
+
+  const saveIds = [
+    'sheetSaveBtn','servingsSaveBtn',
+    'labelEstimateSave','labelEstimateSaveBtn'
+  ];
   saveIds.forEach((id)=>{
     const b = el(id);
     if (!b) return;

@@ -1095,3 +1095,26 @@ body.invertedTheme #coachChatCard::before{background-image:url("assets/backgroun
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
+
+
+/* v28 Strip Fix: ensure card background images fully cover without edge bands */
+#weightCard, #finishDayCard {
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+}
+
+/* Ensure pseudo-element background (dark mode uses ::before) fully covers and matches rounded corners */
+#weightCard, #finishDayCard {
+  position: relative;
+  overflow: hidden;
+}
+body.invertedTheme #weightCard::before,
+body.invertedTheme #finishDayCard::before {
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  inset: 0 !important;
+  border-radius: inherit !important;
+}
+
