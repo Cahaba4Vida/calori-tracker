@@ -954,7 +954,7 @@ function openEstimateSheet() {
   const saveBtn = el('estimateSaveBtn');
 
   if (overlay) {
-    overlay.onclick = () => closeEstimateSheet();
+    overlay.onclick = (e) => { if (e && e.target === overlay) closeEstimateSheet(); };
   }
   if (closeBtn) {
     closeBtn.onclick = () => closeEstimateSheet();
@@ -2265,7 +2265,14 @@ function bindUI() {
   };
 
   // Servings sheet
-  bindClick('sheetOverlay', () => closeSheet());
+  // Backdrop click should only close when clicking the backdrop itself (not inside the sheet)
+(function() {
+  const ov = el('sheetOverlay');
+  if (!ov) return;
+  ov.addEventListener('click', (e) => {
+    if (e.target === ov) closeSheet();
+  });
+})();
   bindClick('sheetCloseBtn', () => closeSheet());
   bindClick('sheetCancelBtn', () => closeSheet());
   bindClick('sheetSaveBtn', () => saveFromSheet());
