@@ -910,8 +910,19 @@ let pendingPlateEstimate = null;
 
 function openSheet() {
   el('sheetError').innerText = '';
-  el('sheetOverlay').classList.remove('hidden');
-  el('servingsSheet').classList.remove('hidden');
+  const overlayEl = el('sheetOverlay');
+  const sheetEl = el('servingsSheet');
+
+  // Some boot-time cleanup sets inline styles (display/pointer-events/opacity) on overlays.
+  // Ensure we undo that here so the sheet can actually appear.
+  overlayEl.classList.remove('hidden');
+  sheetEl.classList.remove('hidden');
+  overlayEl.hidden = false;
+  sheetEl.hidden = false;
+  overlayEl.style.display = 'block';
+  overlayEl.style.pointerEvents = 'auto';
+  overlayEl.style.opacity = '1';
+  sheetEl.style.display = 'block';
 }
 
 function closeSheet() {
@@ -924,10 +935,17 @@ function openEstimateSheet() {
   el('estimateError').innerText = '';
   const overlayEl = el('estimateOverlay');
   const sheetEl = el('plateEstimateSheet');
+
   overlayEl.classList.remove('hidden');
   sheetEl.classList.remove('hidden');
+
+  // Undo boot-time inline-hiding applied by hideAllBlockingOverlays().
   overlayEl.hidden = false;
   sheetEl.hidden = false;
+  overlayEl.style.display = 'block';
+  overlayEl.style.pointerEvents = 'auto';
+  overlayEl.style.opacity = '1';
+  sheetEl.style.display = 'block';
 
   // Bind handlers after the estimate sheet is rendered/visible.
   const overlay = el('estimateOverlay');
