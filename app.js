@@ -1008,6 +1008,9 @@ function setBadge(conf) {
 }
 
 async function savePlateEstimateFromSheet() {
+  // Prevent duplicate writes when the button is tapped twice or multiple listeners exist.
+  if (window.__plateEstimateSaveInFlight) return;
+  window.__plateEstimateSaveInFlight = true;
   const saveBtn = el('estimateSaveBtn');
   const prevText = saveBtn ? saveBtn.innerText : '';
   try {
@@ -1056,6 +1059,7 @@ async function savePlateEstimateFromSheet() {
     setStatus('');
     try { el('estimateError').innerText = e.message; } catch {}
   } finally {
+    window.__plateEstimateSaveInFlight = false;
     if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = prevText || 'Save Entry'; }
   }
 }
