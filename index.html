@@ -55,6 +55,7 @@
 <span>📱 Best experienced on mobile for live camera capture</span>
 </div>
 </section>
+
 <div class="tabs hidden" id="tabs">
 <button class="tabbtn" id="tabDashboardBtn">Dashboard</button>
 <button class="tabbtn" id="tabSettingsBtn">Settings</button>
@@ -229,7 +230,22 @@
 </div>
 <div class="hidden" id="panelSettings">
 <section class="card">
-<h2>Settings</h2>
+          <h2>Settings</h2>
+
+          <!-- Settings Tabs (inside Settings panel) -->
+          <div id="settingsTabsBar" class="settingsTabsBar">
+            <button data-tab="profile" class="settingsTab active">Profile</button>
+            <button data-tab="nutrition" class="settingsTab">Nutrition</button>
+            <button data-tab="autopilot" class="settingsTab">Autopilot</button>
+            <button data-tab="system" class="settingsTab">System</button>
+          </div>
+
+          <div id="settingsTabContent">
+            <div data-tab-content="profile" class="settingsTabPane"></div>
+            <div data-tab-content="nutrition" class="settingsTabPane hidden"></div>
+            <div data-tab-content="autopilot" class="settingsTabPane hidden"></div>
+            <div data-tab-content="system" class="settingsTabPane hidden"></div>
+          </div>
 <div class="row">
 <label class="switch">
 <input id="unitToggle" type="checkbox"/>
@@ -350,6 +366,59 @@
 <div class="deviceList muted" id="deviceList">Loading devices…</div>
 <div class="muted" id="deviceSettingsStatus" style="margin-top:8px;"></div>
 </section>
+<!-- Cheat Day + Autopilot Readiness (tabbed settings sections) -->
+<div class="settingsSection" data-tab="autopilot" id="cheatDaySettings">
+  <h3>Cheat Day</h3>
+  <label><input type="checkbox" id="cheatDayToggle"> Enable Cheat Day</label>
+  <div class="goalAdjust">
+    <label>Cheat Day</label>
+    <select id="cheatDaySelect">
+      <option value="0">Sunday</option>
+      <option value="1">Monday</option>
+      <option value="2">Tuesday</option>
+      <option value="3">Wednesday</option>
+      <option value="4">Thursday</option>
+      <option value="5">Friday</option>
+      <option value="6">Saturday</option>
+    </select>
+
+    <label>Extra Calories</label>
+    <input type="number" id="cheatDayExtraInput" placeholder="e.g., 500" min="0" step="10">
+  </div>
+  <div id="cheatDayStatus" class="mutedText"></div>
+</div>
+
+<div class="settingsSection" data-tab="autopilot" id="autopilotReadinessSection">
+  <h3>Autopilot Readiness</h3>
+  <div class="apReadinessRow">
+    <div class="apScoreBadge" id="apReadinessScore">--</div>
+    <div class="apReadinessMeta">
+      <div class="apReadinessLabel" id="apReadinessLabel">Checking…</div>
+      <div class="apReadinessSub" id="apReadinessSub"></div>
+    </div>
+  </div>
+  <div class="apBarWrap" aria-label="Autopilot readiness">
+    <div class="apBarFill" id="apReadinessFill" style="width:0%"></div>
+  </div>
+
+  <div class="apPlanHeader">
+    <div>
+      <div class="apPlanTitle">7‑Day Calorie Plan Preview</div>
+      <div class="apPlanSub" id="apPlanSub">Planned vs. logged (last 7 days)</div>
+    </div>
+    <button class="apPlanRefresh" id="apPlanRefreshBtn" type="button">Refresh</button>
+  </div>
+
+  <div class="apCanvasWrap">
+    <canvas id="apPlanCanvas" height="180"></canvas>
+  </div>
+  <div class="apLegend">
+    <span class="apLegendItem"><span class="apSwatch apSwatchPlan"></span>Planned</span>
+    <span class="apLegendItem"><span class="apSwatch apSwatchActual"></span>Logged</span>
+  </div>
+</div>
+
+
 <section class="card signupPromptCard" id="multiDeviceSignupCard">
 <h3>Use Aethon across devices</h3>
 <p class="muted">Sign up to sync your data across multiple devices and restore paid access anywhere.</p>
@@ -539,74 +608,6 @@
 <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
 <script src="app-billing.js?v=1"></script>
 <script src="app.js?v=48"></script>
-
-
-<div id="settingsTabsBar" class="settingsTabsBar">
-  <button data-tab="profile" class="settingsTab active">Profile</button>
-  <button data-tab="nutrition" class="settingsTab">Nutrition</button>
-  <button data-tab="autopilot" class="settingsTab">Autopilot</button>
-  <button data-tab="system" class="settingsTab">System</button>
-</div>
-
-<div id="settingsTabContent">
-  <div data-tab-content="profile" class="settingsTabPane"></div>
-  <div data-tab-content="nutrition" class="settingsTabPane hidden"></div>
-  <div data-tab-content="autopilot" class="settingsTabPane hidden"></div>
-  <div data-tab-content="system" class="settingsTabPane hidden"></div>
-</div>
-
-<div class="settingsSection" id="cheatDaySettings">
-  <h3>Cheat Day</h3>
-  <label><input type="checkbox" id="cheatDayToggle"> Enable Cheat Day</label>
-  <div class="goalAdjust">
-    <label>Cheat Day</label>
-    <select id="cheatDaySelect">
-      <option value="0">Sunday</option>
-      <option value="1">Monday</option>
-      <option value="2">Tuesday</option>
-      <option value="3">Wednesday</option>
-      <option value="4">Thursday</option>
-      <option value="5">Friday</option>
-      <option value="6">Saturday</option>
-    </select>
-
-    <label>Extra Calories</label>
-    <input type="number" id="cheatDayExtraInput" placeholder="e.g., 500" min="0" step="10">
-  </div>
-  <div id="cheatDayStatus" class="mutedText"></div>
-</div>
-
-
-<div class="settingsSection" id="autopilotReadinessSection">
-  <h3>Autopilot Readiness</h3>
-  <div class="apReadinessRow">
-    <div class="apScoreBadge" id="apReadinessScore">--</div>
-    <div class="apReadinessMeta">
-      <div class="apReadinessLabel" id="apReadinessLabel">Checking…</div>
-      <div class="apReadinessSub" id="apReadinessSub"></div>
-    </div>
-  </div>
-  <div class="apBarWrap" aria-label="Autopilot readiness">
-    <div class="apBarFill" id="apReadinessFill" style="width:0%"></div>
-  </div>
-
-  <div class="apPlanHeader">
-    <div>
-      <div class="apPlanTitle">7‑Day Calorie Plan Preview</div>
-      <div class="apPlanSub" id="apPlanSub">Planned vs. logged (last 7 days)</div>
-    </div>
-    <button class="apPlanRefresh" id="apPlanRefreshBtn" type="button">Refresh</button>
-  </div>
-
-  <div class="apCanvasWrap">
-    <canvas id="apPlanCanvas" height="180"></canvas>
-  </div>
-  <div class="apLegend">
-    <span class="apLegendItem"><span class="apSwatch apSwatchPlan"></span>Planned</span>
-    <span class="apLegendItem"><span class="apSwatch apSwatchActual"></span>Logged</span>
-  </div>
-</div>
-
 
 <div id="aiGlobalLoading" class="aiGlobalLoading hidden" role="status" aria-live="polite" aria-label="AI is working">
   <div class="aiGlobalLoadingCard">

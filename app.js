@@ -382,14 +382,6 @@ let voiceFollowUpCount = 0;
 let voiceIsListening = false;
 let voiceAutoSendPending = false;
 
-// IMPORTANT: server-side storage uses America/Denver day boundaries.
-// To keep day navigation + entries-list-day aligned, compute day keys in America/Denver.
-const DENVER_TZ = 'America/Denver';
-
-function isoDenver(dateObj) {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: DENVER_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(dateObj);
-}
-
 function isoToday() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -408,8 +400,9 @@ function formatDayLabel(offset) {
   if (offset === 0) return 'Today';
   if (offset === -1) return 'Yesterday';
   if (offset === 1) return 'Tomorrow';
-  const d = new Date(Date.now() + offset * 86400000);
-  return d.toLocaleDateString([], { timeZone: DENVER_TZ, month: 'short', day: 'numeric' });
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
 function renderTodayDateNavigator() {
