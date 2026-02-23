@@ -51,6 +51,32 @@
       </section>
 
       <section class="card">
+        <h2>Signed-up Users (Email Accounts)</h2>
+        <div class="row">
+          <button id="loadUsersBtn" class="secondaryBtn">Load Users</button>
+          <input id="usersFilter" placeholder="Filter by email…" style="max-width:320px;" />
+        </div>
+        <div id="usersStatus" class="muted"></div>
+        <div class="tableWrap">
+          <table class="tbl" id="usersTable">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>User ID</th>
+                <th>Created</th>
+                <th>Plan</th>
+                <th>Premium Pass</th>
+                <th>Goal</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="muted" style="margin-top:8px;">Edits apply to <code>user_profiles</code>. Deleting removes the user’s stored data (entries, weights, AI actions) from the database.</div>
+      </section>
+
+      <section class="card">
         <h2>Access Overrides</h2>
         <div class="grid2">
           <div>

@@ -477,6 +477,170 @@ const el = (id) => document.getElementById(id);
     }
   }
 
+  // =========================
+  // Signed-up users list
+  // =========================
+  let usersCache = [];
+
+  function fmtDate(v) {
+    if (!v) return '—';
+    try { return new Date(v).toLocaleDateString(); } catch { return String(v); }
+  }
+
+  function renderUsersTable() {
+    const tbody = el('usersTable')?.querySelector('tbody');
+    if (!tbody) return;
+    const filter = (el('usersFilter')?.value || '').trim().toLowerCase();
+    const rows = (usersCache || []).filter(u => !filter || (u.email || '').toLowerCase().includes(filter));
+    tbody.innerHTML = rows.map(u => {
+      const goal = u.goal_weight_lbs ? `${u.goal_weight_lbs} lbs${u.goal_date ? ` by ${fmtDate(u.goal_date)}` : ''}` : '—';
+      const pass = u.premium_pass ? (u.premium_pass_expires_at ? `Yes (to ${fmtDate(u.premium_pass_expires_at)})` : 'Yes (unlimited)') : 'No';
+      return `
+        <tr data-user-id="${u.user_id}">
+          <td>${u.email || '—'}</td>
+          <td><code>${u.user_id}</code></td>
+          <td>${fmtDate(u.created_at)}</td>
+          <td>${u.plan_tier || u.subscription_status || 'free'}</td>
+          <td>${pass}</td>
+          <td>${goal}</td>
+          <td>
+            <button class="btnMini" data-act="edit">Edit</button>
+            <button class="btnMini danger" data-act="delete">Delete</button>
+          </td>
+        </tr>
+        <tr class="hidden" data-edit-row="${u.user_id}">
+          <td colspan="7">
+            <div class="inlineEdit">
+              <div class="row">
+                <div>
+                  <label>Email</label>
+                  <input data-f="email" value="${(u.email || '').replace(/\"/g,'&quot;')}" />
+                </div>
+                <div>
+                  <label>Subscription status</label>
+                  <input data-f="subscription_status" value="${(u.subscription_status || '').replace(/\"/g,'&quot;')}" placeholder="active / inactive" />
+                </div>
+                <div>
+                  <label>Plan tier</label>
+                  <input data-f="plan_tier" value="${(u.plan_tier || '').replace(/\"/g,'&quot;')}" placeholder="free / pro" />
+                </div>
+                <div>
+                  <label>Premium pass</label>
+                  <select data-f="premium_pass">
+                    <option value="false" ${u.premium_pass ? '' : 'selected'}>No</option>
+                    <option value="true" ${u.premium_pass ? 'selected' : ''}>Yes</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Pass expires (optional)</label>
+                  <input data-f="premium_pass_expires_at" value="${u.premium_pass_expires_at || ''}" placeholder="YYYY-MM-DD or ISO" />
+                </div>
+                <div>
+                  <label>Goal weight (lbs)</label>
+                  <input data-f="goal_weight_lbs" value="${u.goal_weight_lbs ?? ''}" />
+                </div>
+                <div>
+                  <label>Goal date</label>
+                  <input data-f="goal_date" value="${u.goal_date || ''}" placeholder="YYYY-MM-DD" />
+                </div>
+              </div>
+              <div class="row" style="margin-top:10px;">
+                <button class="secondaryBtn" data-act="save">Save</button>
+                <button class="secondaryBtn" data-act="cancel">Cancel</button>
+              </div>
+              <div class="muted" data-edit-status style="margin-top:8px;"></div>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    tbody.querySelectorAll('button[data-act="edit"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tr = btn.closest('tr');
+        const uid = tr?.getAttribute('data-user-id');
+        const editRow = tbody.querySelector(`tr[data-edit-row="${uid}"]`);
+        editRow?.classList.toggle('hidden');
+      });
+    });
+
+    tbody.querySelectorAll('button[data-act="cancel"]').forEach(btn => {
+      btn.addEventListener('click', () => btn.closest('tr')?.classList.add('hidden'));
+    });
+
+    tbody.querySelectorAll('button[data-act="save"]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const editTr = btn.closest('tr');
+        const uid = editTr?.getAttribute('data-edit-row');
+        const box = editTr?.querySelector('.inlineEdit');
+        const status = editTr?.querySelector('[data-edit-status]');
+        if (!uid || !box) return;
+        const payload = { user_id: uid };
+        box.querySelectorAll('[data-f]').forEach(inp => {
+          const k = inp.getAttribute('data-f');
+          let v = inp.value;
+          if (k === 'premium_pass') v = inp.value === 'true';
+          if (k === 'goal_weight_lbs') v = v === '' ? null : Number(v);
+          payload[k] = v === '' ? null : v;
+        });
+        try {
+          setStatus(status, 'Saving…');
+          const out = await adminClient.adminApi('admin-user-update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          // Update cache
+          usersCache = usersCache.map(u => u.user_id === uid ? ({ ...u, ...out.user }) : u);
+          renderUsersTable();
+          showToast('User updated.', 'success', 1500);
+        } catch (e) {
+          setStatus(status, e.message || String(e));
+          showToast(e.message || String(e), 'error');
+        }
+      });
+    });
+
+    tbody.querySelectorAll('button[data-act="delete"]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const tr = btn.closest('tr');
+        const uid = tr?.getAttribute('data-user-id');
+        const email = tr?.children?.[0]?.innerText || '';
+        const confirmTxt = prompt(`Type DELETE to permanently delete ${email || uid} (including entries/weights):`);
+        if (confirmTxt !== 'DELETE') return;
+        try {
+          await adminClient.adminApi('admin-user-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: uid })
+          });
+          usersCache = usersCache.filter(u => u.user_id !== uid);
+          renderUsersTable();
+          showToast('User deleted.', 'success', 1500);
+        } catch (e) {
+          showToast(e.message || String(e), 'error');
+        }
+      });
+    });
+  }
+
+  async function loadUsers() {
+    if (!adminToken) return showToast('Authorize first.', 'warn');
+    try {
+      setStatus(el('usersStatus'), 'Loading users…');
+      const token = adminToken;
+      const r = await fetch(`/api/admin-users-list?limit=500`, { headers: { 'x-admin-token': token } });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || 'Failed to load users');
+      usersCache = data.users || [];
+      setStatus(el('usersStatus'), `${usersCache.length} users loaded`);
+      renderUsersTable();
+    } catch (e) {
+      setStatus(el('usersStatus'), e.message || String(e));
+      showToast(e.message || String(e), 'error');
+    }
+  }
+
   // Hook up controls
   document.querySelectorAll('.tabBtn').forEach((b) => b.addEventListener('click', () => setActiveTab(b.getAttribute('data-tab'))));
   el('userLookupBtn')?.addEventListener('click', lookupUser2);
@@ -488,6 +652,9 @@ const el = (id) => document.getElementById(id);
 
   el('refreshAuditBtn')?.addEventListener('click', () => refreshAudit(false));
   el('filterAuditBtn')?.addEventListener('click', () => refreshAudit(true));
+
+  el('loadUsersBtn')?.addEventListener('click', loadUsers);
+  el('usersFilter')?.addEventListener('input', renderUsersTable);
 
   // Initialize layout once authorized
   const oldAuthorize = el('authorizeBtn')?.onclick;

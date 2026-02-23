@@ -41,7 +41,8 @@ exports.handler = async (event) => {
       latestReconcile,
       alertsSent24h
     ] = await Promise.all([
-      query(`select count(*)::int as count from user_profiles`),
+      // Only count signed-up users (email-based), not anonymous device IDs.
+      query(`select count(*)::int as count from user_profiles where email is not null and btrim(email) <> ''`),
       query(`select count(*)::int as count from food_entries`),
       query(`select count(*)::int as count from food_entries_archive`),
       query(`select count(*)::int as count from daily_weights`),
