@@ -2589,7 +2589,7 @@ if (MOCK_MODE) {
   showApp(true);
   const landing = el('mockLanding');
   if (landing) landing.classList.add('hidden');
-  initAuthedSession().catch(e => setStatus(e.message));
+  initAuthedSession({ skipOnboarding: false, onboardingMode: 'settings' }).catch(e => setStatus(e.message));
   if (typeof netlifyIdentity !== 'undefined') netlifyIdentity.init();
 } else if (typeof netlifyIdentity !== 'undefined') {
   netlifyIdentity.init();
