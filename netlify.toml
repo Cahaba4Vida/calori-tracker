@@ -1,11 +1,12 @@
 [build]
   publish = "."
-  functions = "netlify/functions"
 
 [[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
+  from = "/privacy"
+  to = "/privacy/index.html"
   status = 200
 
-[functions."scheduled-reconcile-subscriptions"]
-  schedule = "0 * * * *"
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
