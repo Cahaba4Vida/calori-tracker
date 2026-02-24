@@ -1243,3 +1243,7 @@ body.invertedTheme .aiGlobalLoadingCard {
 .inlineEdit .row{gap:10px; flex-wrap:wrap;}
 .inlineEdit label{font-size:12px; opacity:0.8; display:block; margin-bottom:4px;}
 .inlineEdit input,.inlineEdit select{min-width:180px;}
+
+
+/* Cheat Day header row */
+.settingsHeaderRow{display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 8px 0;}

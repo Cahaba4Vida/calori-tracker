@@ -2752,6 +2752,7 @@ function wireCheatDaySettings() {
   const select = document.getElementById('cheatDaySelect');
   const extraInput = document.getElementById('cheatDayExtraInput');
   const status = document.getElementById('cheatDayStatus');
+  const saveBtn = document.getElementById('cheatDaySaveBtn');
 
   if (!toggle || !select || !extraInput) return;
 
@@ -2764,6 +2765,23 @@ function wireCheatDaySettings() {
     if (!status) return;
     status.textContent = getWeeklyCaloriePlanText();
   }
+  function applyCheatDayNow() {
+    // Persist current UI values (even if the user hasn't blurred an input yet)
+    localStorage.setItem('cheat_day_enabled', toggle.checked ? '1' : '0');
+    localStorage.setItem('cheat_day_dow', String(parseInt(select.value, 10)));
+    const v = Math.max(0, parseInt(extraInput.value || '0', 10) || 0);
+    localStorage.setItem('cheat_day_extra', String(v));
+    refreshStatus();
+    if (typeof renderAll === 'function') renderAll();
+  }
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      applyCheatDayNow();
+    });
+  }
+
 
   toggle.addEventListener('change', () => {
     localStorage.setItem('cheat_day_enabled', toggle.checked ? '1' : '0');
