@@ -550,7 +550,7 @@ const el = (id) => document.getElementById(id);
       const goal = u.goal_weight_lbs ? `${u.goal_weight_lbs} lbs${u.goal_date ? ` by ${fmtDate(u.goal_date)}` : ''}` : '—';
       const pass = u.premium_pass ? (u.premium_pass_expires_at ? `Yes (to ${fmtDate(u.premium_pass_expires_at)})` : 'Yes (unlimited)') : 'No';
       return `
-        <tr data-user-id="${u.user_id}">
+        <tr data-user-id="${u.user_id}" data-email="${(u.email || '').replace(/\"/g,'&quot;')}">
           <td>${u.email || '—'}</td>
           <td><code>${u.user_id}</code></td>
           <td>${fmtDate(u.created_at)}</td>
@@ -608,6 +608,22 @@ const el = (id) => document.getElementById(id);
         </tr>
       `;
     }).join('');
+
+    // Allow quick “click into” a user from the list (loads full profile into the User Lookup panel)
+    tbody.querySelectorAll('tr[data-user-id]').forEach(tr => {
+      tr.style.cursor = 'pointer';
+      tr.addEventListener('click', (e) => {
+        // Don't steal clicks from action buttons or inline-edit controls
+        if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select') || e.target.closest('textarea')) return;
+        const email = tr.getAttribute('data-email') || '';
+        const uid = tr.getAttribute('data-user-id') || '';
+        const q = (email && email !== '—') ? email : uid;
+        if (!q) return;
+        const inp = el('userLookupInput');
+        if (inp) inp.value = q;
+        lookupUser2();
+      });
+    });
 
     tbody.querySelectorAll('button[data-act="edit"]').forEach(btn => {
       btn.addEventListener('click', () => {

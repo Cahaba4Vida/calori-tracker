@@ -21,21 +21,21 @@ exports.handler = async (event) => {
     const vals = [];
     let i = 1;
     if (body.text !== undefined) {
-      fields.push(`text = ${i++}`);
+      fields.push(`text = $${i++}`);
       vals.push(String(body.text || '').trim());
     }
     if (body.priority !== undefined) {
-      fields.push(`priority = ${i++}`);
+      fields.push(`priority = $${i++}`);
       vals.push(Math.max(1, Number(body.priority || 1)));
     }
     if (body.done !== undefined) {
-      fields.push(`done = ${i++}`);
+      fields.push(`done = $${i++}`);
       vals.push(!!body.done);
     }
     if (!fields.length) return { statusCode: 400, body: JSON.stringify({ error: 'No fields to update' }) };
     fields.push(`updated_at = NOW()`);
     vals.push(id);
-    await db.query(`update admin_todos set ${fields.join(', ')} where id = ${i}`, vals);
+    await db.query(`update admin_todos set ${fields.join(', ')} where id = $${i}`, vals);
     const r = await db.query(
       `select id, text, priority, done, created_at, updated_at
        from admin_todos
