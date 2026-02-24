@@ -1252,7 +1252,15 @@ async function loadGoal() {
     fat_g: profileState.macro_fat_g
   };
 
-  el('todayGoal').innerText = j.daily_calories ?? '—';
+  // Store base daily calories for cheat-day calculations (base stays server-driven)
+  try { localStorage.setItem('calorie_goal', String(j.daily_calories ?? 0)); } catch(e) {}
+  const _baseDaily = j.daily_calories ?? null;
+  const _activeDateISO = (typeof activeEntryDateISO === 'function') ? activeEntryDateISO() : null;
+  const _effectiveDaily = (_baseDaily != null && _activeDateISO && typeof getEffectiveDailyCalorieGoal === 'function')
+    ? getEffectiveDailyCalorieGoal(new Date(_activeDateISO))
+    : (_baseDaily ?? '—');
+  el('todayGoal').innerText = _effectiveDaily;
+
   el('todayProteinGoal').innerText = fmtGoal(macroGoals.protein_g);
   el('todayCarbsGoal').innerText = fmtGoal(macroGoals.carbs_g);
   el('todayFatGoal').innerText = fmtGoal(macroGoals.fat_g);
@@ -2824,7 +2832,10 @@ function macroCalories(macros) {
 }
 function getTodaysMacroGoals() {
   const baseCals = getBaseDailyCalorieGoal();
-  const todayCals = getTodaysCalorieGoal();
+    const _activeISO = (typeof activeEntryDateISO === 'function') ? activeEntryDateISO() : null;
+  const todayCals = (typeof getEffectiveDailyCalorieGoal === 'function' && _activeISO)
+    ? getEffectiveDailyCalorieGoal(new Date(_activeISO))
+    : getTodaysCalorieGoal();
   const base = getBaseMacroGoals();
   if (!base.protein_g && !base.carbs_g && !base.fat_g) return base;
   const baseMacroCals = macroCalories(base);
