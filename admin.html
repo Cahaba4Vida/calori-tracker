@@ -36,6 +36,7 @@
       <button class="tabBtn" data-tab="billing">Billing</button>
       <button class="tabBtn" data-tab="insights">Insights</button>
       <button class="tabBtn" data-tab="ops">Ops</button>
+      <button class="tabBtn" data-tab="todo">Todo</button>
     </nav>
 
     <section id="tab_users" class="tabPanel">
@@ -244,6 +245,34 @@
     </section>
 
     </div>
+    <section id="tab_todo" class="tabPanel hidden">
+      <section class="card">
+        <h2>Todo</h2>
+        <div class="muted" style="margin-bottom:10px;">Private admin to-do list. Items are stored in the database and shared across admins using the same DB.</div>
+
+        <label>New item</label>
+        <input id="todoTextInput" type="text" placeholder="e.g., Fix onboarding copy" />
+
+        <div class="row" style="margin-top:10px; gap:10px; align-items:flex-end;">
+          <div style="flex:0 0 140px;">
+            <label>Priority</label>
+            <input id="todoPriorityInput" type="number" min="1" step="1" value="1" />
+            <div class="muted" style="font-size:12px;">1 = highest</div>
+          </div>
+          <button id="todoAddBtn">Add</button>
+          <button id="todoRefreshBtn" class="btnMini">Refresh</button>
+        </div>
+
+        <div style="margin-top:14px;">
+          <div class="row" style="justify-content:space-between; align-items:center;">
+            <h3 style="margin:0;">Items</h3>
+            <div class="muted" id="todoCount"></div>
+          </div>
+          <div id="todoList" style="margin-top:10px;"></div>
+        </div>
+      </section>
+    </section>
+
   </div>
 
 

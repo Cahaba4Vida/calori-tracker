@@ -1,3 +1,25 @@
+
+/* Simple toast used for small confirmations (e.g., Cheat Day save) */
+.savedToast {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%) scale(0.96);
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 18px;
+  font-size: 14px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 9999;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.savedToast.show {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
 :root { --border:#dde4f3; --muted:#586174; --bg:#f4f7ff; --ink:#0f172a; --accent:#2563eb; }
 * { box-sizing: border-box; }
 body {
@@ -211,6 +233,13 @@ label {
 
 .quickAdds { margin-top: 8px; }
 .quickFillBtn { font-size: 12px; padding: 6px 10px; border-radius: 999px; }
+
+/* Quick fill feedback */
+.quickFillToast {
+  font-size: 12px;
+  margin-top: 6px;
+  color: #1a7f37;
+}
 
 
 .addFoodModeGrid {
@@ -1247,3 +1276,10 @@ body.invertedTheme .aiGlobalLoadingCard {
 
 /* Cheat Day header row */
 .settingsHeaderRow{display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 8px 0;}
+
+
+/* Client progress list */
+.progressList{ margin:10px 0 0 18px; padding:0; }
+.progressList li{ margin:6px 0; }
+.progressList li.done{ opacity:0.6; text-decoration: line-through; }
+.muted.small{ font-size:12px; }

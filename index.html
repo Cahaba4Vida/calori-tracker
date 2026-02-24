@@ -101,6 +101,16 @@
 <h3>Entries</h3>
 <ul id="entriesList"></ul>
 </section>
+<section class="card" id="progressCard">
+  <div class="row spaceBetween alignCenter">
+    <h2 style="margin:0">Progress</h2>
+    <button class="btnMini" id="suggestUpdateBtn" type="button">🙂 Suggest an update</button>
+  </div>
+  <div class="muted small" style="margin-top:6px">Your team’s current priorities</div>
+  <ul class="progressList" id="progressList"></ul>
+  <div class="muted small hidden" id="progressEmpty">No items yet.</div>
+</section>
+
 <section class="card" id="addFoodCard">
 <div class="cardHeaderRow">
 <h2>Add Food</h2>
@@ -138,6 +148,7 @@
 <div class="quickAdds" id="quickAddsBlock">
 <div class="muted">Quick fills</div>
 <div class="row" id="quickFillsRow"></div>
+<div class="quickFillToast hidden" id="quickFillToast"></div>
 <div class="row" id="quickFillsCtaRow"><button id="addQuickFillsCtaBtn" type="button">Add quickfills</button></div>
 </div>
 </div>
@@ -616,6 +627,8 @@
     </div>
   </div>
 </div>
+<!-- Toasts -->
+<div id="cheatDaySavedToast" class="savedToast" aria-live="polite">Saved :)</div>
 
 </body>
 </html>

@@ -327,6 +327,22 @@ async function mockApi(path, opts = {}) {
     return { ok: true };
   }
   if (route === 'goal-get') return { daily_calories: mockState.daily_calories };
+
+  // Progress (admin todos) - mock
+  if (route === 'todos-public-list') return { todos: mockState.admin_todos || [] };
+  if (route === 'todos-suggest-add' && method === 'POST') {
+    const next = {
+      id: `t_${Date.now()}_${Math.floor(Math.random()*10000)}`,
+      text: String(payload.text || '').trim(),
+      priority: (mockState.admin_todos || []).length + 1,
+      done: false,
+      source: 'client'
+    };
+    mockState.admin_todos = [...(mockState.admin_todos || []), next];
+    persistMockState();
+    return { ok: true, todo: next };
+  }
+
   if (route === 'goal-set' && method === 'POST') {
     mockState.daily_calories = Number(payload.daily_calories) || 0;
     persistMockState();
@@ -493,6 +509,62 @@ let deviceAutoLoginEnabled = localStorage.getItem(DEVICE_AUTO_LOGIN_STORAGE_KEY)
 let viewSpanEnabled = localStorage.getItem(VIEW_SPAN_ENABLED_KEY) === 'true';
 let viewSpanPastDays = Math.max(0, Math.min(6, Number(localStorage.getItem(VIEW_SPAN_PAST_DAYS_KEY) || '3') || 3));
 let viewSpanFutureDays = Math.max(0, Math.min(7, Number(localStorage.getItem(VIEW_SPAN_FUTURE_DAYS_KEY) || '2') || 2));
+
+
+// Client-visible admin todos ("Progress")
+let publicTodos = [];
+let publicTodosLoadedAt = 0;
+
+async function loadPublicTodos(force = false) {
+  try {
+    if (!force && publicTodosLoadedAt && (Date.now() - publicTodosLoadedAt) < 15000) return;
+    const j = await api('todos-public-list');
+    publicTodos = Array.isArray(j?.todos) ? j.todos : [];
+    publicTodosLoadedAt = Date.now();
+  } catch (e) {
+    // non-blocking
+  }
+}
+
+function renderProgressCard() {
+  const list = el('progressList');
+  const empty = el('progressEmpty');
+  if (!list || !empty) return;
+
+  list.innerHTML = '';
+  const items = Array.isArray(publicTodos) ? publicTodos : [];
+  if (!items.length) {
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+
+  for (const t of items) {
+    const li = document.createElement('li');
+    li.className = t.done ? 'done' : '';
+    const prefix = t.done ? '✅ ' : '• ';
+    li.textContent = prefix + (t.text || '');
+    list.appendChild(li);
+  }
+}
+
+async function handleSuggestUpdate() {
+  try {
+    const raw = prompt('Suggest an update (bullet point):');
+    const text = (raw || '').trim();
+    if (!text) return;
+    await api('todos-suggest-add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    await loadPublicTodos(true);
+    renderProgressCard();
+    if (typeof showQuickFillToast === 'function') showQuickFillToast('Suggested :)');
+  } catch (e) {
+    alert('Could not send suggestion. Please try again.');
+  }
+}
 let selectedDayOffset = 0;
 let linkedDevicesState = [];
 
@@ -619,6 +691,21 @@ function macroPct(total, goal) {
 const el = (id) => document.getElementById(id);
 
 function setStatus(msg) { el('status').innerText = msg || ''; }
+
+let quickFillToastTimer = null;
+function showQuickFillToast(msg) {
+  const n = el('quickFillToast');
+  if (!n) return;
+  n.innerText = msg || '';
+  n.classList.toggle('hidden', !msg);
+  if (quickFillToastTimer) clearTimeout(quickFillToastTimer);
+  if (msg) {
+    quickFillToastTimer = setTimeout(() => {
+      n.classList.add('hidden');
+      n.innerText = '';
+    }, 1400);
+  }
+}
 
 function maybePromptUpgradeForAiLimit(message) {
   const m = String(message || '');
@@ -1995,6 +2082,10 @@ async function loadToday() {
   el('fatProgressBar').style.width = `${fatPercent ?? 0}%`;
 
   renderEntries(entries);
+
+  // Progress (admin todo list) for clients
+  await loadPublicTodos();
+  renderProgressCard();
 }
 
 function applyManualPreset(preset) {
@@ -2011,6 +2102,13 @@ function applyManualPreset(preset) {
 // QUICK FILL AUTO LOG (v42)
 // ===============================
 async function applyQuickFillAndLog(presetId) {
+  try {
+    if (typeof window !== 'undefined' && window.__suppressAutoLogUntil && Date.now() < window.__suppressAutoLogUntil) {
+      // If something programmatically triggers a quick fill during a settings re-render, ignore it.
+      if (typeof showQuickFillToast === 'function') showQuickFillToast('Saved :)');
+      return;
+    }
+  } catch(e) {}
   // Fill the manual inputs from the preset, then immediately save the entry.
   applyManualPreset(presetId);
   // Ensure notes defaults to the preset name if empty
@@ -2021,6 +2119,8 @@ async function applyQuickFillAndLog(presetId) {
   }
   try {
     await saveManualEntry();
+    // Lightweight visual confirmation near the quick fill buttons.
+    showQuickFillToast(`Added ${p?.name || 'item'} :)`);
   } catch (e) {
     // saveManualEntry already sets status; keep console for debugging
     console.error('Quick Fill save failed', e);
@@ -2045,7 +2145,10 @@ function renderQuickFillButtons() {
     btn.className = 'quickFillBtn';
     btn.dataset.preset = q.id;
     btn.innerText = q.name;
-    btn.onclick = () => applyQuickFillAndLog(q.id);
+    btn.addEventListener('click', (ev) => {
+      if (ev && ev.isTrusted === false) return;
+      applyQuickFillAndLog(q.id);
+    });
     row.appendChild(btn);
   }
 }
@@ -2324,6 +2427,10 @@ function bindUI() {
   const setBtn = el('tabSettingsBtn');
   const panelDash = el('panelDashboard');
   const panelSet = el('panelSettings');
+
+  const suggestBtn = el('suggestUpdateBtn');
+  if (suggestBtn) suggestBtn.addEventListener('click', handleSuggestUpdate);
+
 
   function activateTab(which) {
     const isDash = which === 'dashboard';
@@ -2875,12 +2982,27 @@ function getBaseDailyCalorieGoal() {
   return base;
 }
 
+function _parseLocalDateInput(date) {
+  // Avoid timezone-induced off-by-one issues when parsing YYYY-MM-DD strings.
+  // - If a Date is provided, use it as-is.
+  // - If an ISO date string (YYYY-MM-DD) is provided, force local midnight.
+  // - Otherwise, fall back to Date parsing.
+  if (!date) return new Date();
+  if (date instanceof Date) return date;
+  if (typeof date === 'string') {
+    // If it's already a full ISO timestamp, Date() is fine.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return new Date(date + 'T00:00:00');
+    return new Date(date);
+  }
+  return new Date(date);
+}
+
 function getEffectiveDailyCalorieGoal(date) {
   const base = getBaseDailyCalorieGoal();
   const cfg = getCheatDayConfig();
   if (!base || !cfg.enabled || !cfg.extra) return base;
 
-  const d = date ? new Date(date) : new Date();
+  const d = _parseLocalDateInput(date);
   const dow = d.getDay(); // 0=Sun..6=Sat
   const deltaOther = Math.round(cfg.extra / 6);
 
@@ -2910,6 +3032,16 @@ function getWeeklyCaloriePlanText() {
   return `Cheat day: ${cheat} kcal • Other days: ${other} kcal`;
 }
 
+function showCheatDaySavedToast() {
+  const el = document.getElementById('cheatDaySavedToast');
+  if (!el) return;
+  el.classList.add('show');
+  clearTimeout(el.__hideTimer);
+  el.__hideTimer = setTimeout(() => {
+    el.classList.remove('show');
+  }, 1200);
+}
+
 function wireCheatDaySettings() {
   const toggle = document.getElementById('cheatDayToggle');
   const select = document.getElementById('cheatDaySelect');
@@ -2934,6 +3066,8 @@ function wireCheatDaySettings() {
     localStorage.setItem('cheat_day_dow', String(parseInt(select.value, 10)));
     const v = Math.max(0, parseInt(extraInput.value || '0', 10) || 0);
     localStorage.setItem('cheat_day_extra', String(v));
+    // Guard: prevent any accidental auto-log triggers right after saving cheat-day settings.
+    try { window.__suppressAutoLogUntil = Date.now() + 1500; } catch(e) {}
     refreshStatus();
     if (typeof renderAll === 'function') renderAll();
   }
@@ -2942,18 +3076,23 @@ function wireCheatDaySettings() {
     saveBtn.addEventListener('click', (e) => {
       e.preventDefault();
       applyCheatDayNow();
+      showCheatDaySavedToast();
     });
   }
 
 
   toggle.addEventListener('change', () => {
     localStorage.setItem('cheat_day_enabled', toggle.checked ? '1' : '0');
+    // Guard: prevent accidental quick-fill auto-log triggers during cheat-day rerender
+    try { window.__suppressAutoLogUntil = Date.now() + 1500; } catch(e) {}
     refreshStatus();
     if (typeof renderAll === 'function') renderAll();
   });
 
   select.addEventListener('change', () => {
     localStorage.setItem('cheat_day_dow', String(parseInt(select.value, 10)));
+    // Guard: prevent accidental quick-fill auto-log triggers during cheat-day rerender
+    try { window.__suppressAutoLogUntil = Date.now() + 1500; } catch(e) {}
     refreshStatus();
     if (typeof renderAll === 'function') renderAll();
   });
@@ -2961,6 +3100,8 @@ function wireCheatDaySettings() {
   extraInput.addEventListener('change', () => {
     const v = Math.max(0, parseInt(extraInput.value || '0', 10) || 0);
     localStorage.setItem('cheat_day_extra', String(v));
+    // Guard: prevent accidental quick-fill auto-log triggers during cheat-day rerender
+    try { window.__suppressAutoLogUntil = Date.now() + 1500; } catch(e) {}
     refreshStatus();
     if (typeof renderAll === 'function') renderAll();
   });
@@ -2989,7 +3130,7 @@ function getTodaysMacroGoals() {
   const baseCals = getBaseDailyCalorieGoal();
     const _activeISO = (typeof activeEntryDateISO === 'function') ? activeEntryDateISO() : null;
   const todayCals = (typeof getEffectiveDailyCalorieGoal === 'function' && _activeISO)
-    ? getEffectiveDailyCalorieGoal(new Date(_activeISO))
+    ? getEffectiveDailyCalorieGoal(_activeISO)
     : getTodaysCalorieGoal();
   const base = getBaseMacroGoals();
   if (!base.protein_g && !base.carbs_g && !base.fat_g) return base;

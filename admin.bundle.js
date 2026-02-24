@@ -280,10 +280,11 @@ const el = (id) => document.getElementById(id);
     document.querySelectorAll('.tabBtn').forEach((b) => {
       b.classList.toggle('active', b.getAttribute('data-tab') === tab);
     });
-    ['users','billing','insights','ops'].forEach((k) => {
+    ['users','billing','insights','ops','todo'].forEach((k) => {
       const p = el('tab_' + k);
       if (p) p.classList.toggle('hidden', k !== tab);
     });
+    if (tab === 'todo') { ensureTodosLoaded(); }
     try { location.hash = tab; } catch {}
   }
 
@@ -709,6 +710,135 @@ const el = (id) => document.getElementById(id);
   el('loadUsersBtn')?.addEventListener('click', loadUsers);
   el('usersFilter')?.addEventListener('input', renderUsersTable);
 
+
+  // ---- Admin Todo ----
+  let todoItems = [];
+
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  async function ensureTodosLoaded() {
+    try {
+      const res = await adminClient.adminApi('admin-todos-list', { method: 'GET' });
+      todoItems = Array.isArray(res.todos) ? res.todos : [];
+      renderTodoList();
+    } catch (e) {
+      showToast(e.message || String(e), 'error', 2500);
+    }
+  }
+
+  function renderTodoList() {
+    const host = el('todoList');
+    if (!host) return;
+    const items = [...todoItems].sort((a,b) => {
+      const pa = Number(a.priority ?? 9999);
+      const pb = Number(b.priority ?? 9999);
+      if (pa !== pb) return pa - pb;
+      return Number(a.id) - Number(b.id);
+    });
+    el('todoCount').innerText = `${items.length} item${items.length===1?'':'s'}`;
+
+    if (!items.length) {
+      host.innerHTML = '<div class="muted">No items yet.</div>';
+      return;
+    }
+
+    host.innerHTML = items.map((t, i) => {
+      const done = !!t.done;
+      const pr = Number(t.priority ?? 9999);
+      return `
+        <div class="row" style="align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid rgba(0,0,0,0.08);">
+          <input type="checkbox" data-todo-action="toggle" data-id="${t.id}" ${done ? 'checked' : ''} />
+          <input type="text" data-todo-action="editText" data-id="${t.id}" value="${escapeHtml(t.text)}" style="flex:1; ${done ? 'text-decoration:line-through; opacity:0.7;' : ''}" />
+          <input type="number" min="1" step="1" data-todo-action="editPriority" data-id="${t.id}" value="${pr}" style="width:80px;" />
+          <button class="btnMini" data-todo-action="up" data-id="${t.id}" title="Higher priority">↑</button>
+          <button class="btnMini" data-todo-action="down" data-id="${t.id}" title="Lower priority">↓</button>
+          <button class="btnMini" data-todo-action="del" data-id="${t.id}" title="Delete">✕</button>
+        </div>
+      `;
+    }).join('');
+
+    // Delegate actions
+    host.querySelectorAll('[data-todo-action]').forEach((node) => {
+      const action = node.getAttribute('data-todo-action');
+      const id = Number(node.getAttribute('data-id'));
+      if (action === 'toggle') {
+        node.onchange = () => updateTodo(id, { done: node.checked });
+      } else if (action === 'editText') {
+        node.onchange = () => updateTodo(id, { text: node.value });
+      } else if (action === 'editPriority') {
+        node.onchange = () => updateTodo(id, { priority: Number(node.value || 1) });
+      } else if (action === 'del') {
+        node.onclick = () => deleteTodo(id);
+      } else if (action === 'up') {
+        node.onclick = () => bumpTodoPriority(id, -1);
+      } else if (action === 'down') {
+        node.onclick = () => bumpTodoPriority(id, +1);
+      }
+    });
+  }
+
+  function getTodoById(id) { return todoItems.find((t) => Number(t.id) === Number(id)); }
+
+  async function addTodo() {
+    const text = (el('todoTextInput')?.value || '').trim();
+    const priority = Number(el('todoPriorityInput')?.value || 1);
+    if (!text) return showToast('Enter a todo item.', 'error', 2000);
+    try {
+      const res = await adminClient.adminApi('admin-todos-add', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text, priority })
+      });
+      el('todoTextInput').value = '';
+      todoItems = Array.isArray(res.todos) ? res.todos : todoItems;
+      showToast('Added.', 'success', 1200);
+      renderTodoList();
+    } catch (e) { showToast(e.message || String(e), 'error', 2500); }
+  }
+
+  async function updateTodo(id, patch) {
+    try {
+      const res = await adminClient.adminApi('admin-todos-update', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id, ...patch })
+      });
+      todoItems = Array.isArray(res.todos) ? res.todos : todoItems;
+      renderTodoList();
+    } catch (e) { showToast(e.message || String(e), 'error', 2500); }
+  }
+
+  async function deleteTodo(id) {
+    try {
+      const res = await adminClient.adminApi('admin-todos-delete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+      todoItems = Array.isArray(res.todos) ? res.todos : todoItems;
+      showToast('Deleted.', 'success', 1200);
+      renderTodoList();
+    } catch (e) { showToast(e.message || String(e), 'error', 2500); }
+  }
+
+  async function bumpTodoPriority(id, delta) {
+    const t = getTodoById(id);
+    if (!t) return;
+    const current = Number(t.priority || 1);
+    const next = Math.max(1, current + delta);
+    if (next === current) return;
+    await updateTodo(id, { priority: next });
+  }
+
+  el('todoAddBtn')?.addEventListener('click', addTodo);
+  el('todoRefreshBtn')?.addEventListener('click', ensureTodosLoaded);
+  el('todoTextInput')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') addTodo();
+  });
+
+
   // Initialize layout once authorized
   const oldAuthorize = el('authorizeBtn')?.onclick;
   el('authorizeBtn')?.addEventListener('click', () => {
@@ -716,7 +846,7 @@ const el = (id) => document.getElementById(id);
     window.setTimeout(() => {
       moveLegacyCards();
       const tabFromHash = (location.hash || '').replace('#','') || 'users';
-      setActiveTab(['users','billing','insights','ops'].includes(tabFromHash) ? tabFromHash : 'users');
+      setActiveTab(['users','billing','insights','ops','todo'].includes(tabFromHash) ? tabFromHash : 'users');
       showToast('Admin authorized.', 'success', 1500);
     }, 50);
   });
