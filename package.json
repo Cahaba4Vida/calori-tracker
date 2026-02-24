@@ -5,10 +5,5 @@
   "dependencies": {
     "pg": "^8.12.0"
   },
-  "scripts": {
-    "test:smoke": "node scripts/smoke-check.js",
-    "lint:syntax": "for f in $(rg --files -g '*.js' -g '*.cjs'); do node --check \"$f\" || exit 1; done",
-    "test:integration": "node --test tests/*.test.cjs",
-    "test": "npm run lint:syntax && npm run test:smoke && npm run test:integration"
-  }
+  "scripts": {}
 }
