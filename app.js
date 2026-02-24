@@ -155,6 +155,7 @@ async function mockAi(task, payload = {}) {
     const msg = (body && (body.error || body.message)) ? (body.error || body.message) : ('Request failed: ' + r.status);
     throw new Error(msg);
   }
+  try { if (typeof _apSyncFromApi === 'function') _apSyncFromApi(path, body); } catch (e) {}
   return body;
 }
 
@@ -830,6 +831,7 @@ async function api(path, opts = {}) {
     maybePromptUpgradeForAiLimit(msg);
     throw new Error(msg);
   }
+  try { if (typeof _apSyncFromApi === 'function') _apSyncFromApi(path, body); } catch (e) {}
   return body;
 }
 
@@ -2705,27 +2707,34 @@ function getCheatDayConfig() {
 }
 
 function getBaseDailyCalorieGoal() {
-  const v = getTodaysCalorieGoal();
-  return isNaN(v) ? 0 : v;
+  // Base daily target set by goals/autopilot (stored as "calorie_goal")
+  const base = parseInt(localStorage.getItem('calorie_goal') || '0', 10) || 0;
+  return base;
 }
 
-// Returns today's adjusted calorie goal (cheat day pulls calories from other days)
-function getTodaysCalorieGoal() {
+function getEffectiveDailyCalorieGoal(date) {
   const base = getBaseDailyCalorieGoal();
   const cfg = getCheatDayConfig();
   if (!base || !cfg.enabled || !cfg.extra) return base;
 
-  const todayDow = new Date().getDay(); // 0=Sun..6=Sat
+  const d = date ? new Date(date) : new Date();
+  const dow = d.getDay(); // 0=Sun..6=Sat
   const deltaOther = Math.round(cfg.extra / 6);
 
   let adjusted = base;
-  if (todayDow === cfg.dow) adjusted = base + cfg.extra;
+  if (dow === cfg.dow) adjusted = base + cfg.extra;
   else adjusted = base - deltaOther;
 
-  // Safety clamp (prevent extremely low targets)
   const minFloor = 1200;
   if (adjusted < minFloor) adjusted = minFloor;
   return adjusted;
+}
+
+
+
+// Returns today's adjusted calorie goal (cheat day pulls calories from other days)
+function getTodaysCalorieGoal() {
+  return getEffectiveDailyCalorieGoal(new Date());
 }
 
 function getWeeklyCaloriePlanText() {
@@ -2785,9 +2794,11 @@ document.addEventListener('DOMContentLoaded', ()=>{ try { wireCheatDaySettings()
 // CHEAT DAY MACROS (v36)
 // ===============================
 function getBaseMacroGoals() {
-  const p = getTodaysMacroGoals().protein_g || 0;
-  const c = getTodaysMacroGoals().carbs_g || 0;
-  const f = getTodaysMacroGoals().fat_g || 0;
+  // Base macro targets stored on the profile (not cheat-day adjusted).
+  // IMPORTANT: Do not call getTodaysMacroGoals() here (would cause recursion).
+  const p = Number(profileState?.macro_protein_g ?? 0) || 0;
+  const c = Number(profileState?.macro_carbs_g ?? 0) || 0;
+  const f = Number(profileState?.macro_fat_g ?? 0) || 0;
   return { protein_g: p, carbs_g: c, fat_g: f };
 }
 function macroCalories(macros) {
@@ -2992,5 +3003,81 @@ function entryFriendlyName(e) {
     return 'Food entry';
   } catch (err) {
     return 'Food entry';
+  }
+}
+
+
+// ===============================
+// AUTOPILOT DATA SYNC (v58)
+// Keeps localStorage caches ("entries", "weights") in sync with API data so
+// readiness + weekly review logic works even when the UI is DB-driven.
+// ===============================
+function _apSafeJsonParse(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key) || ''); } catch { return fallback; }
+}
+function _apSafeJsonWrite(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+function _apMergeById(existing, incoming) {
+  const map = new Map();
+  (existing || []).forEach(x => { if (x && (x.id || x.entry_id)) map.set(String(x.id || x.entry_id), x); });
+  (incoming || []).forEach(x => { if (x && (x.id || x.entry_id)) map.set(String(x.id || x.entry_id), x); });
+  return Array.from(map.values());
+}
+function _apSyncFromApi(path, body) {
+  try {
+    // weights-list
+    if (path === 'weights-list' && body && Array.isArray(body.weights)) {
+      _apSafeJsonWrite('weights', body.weights);
+      return;
+    }
+
+    // week-summary (store daily totals as synthetic entries so we can count "food days")
+    if (path.startsWith('week-summary') && body) {
+      const days = body.days || body.week || body.data || null;
+      if (Array.isArray(days)) {
+        const synthetic = days
+          .filter(d => d && (d.date || d.day))
+          .map(d => ({
+            id: 'syn_' + String(d.date || d.day),
+            date: d.date || d.day,
+            calories: d.calories || d.kcal || d.total_calories || 0,
+            raw_extraction: { source: 'week_summary' },
+          }));
+        const cur = _apSafeJsonParse('entries', []);
+        const merged = _apMergeById(cur.filter(e => !String(e.id||'').startsWith('syn_')), synthetic).concat(
+          cur.filter(e => String(e.id||'').startsWith('syn_') && !synthetic.find(s => s.id === e.id))
+        );
+        // Above keeps real entries plus latest synthetic per day
+        _apSafeJsonWrite('entries', merged);
+      }
+      return;
+    }
+
+    // entries-list-day: merge entries into local cache
+    if (path.startsWith('entries-list-day') && body && Array.isArray(body.entries)) {
+      const cur = _apSafeJsonParse('entries', []);
+      const merged = _apMergeById(cur, body.entries);
+      _apSafeJsonWrite('entries', merged);
+      return;
+    }
+
+    // entries-add / entries-add-image: add returned entry
+    if ((path === 'entries-add' || path === 'entries-add-image') && body && body.entry) {
+      const cur = _apSafeJsonParse('entries', []);
+      const merged = _apMergeById(cur, [body.entry]);
+      _apSafeJsonWrite('entries', merged);
+      return;
+    }
+
+    // weight-set: update weights cache if weight returned
+    if (path === 'weight-set' && body && body.weight) {
+      const cur = _apSafeJsonParse('weights', []);
+      const merged = _apMergeById(cur, [body.weight]);
+      _apSafeJsonWrite('weights', merged);
+      return;
+    }
+  } catch (e) {
+    // no-op
   }
 }
