@@ -250,6 +250,22 @@
         <h2>Todo</h2>
         <div class="muted" style="margin-bottom:10px;">Private admin to-do list. Items are stored in the database and shared across admins using the same DB.</div>
 
+        <hr style="margin:14px 0;" />
+        <h3 style="margin:0 0 6px 0;">Client update link</h3>
+        <div class="muted" style="margin-bottom:10px;">Set a link + short description that clients can see as a “Try updated version &gt;” button.</div>
+        <label>Updated version link</label>
+        <input id="updateLinkInput" type="url" placeholder="https://..." />
+        <label style="margin-top:10px;">Update description</label>
+        <textarea id="updateDescInput" rows="3" placeholder="What changed? (keep it short)"></textarea>
+        <div class="row" style="margin-top:10px; gap:10px; align-items:center;">
+          <button id="updateSaveBtn">Save update</button>
+          <button id="updateLoadBtn" class="btnMini">Load current</button>
+          <div class="muted" id="updateSavedHint"></div>
+        </div>
+
+        <hr style="margin:14px 0;" />
+
+
         <label>New item</label>
         <input id="todoTextInput" type="text" placeholder="e.g., Fix onboarding copy" />
 

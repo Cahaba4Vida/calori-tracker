@@ -1283,3 +1283,8 @@ body.invertedTheme .aiGlobalLoadingCard {
 .progressList li{ margin:6px 0; }
 .progressList li.done{ opacity:0.6; text-decoration: line-through; }
 .muted.small{ font-size:12px; }
+
+
+/* Client update banner */
+.updateBox{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px;border:1px solid rgba(0,0,0,0.08);border-radius:12px;background:rgba(0,0,0,0.02)}
+.updateBox .btnMini{white-space:nowrap}

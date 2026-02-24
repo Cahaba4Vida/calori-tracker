@@ -838,6 +838,35 @@ const el = (id) => document.getElementById(id);
     if (e.key === 'Enter') addTodo();
   });
 
+  // Client update link (shown on client dashboard)
+  async function loadClientUpdate() {
+    try {
+      const j = await adminClient.adminApi('admin-update-get');
+      const u = j && j.update ? j.update : null;
+      if (u) {
+        if (el('updateLinkInput')) el('updateLinkInput').value = u.link || '';
+        if (el('updateDescInput')) el('updateDescInput').value = u.description || '';
+      }
+      setStatus(el('updateSavedHint'), '');
+    } catch (e) {
+      setStatus(el('updateSavedHint'), 'Could not load');
+    }
+  }
+
+  async function saveClientUpdate() {
+    const link = (el('updateLinkInput')?.value || '').trim();
+    const description = (el('updateDescInput')?.value || '').trim();
+    try {
+      await adminClient.adminApi('admin-update-set', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ link, description }) });
+      setStatus(el('updateSavedHint'), 'Saved');
+    } catch (e) {
+      setStatus(el('updateSavedHint'), 'Save failed');
+    }
+  }
+
+  el('updateLoadBtn')?.addEventListener('click', loadClientUpdate);
+  el('updateSaveBtn')?.addEventListener('click', saveClientUpdate);
+
 
   // Initialize layout once authorized
   const oldAuthorize = el('authorizeBtn')?.onclick;

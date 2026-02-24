@@ -514,6 +514,8 @@ let viewSpanFutureDays = Math.max(0, Math.min(7, Number(localStorage.getItem(VIE
 // Client-visible admin todos ("Progress")
 let publicTodos = [];
 let publicTodosLoadedAt = 0;
+let publicUpdate = null;
+let publicUpdateLoadedAt = 0;
 
 async function loadPublicTodos(force = false) {
   try {
@@ -521,6 +523,18 @@ async function loadPublicTodos(force = false) {
     const j = await api('todos-public-list');
     publicTodos = Array.isArray(j?.todos) ? j.todos : [];
     publicTodosLoadedAt = Date.now();
+  } catch (e) {
+    // non-blocking
+  }
+}
+
+async function loadPublicUpdate(force = false) {
+  try {
+    if (!force && publicUpdateLoadedAt && (Date.now() - publicUpdateLoadedAt) < 30_000) return;
+    const r = await fetch('/api/update-public-get');
+    const j = await r.json();
+    publicUpdate = j && j.update ? j.update : null;
+    publicUpdateLoadedAt = Date.now();
   } catch (e) {
     // non-blocking
   }
@@ -545,6 +559,23 @@ function renderProgressCard() {
     const prefix = t.done ? '✅ ' : '• ';
     li.textContent = prefix + (t.text || '');
     list.appendChild(li);
+  }
+
+  // Client update banner
+  const box = el('clientUpdateBox');
+  const descEl = el('clientUpdateDesc');
+  const linkEl = el('clientUpdateLink');
+  if (box && descEl && linkEl) {
+    const u = publicUpdate;
+    if (u && u.link) {
+      box.classList.remove('hidden');
+      descEl.textContent = u.description || '';
+      linkEl.href = u.link;
+    } else {
+      box.classList.add('hidden');
+      descEl.textContent = '';
+      linkEl.href = '#';
+    }
   }
 }
 
@@ -2085,6 +2116,7 @@ async function loadToday() {
 
   // Progress (admin todo list) for clients
   await loadPublicTodos();
+  await loadPublicUpdate();
   renderProgressCard();
 }
 
