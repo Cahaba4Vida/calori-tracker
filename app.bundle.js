@@ -3438,3 +3438,47 @@ function _apSyncFromApi(path, body) {
     // no-op
   }
 }
+
+// ===============================
+// AMBASSADOR REFERRALS (v1)
+// Capture ?ref=CODE and claim it server-side for attribution (free + paid).
+function captureReferralCodeFromUrl() {
+  try {
+    const u = new URL(window.location.href);
+    const ref = (u.searchParams.get('ref') || u.searchParams.get('REF') || '').trim().toLowerCase();
+    if (ref && /^[a-z0-9]{6,32}$/.test(ref)) {
+      localStorage.setItem('amb_ref_code', ref);
+      localStorage.setItem('amb_ref_captured_at', String(Date.now()));
+    }
+  } catch (e) {}
+}
+
+let __ambReferralClaimInFlight = false;
+async function claimReferralIfPresent() {
+  try {
+    if (__ambReferralClaimInFlight) return;
+    const ref = (localStorage.getItem('amb_ref_code') || '').trim().toLowerCase();
+    if (!ref) return;
+    // Avoid spamming: only claim once per device unless code changes.
+    const claimed = (localStorage.getItem('amb_ref_claimed') || '').trim().toLowerCase();
+    if (claimed === ref) return;
+
+    __ambReferralClaimInFlight = true;
+    const r = await api('referral-claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref_code: ref })
+    });
+    if (r && r.ok) {
+      localStorage.setItem('amb_ref_claimed', ref);
+    }
+  } catch (e) {
+    // If invalid/unknown code, don't loop.
+    try { localStorage.setItem('amb_ref_claimed', localStorage.getItem('amb_ref_code') || ''); } catch {}
+  } finally {
+    __ambReferralClaimInFlight = false;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{ try { captureReferralCodeFromUrl(); claimReferralIfPresent(); } catch(e){} });
+

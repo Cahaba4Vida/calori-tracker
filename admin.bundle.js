@@ -280,11 +280,12 @@ const el = (id) => document.getElementById(id);
     document.querySelectorAll('.tabBtn').forEach((b) => {
       b.classList.toggle('active', b.getAttribute('data-tab') === tab);
     });
-    ['users','billing','insights','ops','todo'].forEach((k) => {
+    ['users','billing','insights','ops','todo','ambassadors'].forEach((k) => {
       const p = el('tab_' + k);
       if (p) p.classList.toggle('hidden', k !== tab);
     });
     if (tab === 'todo') { ensureTodosLoaded(); }
+    if (tab === 'ambassadors') { ensureAmbassadorsLoaded(); }
     try { location.hash = tab; } catch {}
   }
 
@@ -884,6 +885,156 @@ const el = (id) => document.getElementById(id);
   el('updateSaveBtn')?.addEventListener('click', saveClientUpdate);
 
 
+  // ---- Ambassadors ----
+  let ambassadors = [];
+  let selectedAmbassadorEmail = null;
+
+  function moneyUsd(cents) {
+    const v = Number(cents || 0) / 100;
+    return '$' + v.toFixed(2);
+  }
+
+  function setAmbStatus(msg) {
+    const s = el('ambStatus');
+    if (s) s.innerText = msg || '';
+  }
+
+  function setPortalLink(email, token) {
+    const host = el('ambPortalLink');
+    if (!host) return;
+    if (!email) {
+      host.innerText = '(select an ambassador)';
+      return;
+    }
+    const base = (location.origin || '').replace(/\/$/, '');
+    const url = base + '/ambassador.html?email=' + encodeURIComponent(email) + (token ? ('&token=' + encodeURIComponent(token)) : '');
+    host.innerText = url;
+  }
+
+  async function ensureAmbassadorsLoaded() {
+    try {
+      const j = await adminClient.adminApi('admin-ambassadors-list', { method: 'GET' });
+      ambassadors = Array.isArray(j.ambassadors) ? j.ambassadors : [];
+      renderAmbassadors();
+    } catch (e) {
+      setAmbStatus(e.message || String(e));
+    }
+  }
+
+  function renderAmbassadors() {
+    const tb = el('ambTable')?.querySelector('tbody');
+    if (!tb) return;
+    if (!ambassadors.length) {
+      tb.innerHTML = '<tr><td colspan="8" class="muted">No ambassadors yet.</td></tr>';
+      return;
+    }
+    tb.innerHTML = ambassadors.map((a) => {
+      const email = a.email || '';
+      const name = a.name || '';
+      const monthly = a.monthly_price_cents == null ? '' : moneyUsd(a.monthly_price_cents);
+      const yearly = a.yearly_price_cents == null ? '' : moneyUsd(a.yearly_price_cents);
+      const created = a.created_at ? String(a.created_at).slice(0, 10) : '';
+      const st = ambassadorStatsMap.get(String(a.id)) || null;
+      const totalFirst = st ? moneyUsd(st.total_first_payment_cents || 0) : '';
+      const activeMrr = st ? moneyUsd(st.active_mrr_equiv_cents || 0) : '';
+      return `<tr data-amb-row="1" data-email="${escapeHtml(email)}" style="cursor:pointer;">
+        <td>${escapeHtml(email)}</td>
+        <td>${escapeHtml(name)}</td>
+        <td>${escapeHtml(monthly)}</td>
+        <td>${escapeHtml(yearly)}</td>
+        <td>${escapeHtml(totalFirst)}</td>
+        <td>${escapeHtml(activeMrr)}</td>
+        <td>${escapeHtml(created)}</td>
+        <td>
+          <button class="btnMini" data-amb-action="select" data-email="${escapeHtml(email)}">Select</button>
+          <button class="btnMini" data-amb-action="del" data-email="${escapeHtml(email)}">✕</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    tb.querySelectorAll('[data-amb-action="select"]').forEach((b) => {
+      b.onclick = (ev) => {
+        ev.stopPropagation();
+        pickAmbassador(b.getAttribute('data-email'));
+      };
+    });
+    tb.querySelectorAll('[data-amb-action="del"]').forEach((b) => {
+      b.onclick = async (ev) => {
+        ev.stopPropagation();
+        const email = b.getAttribute('data-email');
+        if (!email) return;
+        if (!confirm('Delete ambassador ' + email + '?')) return;
+        try {
+          await adminClient.adminApi('admin-ambassador-delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email }) });
+          setAmbStatus('Deleted.');
+          await ensureAmbassadorsLoaded();
+        } catch (e) { setAmbStatus(e.message || String(e)); }
+      };
+    });
+    tb.querySelectorAll('tr[data-amb-row="1"]').forEach((r) => {
+      r.onclick = () => pickAmbassador(r.getAttribute('data-email'));
+    });
+  }
+
+  function pickAmbassador(email) {
+    const a = ambassadors.find((x) => String(x.email || '').toLowerCase() === String(email || '').toLowerCase());
+    if (!a) return;
+    selectedAmbassadorEmail = a.email;
+    if (el('ambEmail')) el('ambEmail').value = a.email || '';
+    if (el('ambName')) el('ambName').value = a.name || '';
+    if (el('ambMonthlyUsd')) el('ambMonthlyUsd').value = a.monthly_price_cents != null ? String(Math.round(Number(a.monthly_price_cents) / 100)) : '';
+    if (el('ambYearlyUsd')) el('ambYearlyUsd').value = a.yearly_price_cents != null ? String(Math.round(Number(a.yearly_price_cents) / 100)) : '';
+    if (el('ambNotes')) el('ambNotes').value = a.notes || '';
+    setPortalLink(a.email, null);
+    setAmbStatus('Selected: ' + a.email);
+  }
+
+  async function upsertAmbassador() {
+    const email = (el('ambEmail')?.value || '').trim();
+    const name = (el('ambName')?.value || '').trim();
+    const monthlyUsd = Number(el('ambMonthlyUsd')?.value || 0);
+    const yearlyUsd = Number(el('ambYearlyUsd')?.value || 0);
+    const notes = (el('ambNotes')?.value || '').trim();
+    if (!email) return setAmbStatus('Email is required.');
+    if (!Number.isFinite(monthlyUsd) || monthlyUsd <= 0) return setAmbStatus('Monthly price must be >= 1.');
+    if (!Number.isFinite(yearlyUsd) || yearlyUsd <= 0) return setAmbStatus('Yearly price must be >= 1.');
+    try {
+      const j = await adminClient.adminApi('admin-ambassador-upsert', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, name, monthly_price_cents: Math.round(monthlyUsd * 100), yearly_price_cents: Math.round(yearlyUsd * 100), notes })
+      });
+      const token = j.token || null;
+      setAmbStatus(token ? 'Saved. TOKEN: ' + token : 'Saved.');
+      setPortalLink(email, token);
+      await ensureAmbassadorsLoaded();
+      pickAmbassador(email);
+    } catch (e) { setAmbStatus(e.message || String(e)); }
+  }
+
+  async function rotateAmbassadorToken() {
+    const email = (el('ambEmail')?.value || '').trim() || selectedAmbassadorEmail;
+    if (!email) return setAmbStatus('Select an ambassador first.');
+    try {
+      const j = await adminClient.adminApi('admin-ambassador-rotate-token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const token = j.token || null;
+      setAmbStatus(token ? 'Rotated. TOKEN: ' + token : 'Rotated.');
+      setPortalLink(email, token);
+      await ensureAmbassadorsLoaded();
+      pickAmbassador(email);
+    } catch (e) { setAmbStatus(e.message || String(e)); }
+  }
+
+  el('ambRefreshBtn')?.addEventListener('click', ensureAmbassadorsLoaded);
+  el('ambLoadBtn')?.addEventListener('click', ensureAmbassadorsLoaded);
+  el('ambCreateBtn')?.addEventListener('click', upsertAmbassador);
+  el('ambRotateBtn')?.addEventListener('click', rotateAmbassadorToken);
+
+
   // Initialize layout once authorized
   const oldAuthorize = el('authorizeBtn')?.onclick;
   el('authorizeBtn')?.addEventListener('click', () => {
@@ -891,7 +1042,7 @@ const el = (id) => document.getElementById(id);
     window.setTimeout(() => {
       moveLegacyCards();
       const tabFromHash = (location.hash || '').replace('#','') || 'users';
-      setActiveTab(['users','billing','insights','ops','todo'].includes(tabFromHash) ? tabFromHash : 'users');
+      setActiveTab(['users','billing','insights','ops','todo','ambassadors'].includes(tabFromHash) ? tabFromHash : 'users');
       showToast('Admin authorized.', 'success', 1500);
     }, 50);
   });

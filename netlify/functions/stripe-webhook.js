@@ -41,6 +41,163 @@ async function stripeGet(pathname) {
   return resp.json();
 }
 
+
+async function ensureAmbassadorAttributionColumns() {
+  // Ensure tables/columns exist for ambassador attribution, without requiring manual migrations.
+  try {
+    await query(`create table if not exists admin_ambassadors (
+      id bigserial primary key,
+      email text unique not null,
+      referral_code text unique,
+      name text,
+      notes text,
+      token_hash text not null,
+      monthly_price_cents integer,
+      yearly_price_cents integer,
+      currency text default 'usd',
+      created_at timestamptz default now(),
+      updated_at timestamptz default now()
+    );`);
+  } catch (e) {}
+
+  try { await query(`alter table admin_ambassadors add column if not exists yearly_price_cents integer;`); } catch (e) {}
+
+  try {
+    await query(`create table if not exists ambassador_referrals (
+      id bigserial primary key,
+      ambassador_id bigint not null references admin_ambassadors(id) on delete cascade,
+      user_id text,
+      email text,
+      ref_code text,
+      first_seen_at timestamptz default now(),
+      last_seen_at timestamptz default now(),
+      price_paid_cents integer,
+      currency text default 'usd',
+      stripe_session_id text,
+      stripe_customer_id text,
+      stripe_subscription_id text,
+      stripe_subscription_status text,
+      stripe_current_period_end timestamptz,
+      ambassador_interval text,
+      status text default 'referred'
+    );`);
+  } catch (e) {}
+
+  try { await query(`alter table ambassador_referrals add column if not exists stripe_subscription_status text;`); } catch (e) {}
+  try { await query(`alter table ambassador_referrals add column if not exists stripe_current_period_end timestamptz;`); } catch (e) {}
+  try { await query(`alter table ambassador_referrals add column if not exists ambassador_interval text;`); } catch (e) {}
+
+  const alters = [
+    `alter table user_profiles add column if not exists ambassador_id bigint;`,
+    `alter table user_profiles add column if not exists ambassador_email text;`,
+    `alter table user_profiles add column if not exists ambassador_ref_code text;`,
+    `alter table user_profiles add column if not exists ambassador_referred_at timestamptz;`,
+    `alter table user_profiles add column if not exists ambassador_last_seen_at timestamptz;`,
+    `alter table user_profiles add column if not exists ambassador_price_paid_cents integer;`,
+    `alter table user_profiles add column if not exists ambassador_last_paid_at timestamptz;`,
+  ];
+  for (const q of alters) { try { await query(q); } catch (e) {} }
+}
+
+async function recordAmbassadorPaymentFromCheckoutSession(session) {
+  const md = session?.metadata || {};
+  const ambIdRaw = md.ambassador_id || md.ambassadorId || null;
+  const ambEmail = md.ambassador_email || md.ambassadorEmail || null;
+  const priceCentsRaw = md.ambassador_price_cents || md.ambassadorPriceCents || null;
+  const interval = (md.ambassador_interval || md.ambassadorInterval || 'month') + '';
+
+  const ambId = ambIdRaw != null ? Number(ambIdRaw) : null;
+  const priceCents = priceCentsRaw != null ? Number(priceCentsRaw) : (session?.amount_total != null ? Number(session.amount_total) : null);
+  const currency = (md.ambassador_currency || session?.currency || 'usd') + '';
+
+  if (!ambId && !ambEmail) return;
+
+  await ensureAmbassadorAttributionColumns();
+
+  // Resolve ambassador_id if only email present.
+  let ambassadorId = ambId;
+  if (!ambassadorId && ambEmail) {
+    const a = await query(`select id from admin_ambassadors where lower(email)=lower($1) limit 1`, [String(ambEmail).toLowerCase()]);
+    ambassadorId = a.rows[0]?.id || null;
+  }
+  if (!ambassadorId) return;
+
+  const customerEmail = (session?.customer_details?.email || session?.customer_email || md.customer_email || null);
+  const userId = md.user_id || md.userId || null;
+  const subId = session?.subscription ? String(session.subscription) : null;
+  const custId = session?.customer ? String(session.customer) : null;
+  const sessId = session?.id ? String(session.id) : null;
+
+  // Upsert referral/conversion record.
+  if (userId) {
+    await query(
+      `insert into ambassador_referrals(ambassador_id, user_id, email, last_seen_at, price_paid_cents, currency, stripe_session_id, stripe_customer_id, stripe_subscription_id, ambassador_interval, status)
+       values ($1,$2,$3,now(),$4,$5,$6,$7,$8,$9,'paid')
+       on conflict do nothing`,
+      [ambassadorId, String(userId), customerEmail, (Number.isFinite(priceCents) ? Math.round(priceCents) : null), currency, sessId, custId, subId, (interval === 'year' ? 'year' : 'month')]
+    ).catch(()=>{});
+    // Update existing row for that user/ambassador
+    await query(
+      `update ambassador_referrals
+          set last_seen_at=now(),
+              email=coalesce($3,email),
+              price_paid_cents=coalesce(price_paid_cents,$4),
+              currency=coalesce(currency,$5),
+              stripe_session_id=coalesce(stripe_session_id,$6),
+              stripe_customer_id=coalesce(stripe_customer_id,$7),
+              stripe_subscription_id=coalesce(stripe_subscription_id,$8),
+              status='paid'
+        where ambassador_id=$1 and user_id=$2`,
+      [ambassadorId, String(userId), customerEmail, (Number.isFinite(priceCents) ? Math.round(priceCents) : null), currency, sessId, custId, subId, (interval === 'year' ? 'year' : 'month')]
+    ).catch(()=>{});
+  } else if (customerEmail) {
+    await query(
+      `insert into ambassador_referrals(ambassador_id, user_id, email, ref_code, first_seen_at, last_seen_at, price_paid_cents, currency, stripe_session_id, stripe_customer_id, stripe_subscription_id, ambassador_interval, status)
+       values ($1,null,$2,null,now(),now(),$3,$4,$5,$6,$7,$8,'paid')`,
+      [ambassadorId, customerEmail, (Number.isFinite(priceCents) ? Math.round(priceCents) : null), currency, sessId, custId, subId, (interval === 'year' ? 'year' : 'month')]
+    ).catch(()=>{});
+    await query(
+      `update ambassador_referrals
+          set last_seen_at=now(),
+              price_paid_cents=coalesce(price_paid_cents,$3),
+              currency=coalesce(currency,$4),
+              stripe_session_id=coalesce(stripe_session_id,$5),
+              stripe_customer_id=coalesce(stripe_customer_id,$6),
+              stripe_subscription_id=coalesce(stripe_subscription_id,$7),
+              ambassador_interval=coalesce(ambassador_interval,$8),
+              status='paid'
+        where ambassador_id=$1 and lower(email)=lower($2)`,
+      [ambassadorId, customerEmail, (Number.isFinite(priceCents) ? Math.round(priceCents) : null), currency, sessId, custId, subId, (interval === 'year' ? 'year' : 'month')]
+    ).catch(()=>{});
+  }
+
+  // Also stamp on user_profiles if we can resolve a user row.
+  try {
+    if (userId) {
+      await query(
+        `update user_profiles
+            set ambassador_id=coalesce(ambassador_id,$2),
+                ambassador_email=coalesce(ambassador_email,$3),
+                ambassador_price_paid_cents=coalesce(ambassador_price_paid_cents,$4),
+                ambassador_last_paid_at=now()
+          where user_id=$1`,
+        [String(userId), ambassadorId, ambEmail, (Number.isFinite(priceCents) ? Math.round(priceCents) : null)]
+      );
+    } else if (customerEmail) {
+      await query(
+        `update user_profiles
+            set ambassador_id=coalesce(ambassador_id,$2),
+                ambassador_email=coalesce(ambassador_email,$3),
+                ambassador_price_paid_cents=coalesce(ambassador_price_paid_cents,$4),
+                ambassador_last_paid_at=now()
+          where lower(email)=lower($1)`,
+        [customerEmail, ambassadorId, ambEmail, (Number.isFinite(priceCents) ? Math.round(priceCents) : null)]
+      );
+    }
+  } catch (e) {}
+}
+
+
 async function findUserId(subscription) {
   if (subscription?.metadata?.user_id) return subscription.metadata.user_id;
 
@@ -91,6 +248,23 @@ async function syncSubscription(subscription) {
       periodEnd
     ]
   );
+
+  // Keep ambassador referral rows in sync (if any).
+  try {
+    await ensureAmbassadorAttributionColumns();
+    const pe = subscription?.current_period_end
+      ? new Date(Number(subscription.current_period_end) * 1000).toISOString()
+      : null;
+    await query(
+      `update ambassador_referrals
+          set stripe_subscription_status=$2,
+              stripe_current_period_end=($3::timestamptz),
+              status=case when $2 in ('active','trialing') then 'paid' else status end,
+              last_seen_at=now()
+        where stripe_subscription_id=$1`,
+      [subscription?.id ? String(subscription.id) : null, status, pe]
+    );
+  } catch (e) {}
 
   return { ok: true, userId, status };
 }
@@ -166,6 +340,8 @@ exports.handler = async (event) => {
   try {
     if (stripeEvent.type === 'checkout.session.completed') {
       const session = stripeEvent.data?.object || {};
+      try { await recordAmbassadorPaymentFromCheckoutSession(session); } catch (e) {}
+
       if (session.subscription) {
         const sub = await stripeGet(`subscriptions/${encodeURIComponent(String(session.subscription))}`);
         if (sub) {
