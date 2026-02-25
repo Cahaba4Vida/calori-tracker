@@ -6,6 +6,15 @@ function json(statusCode, obj) {
   };
 }
 
+function readJson(event) {
+  try {
+    if (!event || !event.body) return {};
+    return JSON.parse(event.body);
+  } catch {
+    return {};
+  }
+}
+
 function getDenverDateISO(now = new Date()) {
   // Returns YYYY-MM-DD in America/Denver.
   const fmt = new Intl.DateTimeFormat("en-CA", {
@@ -17,4 +26,4 @@ function getDenverDateISO(now = new Date()) {
   return fmt.format(now); // en-CA yields YYYY-MM-DD
 }
 
-module.exports = { json, getDenverDateISO };
+module.exports = { json, readJson, getDenverDateISO };

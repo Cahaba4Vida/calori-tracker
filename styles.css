@@ -960,12 +960,12 @@ textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--borde
   background-position: right center;
   background-repeat: no-repeat;
 }
-#todayCard{ background-image: url("./assets/backgrounds/today_light.png"); }
-#addFoodCard{ background-image: url("./assets/backgrounds/addfood_light.png"); }
-#dailyGoalsCard{ background-image: url("./assets/backgrounds/dailygoals_light.png"); }
+#todayCard{ background-image: url("./assets/backgrounds/today_dark.png"); }
+#addFoodCard{ background-image: url("./assets/backgrounds/addfood_dark.png"); }
+#dailyGoalsCard{ background-image: url("./assets/backgrounds/dailygoals_dark.png"); }
 #trendsCard{ background-image: url("./assets/backgrounds/trends_light.png"); }
-#weightCard{ background-image: url("./assets/backgrounds/weight_light.png"); }
-#finishDayCard{ background-image: url("./assets/backgrounds/finishday_light.png"); }
+#weightCard{ background-image: url("./assets/backgrounds/weight_dark.png"); }
+#finishDayCard{ background-image: url("./assets/backgrounds/finishday_dark.png"); }
 /* === /Aethon backgrounds === */
 
 
@@ -1138,7 +1138,7 @@ body.invertedTheme #tabs .tabbtn.active {
 
 /* Coach Chat background */
 #coachChatCard{position:relative;overflow:hidden;}
-#coachChatCard::before{content:"";position:absolute;inset:0;background-image:url("assets/backgrounds/coachchat_light.png");background-size:cover;background-position:center;opacity:0.22;pointer-events:none;}
+#coachChatCard::before{content:"";position:absolute;inset:0;background-image:url("assets/backgrounds/coachchat_dark.png");background-size:cover;background-position:center;opacity:0.22;pointer-events:none;}
 #coachChatCard > *{position:relative;z-index:1;}
 body.invertedTheme #coachChatCard::before{background-image:url("assets/backgrounds/coachchat_dark.png");filter:invert(1) hue-rotate(180deg);opacity:0.30;}
 .estimate-overlay.hidden{ display:none; }
