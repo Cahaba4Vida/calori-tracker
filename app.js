@@ -1,4 +1,56 @@
 console.log("APP_VERSION v12");
+
+// --- iOS Safari audio unlock + playback helpers (prevents autoplay blocking) ---
+let __audioUnlocked = false;
+function unlockAudioOnce() {
+  if (__audioUnlocked) return;
+  __audioUnlocked = true;
+  // WebAudio unlock (counts as user-gesture initiated if called from a click/tap handler)
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) {
+      const ctx = new AC();
+      // resume is important on iOS
+      ctx.resume().catch(() => {});
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0.0001;
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.01);
+    }
+  } catch (e) {}
+}
+
+function base64ToBlobUrl(b64, mime) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mime || 'audio/mpeg' });
+  return URL.createObjectURL(blob);
+}
+
+async function playAssistantAudio(j) {
+  if (j && j.audio_base64) {
+    try {
+      const url = base64ToBlobUrl(j.audio_base64, j.audio_mime_type || 'audio/mpeg');
+      const audio = new Audio(url);
+      audio.addEventListener('ended', () => URL.revokeObjectURL(url));
+      audio.addEventListener('error', () => URL.revokeObjectURL(url));
+      await audio.play();
+      return;
+    } catch (e) {
+      // fall through to TTS
+    }
+  }
+  if (j && j.reply && 'speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(new SpeechSynthesisUtterance(j.reply));
+    } catch (e) {}
+  }
+}
+// --- end iOS helpers ---
 let currentUser = null;
 let skipOnboardingAfterLogin = false;
 const QUERY = new URLSearchParams(window.location.search);
@@ -1670,7 +1722,8 @@ function ensureVoiceRecognition() {
 }
 
 async function sendVoiceFoodMessage() {
-  const input = el('voiceFoodInput');
+    unlockAudioOnce();
+const input = el('voiceFoodInput');
   const message = (input?.value || '').trim();
   if (!message) return;
   const out = el('voiceFoodOutput');
@@ -1700,14 +1753,7 @@ async function sendVoiceFoodMessage() {
     voiceFollowUpCount = 0;
     showAddFoodPanel('addFoodManualPanel');
   }
-
-  if (j.audio_base64) {
-    const audio = new Audio(`data:${j.audio_mime_type || 'audio/mp3'};base64,${j.audio_base64}`);
-    audio.play().catch(() => {});
-  } else if ('speechSynthesis' in window && j.reply) {
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(new SpeechSynthesisUtterance(j.reply));
-  }
+  await playAssistantAudio(j);
 }
 
 function renderEntries(entries) {
@@ -2362,6 +2408,7 @@ function bindUI() {
   bindClick('photoPlateBtn', () => { activePhotoMode = 'plate'; const n = el('photoModeCameraInput'); if (n) n.click(); });
 
   bindClick('voiceToggleBtn', () => {
+    unlockAudioOnce();
     const recognition = ensureVoiceRecognition();
     if (!recognition) {
       setStatus('Voice recognition is not available on this browser. Type your meal details instead.');
