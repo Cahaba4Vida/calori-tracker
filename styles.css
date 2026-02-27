@@ -1301,3 +1301,17 @@ body.invertedTheme .aiGlobalLoadingCard {
   }
 }
 
+
+
+/* Autopilot home suggestion + settings */
+.apHomeSuggestion{border:1px solid rgba(0,0,0,0.08); border-radius:14px; padding:12px; margin:10px 0 0 0; background:rgba(0,0,0,0.02);}
+.apHomeTop{display:flex; align-items:center; justify-content:space-between; gap:12px;}
+.apHomeTitle{font-weight:700;}
+.apHomeSub{font-size:13px; opacity:0.8; margin-top:2px;}
+.apHomeBtn{padding:8px 12px; border-radius:12px;}
+.apControls{margin:8px 0 14px 0; display:grid; gap:10px;}
+.apToggleRow{display:flex; align-items:center; gap:10px; user-select:none;}
+.apFieldRow{display:grid; gap:6px;}
+.apWeeklyNumbers{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;}
+.apWeeklyKcal{font-size:22px; font-weight:800;}
+

@@ -692,6 +692,12 @@ function resetAiGoalFlowForm() {
 async function loadProfile() {
   const p = await api('profile-get');
   profileState = { ...profileState, ...p, quick_fills: Array.isArray(p.quick_fills) ? p.quick_fills : [] };
+  // Keep localStorage goal fields in sync for components that rely on local fallback keys.
+  try{
+    if(profileState.goal_weight_lbs!=null) { localStorage.setItem('goal_weight_lbs', String(profileState.goal_weight_lbs)); localStorage.setItem('goal_weight', String(profileState.goal_weight_lbs)); }
+    if(profileState.goal_date) { localStorage.setItem('goal_date', String(profileState.goal_date)); localStorage.setItem('goalDate', String(profileState.goal_date)); }
+  }catch{}
+
   renderQuickFillButtons();
   renderQuickFillSettings();
   return p;
@@ -2951,6 +2957,31 @@ function initSettingsTabs_v37() {
       document.querySelector('[data-tab-content="profile"]').appendChild(section);
     }
   });
+
+  // v39: Keep Autopilot tab clean by moving all non-tabbed settings into Profile pane
+  try {
+    const panel = document.getElementById('panelSettings');
+    const tabContent = document.getElementById('settingsTabContent');
+    const profilePane = document.querySelector('[data-tab-content="profile"]');
+    if(panel && tabContent && profilePane) {
+      let node = tabContent.nextSibling;
+      const rest = [];
+      while(node) {
+        const next = node.nextSibling;
+        if(node.nodeType === 3 && !node.textContent.trim()) { node = next; continue; }
+        rest.push(node);
+        node = next;
+      }
+      if(rest.length) {
+        const wrap = document.createElement('div');
+        wrap.className = 'settingsSection';
+        wrap.id = 'settingsMiscSection';
+        rest.forEach(n=>wrap.appendChild(n));
+        profilePane.appendChild(wrap);
+      }
+    }
+  } catch(e) {}
+
 }
 document.addEventListener("DOMContentLoaded", ()=>{
   try { initSettingsTabs_v37(); } catch(e) {}
@@ -2968,14 +2999,381 @@ function _apLoadEntries(){try{return JSON.parse(localStorage.getItem('entries')|
 function _apLoadWeights(){try{return JSON.parse(localStorage.getItem('weights')||'[]');}catch(e){return [];}} 
 function _apFoodDaysLast7(){const entries=_apLoadEntries();const keys=new Set(_apGetLastNDaysKeys(7));const days=new Set();entries.forEach(e=>{const dt=_apParseDate(e.date||e.ts||e.created_at||e.createdAt);if(!dt)return;const k=_apIsoYmd(dt);if(keys.has(k))days.add(k);});return days.size;}
 function _apWeightsLast14(){const weights=_apLoadWeights();const keys=new Set(_apGetLastNDaysKeys(14));const points=[];weights.forEach(w=>{const dt=_apParseDate(w.date||w.ts||w.created_at||w.createdAt);if(!dt)return;const k=_apIsoYmd(dt);if(keys.has(k))points.push({k,dt,w:(w.weight??w.value??w.lbs??w.kg)});});points.sort((a,b)=>a.dt-b.dt);return points;}
-function _apHasGoalConfigured(){const gw=parseFloat(localStorage.getItem('goal_weight')||localStorage.getItem('goal_weight_lbs')||'');const gd=localStorage.getItem('goal_date')||localStorage.getItem('goalDate')||'';const okW=!isNaN(gw)&&gw>0;const okD=!!gd&&!isNaN(new Date(gd).getTime());return okW&&okD;}
+function _apHasGoalConfigured(){
+  try{
+    const gw0 = (profileState && profileState.goal_weight_lbs!=null) ? Number(profileState.goal_weight_lbs) : NaN;
+    const gd0 = (profileState && profileState.goal_date) ? String(profileState.goal_date) : '';
+    const gw = Number.isFinite(gw0) ? gw0 : parseFloat(localStorage.getItem('goal_weight')||localStorage.getItem('goal_weight_lbs')||'');
+    const gd = gd0 || (localStorage.getItem('goal_date')||localStorage.getItem('goalDate')||'');
+    const okW = !isNaN(gw) && gw>0;
+    const okD = !!gd && !isNaN(new Date(gd).getTime());
+    return okW; // goal date is optional
+  }catch{
+    return false;
+  }
+}
 function computeAutopilotReadiness_v38(){const foodDays=_apFoodDaysLast7();const weightPts=_apWeightsLast14();const hasGoal=_apHasGoalConfigured();const foodScore=Math.min(1,foodDays/4)*40;let weightScore=0;if(weightPts.length>=2){let ok=false;for(let i=0;i<weightPts.length;i++){for(let j=i+1;j<weightPts.length;j++){const days=Math.abs((weightPts[j].dt-weightPts[i].dt)/86400000);if(days>=6){ok=true;break;}}if(ok)break;}weightScore=ok?40:25;}else if(weightPts.length===1){weightScore=15;}const goalScore=hasGoal?20:0;const score=Math.round(foodScore+weightScore+goalScore);const missing=[];if(foodDays<4)missing.push(`${4-foodDays} more food days`);if(weightPts.length<2)missing.push(`${2-weightPts.length} weigh-in(s)`);if(weightPts.length>=2){let ok=false;for(let i=0;i<weightPts.length;i++){for(let j=i+1;j<weightPts.length;j++){const days=Math.abs((weightPts[j].dt-weightPts[i].dt)/86400000);if(days>=6){ok=true;break;}}if(ok)break;}if(!ok)missing.push(`weigh-ins need 6+ days apart`);}if(!hasGoal)missing.push(`target weight + goal date`);let label='Ready';if(score<40)label='Not ready';else if(score<70)label='Almost ready';else if(score<90)label='Ready';else label='Very ready';return {score,label,missing,foodDays,weightPtsCount:weightPts.length};}
 function renderAutopilotReadiness_v38(){const s=computeAutopilotReadiness_v38();const badge=document.getElementById('apReadinessScore');const fill=document.getElementById('apReadinessFill');const label=document.getElementById('apReadinessLabel');const sub=document.getElementById('apReadinessSub');if(!badge||!fill||!label)return;badge.textContent=String(s.score);fill.style.width=`${Math.max(0,Math.min(100,s.score))}%`;label.textContent=`Readiness: ${s.label}`;if(sub){sub.textContent=s.missing.length?`To enable weekly reviews: log ${s.missing.join(', ')}.`:`You have enough data for weekly Autopilot reviews.`;}}
 function getPlannedCaloriesForDow_v38(dow){const base=parseInt(localStorage.getItem('calorie_goal')||'0',10)||0;if(!base)return 0;let cfg=null;try{cfg=(typeof getCheatDayConfig==='function')?getCheatDayConfig():null;}catch(e){}if(!cfg||!cfg.enabled||!cfg.extra)return base;const deltaOther=Math.round(cfg.extra/6);const isCheat=dow===cfg.dow;const minFloor=1200;const v=isCheat?(base+cfg.extra):(base-deltaOther);return Math.max(minFloor,v);}
 function _apActualCaloriesByDayKeyLast7(){const entries=_apLoadEntries();const keys=_apGetLastNDaysKeys(7);const map={};keys.forEach(k=>map[k]=0);entries.forEach(e=>{const dt=_apParseDate(e.date||e.ts||e.created_at||e.createdAt);if(!dt)return;const k=_apIsoYmd(dt);if(!(k in map))return;const cals=(e.calories??e.kcal??e.cals??e.totalCalories);const n=parseFloat(cals);if(!isNaN(n))map[k]+=n;});return {keys,map};}
 function drawCaloriePlanGraph_v38(){const canvas=document.getElementById('apPlanCanvas');if(!canvas)return;const ctx=canvas.getContext('2d');if(!ctx)return;const rect=canvas.getBoundingClientRect();const dpr=window.devicePixelRatio||1;canvas.width=Math.max(300,Math.floor(rect.width*dpr));canvas.height=Math.floor(180*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);const W=rect.width;const H=180;ctx.clearRect(0,0,W,H);const padding=14;const chartTop=10;const chartBottom=H-24;const chartH=chartBottom-chartTop;const keys=_apGetLastNDaysKeys(7);const data=_apActualCaloriesByDayKeyLast7();const planned=keys.map(k=>{const dt=new Date(k+'T00:00:00');return getPlannedCaloriesForDow_v38(dt.getDay());});const actual=keys.map(k=>data.map[k]||0);const maxV=Math.max(1,...planned,...actual);const barGap=8;const barW=(W-padding*2-barGap*6)/7;ctx.fillStyle='rgba(255,255,255,0.06)';ctx.fillRect(padding,chartTop+chartH*0.5,W-padding*2,1);for(let i=0;i<7;i++){const x=padding+i*(barW+barGap);const pv=planned[i]||0;const av=actual[i]||0;const ph=(pv/maxV)*chartH;const ah=(av/maxV)*chartH;ctx.fillStyle='rgba(255,255,255,0.20)';ctx.fillRect(x,chartBottom-ph,barW,ph);ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=2;const inset=3;ctx.strokeRect(x+inset,chartBottom-ah,barW-inset*2,ah);const dt=new Date(keys[i]+'T00:00:00');const lbl=dt.toLocaleDateString(undefined,{weekday:'short'}).slice(0,3);ctx.fillStyle='rgba(255,255,255,0.75)';ctx.font='12px system-ui, -apple-system, Segoe UI, Roboto, Arial';ctx.textAlign='center';ctx.fillText(lbl,x+barW/2,H-8);}const sub=document.getElementById('apPlanSub');if(sub){const base=parseInt(localStorage.getItem('calorie_goal')||'0',10)||0;sub.textContent=base?'Planned vs. logged (last 7 days)':'Set a base calorie goal to see the preview.';}}
 function initAutopilotWidgets_v38(){renderAutopilotReadiness_v38();drawCaloriePlanGraph_v38();const btn=document.getElementById('apPlanRefreshBtn');if(btn&&!btn.__apBound){btn.__apBound=true;btn.addEventListener('click',()=>{renderAutopilotReadiness_v38();drawCaloriePlanGraph_v38();});}if(!window.__apResizeBound){window.__apResizeBound=true;window.addEventListener('resize',()=>{try{drawCaloriePlanGraph_v38();}catch(e){}});}if(typeof window.renderAll==='function'&&!window.renderAll.__apWrapped){const _orig=window.renderAll;const wrapped=function(){const r=_orig.apply(this,arguments);try{renderAutopilotReadiness_v38();drawCaloriePlanGraph_v38();}catch(e){}return r;};wrapped.__apWrapped=true;window.renderAll=wrapped;}}
-document.addEventListener('DOMContentLoaded',()=>{try{initAutopilotWidgets_v38();}catch(e){}});
+document.addEventListener('DOMContentLoaded',()=>{try{initAutopilotWidgets_v38();initAutopilotMode_v40();}catch(e){}});
+
+
+// ===============================
+// AUTOPILOT MODE (weekly suggestions) (v40)
+// ===============================
+function apGetSettings_v40(){
+  // Universal goal fields live in profileState (DB-backed when logged in).
+  // Keep localStorage goal_* as a fallback for mock/offline compatibility.
+  const gw = (profileState && profileState.goal_weight_lbs!=null) ? Number(profileState.goal_weight_lbs)
+    : parseFloat(localStorage.getItem('goal_weight_lbs')||localStorage.getItem('goal_weight')||'');
+  const gd = (profileState && profileState.goal_date) ? String(profileState.goal_date)
+    : (localStorage.getItem('goal_date')||localStorage.getItem('goalDate')||'');
+  return {
+    enabled: localStorage.getItem('ap_enabled') === '1',
+    targetWeightLbs: (Number.isFinite(gw) && gw>0) ? gw : null,
+    goalDate: gd || '',
+    lastReviewedWeek: localStorage.getItem('ap_last_review_week') || ''
+  };
+}
+function apSetEnabled_v40(on){ localStorage.setItem('ap_enabled', on ? '1' : '0'); }
+
+// Universal goal setter (shared across Profile / AI plan / Autopilot)
+async function apSaveUniversalGoal_v41(nextWeightLbs, nextGoalDate){
+  const w = (Number.isFinite(nextWeightLbs) && nextWeightLbs>0) ? nextWeightLbs : null;
+  const d = (nextGoalDate && !isNaN(new Date(nextGoalDate).getTime())) ? String(nextGoalDate) : null;
+
+  // update in-memory profile
+  try{
+    if(typeof profileState === 'object' && profileState){
+      profileState.goal_weight_lbs = w;
+      profileState.goal_date = d;
+    }
+  }catch{}
+
+  // keep local fallbacks in sync (readiness uses these too)
+  try{
+    if(w==null) { localStorage.removeItem('goal_weight_lbs'); localStorage.removeItem('goal_weight'); }
+    else { localStorage.setItem('goal_weight_lbs', String(w)); localStorage.setItem('goal_weight', String(w)); }
+    if(!d) { localStorage.removeItem('goal_date'); localStorage.removeItem('goalDate'); }
+    else { localStorage.setItem('goal_date', d); localStorage.setItem('goalDate', d); }
+  }catch{}
+
+  // persist to server when available (api() already handles mock mode)
+  try{
+    await api('profile-set', { method:'POST', body: JSON.stringify({ goal_weight_lbs: w, goal_date: d }) });
+  }catch(e){
+    console.warn('profile-set (goal fields) failed', e);
+  }
+}
+function apWeekStartISO_v40(d=new Date()){
+  const dt=new Date(d.getTime());
+  dt.setHours(0,0,0,0);
+  const day=dt.getDay(); // 0=Sun..6=Sat
+  const diff=(day===0? -6 : 1-day); // Monday as start
+  dt.setDate(dt.getDate()+diff);
+  return _apIsoYmd(dt);
+}
+function apMarkReviewed_v40(){ localStorage.setItem('ap_last_review_week', apWeekStartISO_v40()); }
+
+function apLoadUnifiedEntries_v40(){
+  const a=_apLoadEntries();
+  if(a && a.length) return a;
+  // fallback: mock state
+  try{
+    const raw=localStorage.getItem('caloriTrackerMockStateV1');
+    if(!raw) return [];
+    const s=JSON.parse(raw);
+    const arr=(s.entries||[]).map(e=>({
+      date: e.entry_date,
+      calories: e.calories,
+      protein: e.protein_g,
+      carbs: e.carbs_g,
+      fat: e.fat_g
+    }));
+    return arr;
+  }catch{ return []; }
+}
+function apLoadUnifiedWeights_v40(){
+  const w=_apLoadWeights();
+  if(w && w.length) return w;
+  try{
+    const raw=localStorage.getItem('caloriTrackerMockStateV1');
+    if(!raw) return [];
+    const s=JSON.parse(raw);
+    return (s.weights||[]).map(x=>({ date: x.entry_date, weight: x.weight_lbs }));
+  }catch{ return []; }
+}
+
+function apComputeSuggestion_v40(){
+  const settings=apGetSettings_v40();
+  const base=parseInt(localStorage.getItem('calorie_goal')||'0',10)||0;
+  if(!settings.enabled) return { ok:false, reason:'Autopilot is off.' };
+  if(!settings.targetWeightLbs) return { ok:false, reason:'Set a target weight to enable Autopilot.' };
+
+  // readiness: reuse existing readiness scoring
+  const r=computeAutopilotReadiness_v38();
+  if(r.score<70) return { ok:false, reason:'Not enough recent data for a safe weekly adjustment.' };
+
+  const entries=apLoadUnifiedEntries_v40();
+  const keys=_apGetLastNDaysKeys(7);
+  const map={}; keys.forEach(k=>map[k]=0);
+  entries.forEach(e=>{
+    const dt=_apParseDate(e.date||e.ts||e.created_at||e.createdAt);
+    if(!dt) return;
+    const k=_apIsoYmd(dt);
+    if(!(k in map)) return;
+    const n=parseFloat(e.calories??e.kcal??e.cals??e.totalCalories);
+    if(!isNaN(n)) map[k]+=n;
+  });
+  const totals=keys.map(k=>map[k]||0).filter(v=>v>0);
+  if(totals.length<4) return { ok:false, reason:'Log at least 4 days of calories in the last week.' };
+  const avgCals=totals.reduce((a,b)=>a+b,0)/totals.length;
+
+  const weights=apLoadUnifiedWeights_v40();
+  const wPts=[];
+  const keys14=new Set(_apGetLastNDaysKeys(14));
+  weights.forEach(w=>{
+    const dt=_apParseDate(w.date||w.ts||w.created_at||w.createdAt);
+    if(!dt) return;
+    const k=_apIsoYmd(dt);
+    if(!keys14.has(k)) return;
+    const val=parseFloat(w.weight??w.weight_lbs??w.lbs??w.value);
+    if(!isNaN(val)) wPts.push({dt,k,w:val});
+  });
+  wPts.sort((a,b)=>a.dt-b.dt);
+  if(wPts.length<2) return { ok:false, reason:'Add at least 2 weigh-ins in the last 14 days.' };
+  const first=wPts[0], last=wPts[wPts.length-1];
+  const days=Math.max(1, (last.dt-first.dt)/86400000);
+  const lbsPerWeek=((last.w-first.w)/days)*7; // positive means gaining
+
+  // Estimate TDEE from observed calories + implied deficit/surplus
+  const deficitPerDay = -(lbsPerWeek*500); // gaining -> negative deficit
+  const tdee = avgCals + deficitPerDay;
+
+  const currentWeight=last.w;
+  const needLoss = currentWeight > settings.targetWeightLbs + 0.5;
+  const needGain = currentWeight < settings.targetWeightLbs - 0.5;
+  if(!needLoss && !needGain){
+    return { ok:false, reason:'You are at (or very close to) your target weight.' };
+  }
+  // Desired weekly rate:
+  // - If a goal date is set, compute required lbs/week to reach target by that date.
+  // - Otherwise default to a reasonable rate.
+  let desiredLbsPerWeek = needLoss ? 1.0 : -0.5; // default: lose 1 lb/wk or gain 0.5 lb/wk
+  if(settings.goalDate){
+    const goalDt = new Date(settings.goalDate+'T00:00:00');
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const daysLeft = Math.round((goalDt.getTime()-today.getTime())/86400000);
+    if(daysLeft >= 7){
+      const weeksLeft = daysLeft/7;
+      const lbsNeeded = (currentWeight - settings.targetWeightLbs); // positive if need to lose
+      const req = lbsNeeded / weeksLeft; // positive lose, negative gain
+      if(Number.isFinite(req) && req!==0){
+        desiredLbsPerWeek = req;
+      }
+    }
+  }
+  // Clamp to a sane/safe range
+  desiredLbsPerWeek = Math.max(-1.0, Math.min(2.0, desiredLbsPerWeek));
+  const targetDeltaPerDay = desiredLbsPerWeek*500; // kcal/day deficit (negative if gaining)
+  const rawSuggested = tdee - targetDeltaPerDay;
+
+  // guardrails
+  const minFloor=1200;
+  const maxCeil=4500;
+  let suggested = Math.round(rawSuggested/10)*10;
+  suggested=Math.max(minFloor, Math.min(maxCeil, suggested));
+
+  const maxStep = parseInt(localStorage.getItem('ap_max_weekly_step')||'150',10)||150;
+  if(base){
+    const delta = suggested - base;
+    if(Math.abs(delta)>maxStep) suggested = base + Math.sign(delta)*maxStep;
+  }
+
+  const delta = base ? (suggested-base) : 0;
+  return {
+    ok:true,
+    baseGoal: base || null,
+    suggestedGoal: suggested,
+    delta,
+    avgCals: Math.round(avgCals),
+    tdee: Math.round(tdee),
+    weightTrendLbsPerWeek: Math.round(lbsPerWeek*10)/10,
+    currentWeight: Math.round(currentWeight*10)/10,
+    targetWeight: settings.targetWeightLbs
+  };
+}
+
+function apShowWeeklyModal_v40(s){
+  const overlay=document.getElementById('apWeeklyOverlay');
+  const sheet=document.getElementById('apWeeklySheet');
+  if(!overlay||!sheet) return;
+  document.getElementById('apWeeklyError').textContent='';
+  document.getElementById('apWeeklyExplainer').textContent =
+    `Based on your last week of logging and recent weigh‑ins, Autopilot recommends updating your daily calorie goal to stay on track toward ${s.targetWeight} lbs.`;
+  document.getElementById('apWeeklyCurrentKcal').textContent = (s.baseGoal!=null? `${s.baseGoal} kcal` : '—');
+  document.getElementById('apWeeklySuggestedKcal').textContent = `${s.suggestedGoal} kcal`;
+  const trend = (s.weightTrendLbsPerWeek>0? `+${s.weightTrendLbsPerWeek}` : `${s.weightTrendLbsPerWeek}`);
+  document.getElementById('apWeeklyProjection').textContent =
+    `Recent trend: ${trend} lb/week. Avg logged: ${s.avgCals} kcal/day. Estimated TDEE: ${s.tdee} kcal/day.`;
+  overlay.classList.remove('hidden');
+  sheet.classList.remove('hidden');
+}
+
+function apCloseWeeklyModal_v40(){
+  const overlay=document.getElementById('apWeeklyOverlay');
+  const sheet=document.getElementById('apWeeklySheet');
+  if(overlay) overlay.classList.add('hidden');
+  if(sheet) sheet.classList.add('hidden');
+}
+
+async function apAcceptSuggestion_v40(s){
+  const err=document.getElementById('apWeeklyError');
+  try{
+    // overwrite goals (Option A)
+    localStorage.setItem('calorie_goal', String(s.suggestedGoal));
+    // keep goal input in sync if present
+    const gi=document.getElementById('goalInput');
+    if(gi) gi.value = String(s.suggestedGoal);
+
+    // persist server-side when not in mock api
+    try{
+      await api('goal-set', { method:'POST', body: JSON.stringify({ daily_calories: s.suggestedGoal }) });
+    }catch(e){
+      // still mark reviewed; user is already updated locally
+      console.warn('goal-set failed', e);
+    }
+    apMarkReviewed_v40();
+    apCloseWeeklyModal_v40();
+    try{ if(typeof window.renderAll==='function') window.renderAll(); }catch{}
+    apRenderHomeSuggestion_v40();
+  }catch(e){
+    if(err) err.textContent = e?.message || String(e);
+  }
+}
+
+function apDeclineSuggestion_v40(){
+  apMarkReviewed_v40();
+  apCloseWeeklyModal_v40();
+  apRenderHomeSuggestion_v40();
+}
+
+function apRenderHomeSuggestion_v40(){
+  const wrap=document.getElementById('apHomeSuggestion');
+  if(!wrap) return;
+  const settings=apGetSettings_v40();
+  if(!settings.enabled){ wrap.classList.add('hidden'); return; }
+
+  const weekKey=apWeekStartISO_v40();
+  const due = settings.lastReviewedWeek !== weekKey;
+  if(!due){ wrap.classList.add('hidden'); return; }
+
+  const s=apComputeSuggestion_v40();
+  if(!s.ok){ wrap.classList.add('hidden'); return; }
+
+  const txt=document.getElementById('apHomeSuggestionText');
+  if(txt){
+    const sign = s.delta>0? `+${s.delta}` : `${s.delta}`;
+    txt.textContent = `Weekly adjustment ready: ${s.baseGoal||'—'} → ${s.suggestedGoal} kcal (${sign} kcal).`;
+  }
+  wrap.classList.remove('hidden');
+  const btn=document.getElementById('apHomeReviewBtn');
+  if(btn && !btn.__apBound){
+    btn.__apBound=true;
+    btn.addEventListener('click',()=> apShowWeeklyModal_v40(apComputeSuggestion_v40()));
+  }
+}
+
+
+function apMaybeAutoPopup_v40(){
+  const settings=apGetSettings_v40();
+  if(!settings.enabled) return;
+  const weekKey=apWeekStartISO_v40();
+  // Only once per week, and only if not already reviewed this week
+  if(settings.lastReviewedWeek === weekKey) return;
+  const lastPopup = localStorage.getItem('ap_last_popup_week') || '';
+  if(lastPopup === weekKey) return;
+  const s=apComputeSuggestion_v40();
+  if(!s.ok) return;
+  apShowWeeklyModal_v40(s);
+  localStorage.setItem('ap_last_popup_week', weekKey);
+}
+
+
+function initAutopilotMode_v40(){
+  // settings controls
+  const t=document.getElementById('apEnabledToggle');
+  const w=document.getElementById('apTargetWeightInput');
+  if(t && !t.__apBound){
+    t.__apBound=true;
+    t.checked = apGetSettings_v40().enabled;
+    t.addEventListener('change', ()=>{
+      apSetEnabled_v40(t.checked);
+      apRenderHomeSuggestion_v40();
+      renderAutopilotReadiness_v38();
+      drawCaloriePlanGraph_v38();
+    });
+  }
+  if(w && !w.__apBound){
+    w.__apBound=true;
+    const s=apGetSettings_v40();
+    if(s.targetWeightLbs) w.value = String(s.targetWeightLbs);
+    w.addEventListener('change', async ()=>{
+      const v=parseFloat(w.value);
+      await apSaveUniversalGoal_v41(v, apGetSettings_v40().goalDate);
+      apRenderHomeSuggestion_v40();
+      renderAutopilotReadiness_v38();
+    });
+  }
+  const d=document.getElementById('apGoalDateInput');
+  if(d && !d.__apBound){
+    d.__apBound=true;
+    const s=apGetSettings_v40();
+    if(s.goalDate) d.value = String(s.goalDate);
+    d.addEventListener('change', async ()=>{
+      const next = d.value || '';
+      await apSaveUniversalGoal_v41(apGetSettings_v40().targetWeightLbs, next);
+      apRenderHomeSuggestion_v40();
+      renderAutopilotReadiness_v38();
+    });
+  }
+
+  // modal buttons
+  const closeBtn=document.getElementById('apWeeklyCloseBtn');
+  const overlay=document.getElementById('apWeeklyOverlay');
+  const acceptBtn=document.getElementById('apWeeklyAcceptBtn');
+  const declineBtn=document.getElementById('apWeeklyDeclineBtn');
+
+  if(closeBtn && !closeBtn.__apBound){ closeBtn.__apBound=true; closeBtn.addEventListener('click', apCloseWeeklyModal_v40); }
+  if(overlay && !overlay.__apBound){ overlay.__apBound=true; overlay.addEventListener('click', apCloseWeeklyModal_v40); }
+  if(declineBtn && !declineBtn.__apBound){ declineBtn.__apBound=true; declineBtn.addEventListener('click', apDeclineSuggestion_v40); }
+  if(acceptBtn && !acceptBtn.__apBound){
+    acceptBtn.__apBound=true;
+    acceptBtn.addEventListener('click', ()=>{
+      const s=apComputeSuggestion_v40();
+      if(s.ok) apAcceptSuggestion_v40(s);
+    });
+  }
+
+  // home surface
+  apRenderHomeSuggestion_v40();
+  // auto-popup (once per week)
+  try{ apMaybeAutoPopup_v40(); }catch(e){}
+}
+
+// Wrap renderAll to keep home suggestion in sync when data changes
+if(typeof window.renderAll==='function' && !window.renderAll.__apHomeWrapped){
+  const _orig=window.renderAll;
+  const wrapped=function(){ const r=_orig.apply(this,arguments); try{ apRenderHomeSuggestion_v40(); }catch(e){} return r; };
+  wrapped.__apHomeWrapped=true;
+  window.renderAll=wrapped;
+}
+
+
 
 
 // ===============================
