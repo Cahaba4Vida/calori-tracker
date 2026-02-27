@@ -716,28 +716,35 @@ function resetVoiceThread() {
   voiceThreadId = null;
 }
 
-function isoToday() {
-  return new Date().toISOString().slice(0, 10);
+function denverISO(now = new Date()) {
+  // Boise time (America/Denver): returns YYYY-MM-DD.
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Denver',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  return fmt.format(now);
 }
 
-function dateWithOffset(offsetDays) {
-  const d = new Date();
-  d.setDate(d.getDate() + Number(offsetDays || 0));
-  return d.toISOString().slice(0, 10);
+// Anchor a Denver calendar day as a UTC midnight date so YYYY-MM-DD stays stable.
+function denverISOWithOffset(offsetDays) {
+  const todayISO = denverISO(new Date());
+  const [y, m, d] = todayISO.split('-').map(Number);
+  const anchorUTC = new Date(Date.UTC(y, m - 1, d)); // UTC midnight of Denver day
+  const target = new Date(anchorUTC.getTime() + Number(offsetDays || 0) * 86400000);
+  return target.toISOString().slice(0, 10);
 }
+
+function isoToday(){return denverISO(new Date());}
+
+function dateWithOffset(offsetDays){return denverISOWithOffset(offsetDays);}
 
 function activeEntryDateISO() {
   return viewSpanEnabled ? dateWithOffset(selectedDayOffset) : isoToday();
 }
 
-function formatDayLabel(offset) {
-  if (offset === 0) return 'Today';
-  if (offset === -1) return 'Yesterday';
-  if (offset === 1) return 'Tomorrow';
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-}
+function formatDayLabel(offset){if(offset===0)return'Today';if(offset===-1)return'Yesterday';if(offset===1)return'Tomorrow';const iso=denverISOWithOffset(offset);const parts=iso.split('-').map(Number);const dt=new Date(Date.UTC(parts[0],parts[1]-1,parts[2],12));return dt.toLocaleDateString([], { timeZone: 'America/Denver', month: 'short', day: 'numeric' });}
 
 function renderTodayDateNavigator() {
   const nav = el('todayDateNav');
@@ -796,7 +803,13 @@ function macroPct(total, goal) {
 
 const el = (id) => document.getElementById(id);
 
-function setStatus(msg) { el('status').innerText = msg || ''; }
+function setStatus(msg) {
+  const m = msg || '';
+  const s = el('status');
+  if (s) s.innerText = m;
+  const vs = el('voiceStatus');
+  if (vs) vs.innerText = m;
+}
 
 let quickFillToastTimer = null;
 function showQuickFillToast(msg) {
@@ -2018,7 +2031,7 @@ function ensureVoiceRecognition() {
   voiceRecognition.onerror = () => {
     voiceIsListening = false;
     updateVoiceToggleLabel();
-    setStatus('Voice input error. You can type your meal details instead.');
+    setStatus('Voice input error. If prompted, allow microphone access. You can also type your meal details instead.');
   };
   return voiceRecognition;
 }
@@ -2769,7 +2782,17 @@ function bindUI() {
     voiceAutoSendPending = true;
     updateVoiceToggleLabel();
     setStatus('Listening…');
-    recognition.start();
+    try {
+      recognition.start();
+      // Provide immediate visual feedback even if permission prompt is suppressed
+      const out = el('voiceFoodOutput');
+      if (out && !out.innerText.trim()) out.innerText = 'Listening…';
+    } catch (e) {
+      voiceIsListening = false;
+      voiceAutoSendPending = false;
+      updateVoiceToggleLabel();
+      setStatus(`Unable to start voice input: ${e && e.message ? e.message : e}`);
+    }
   });
 
   bindClick('toggleDailyGoalsBtn', () => toggleSection('dailyGoalsBody', 'toggleDailyGoalsBtn'));
@@ -3322,6 +3345,15 @@ function initSettingsTabs_v37() {
 
   const sections = document.querySelectorAll('.settingsSection');
   sections.forEach(section=>{
+    // Prefer explicit per-section routing via data-tab.
+    // This prevents sections like "Custom Quick Fills" from being forced into Profile.
+    const explicit = (section.getAttribute && section.getAttribute('data-tab')) ? String(section.getAttribute('data-tab')).trim() : '';
+    if(explicit) {
+      const pane = document.querySelector('[data-tab-content="'+explicit+'"]');
+      if(pane) { pane.appendChild(section); return; }
+    }
+
+    // Back-compat heuristics
     if(section.id === "cheatDaySettings") {
       document.querySelector('[data-tab-content="nutrition"]').appendChild(section);
     }
