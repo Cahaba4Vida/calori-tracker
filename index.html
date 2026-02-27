@@ -422,14 +422,49 @@
       <input id="apEnabledToggle" type="checkbox"/>
       <span>Enable Autopilot (weekly calorie adjustments)</span>
     </label>
+    
     <div class="apFieldRow">
-      <label for="apTargetWeightInput">Target weight (lbs)</label>
-      <input id="apTargetWeightInput" type="number" min="50" step="0.1" placeholder="e.g. 180"/>
+      <label>Target mode</label>
+      <div class="apModeToggle" role="tablist" aria-label="Autopilot target mode">
+        <button id="apModeWeightBtn" type="button" class="apModeBtn" aria-pressed="true">Target Weight</button>
+        <button id="apModeBodyFatBtn" type="button" class="apModeBtn" aria-pressed="false">Target Body Fat %</button>
+      </div>
     </div>
-    <div class="apFieldRow">
-      <label for="apGoalDateInput">Goal date</label>
-      <input id="apGoalDateInput" type="date"/>
+
+    <div id="apModeWeightFields">
+      <div class="apFieldRow">
+        <label for="apTargetWeightInput">Target weight (lbs)</label>
+        <input id="apTargetWeightInput" type="number" min="50" step="0.1" placeholder="e.g. 180"/>
+      </div>
+      <div class="apFieldRow">
+        <label for="apGoalDateInput">Goal date</label>
+        <input id="apGoalDateInput" type="date"/>
+      </div>
     </div>
+
+    <div id="apModeBodyFatFields" style="display:none">
+      <div class="apFieldRow">
+        <label for="apCurrentWeightInput">Current weight (lbs)</label>
+        <input id="apCurrentWeightInput" type="number" min="50" step="0.1" placeholder="Auto-filled from your latest weigh-in"/>
+        <div class="mutedSmall">Defaults to your latest weigh‑in. Edit if you just weighed and haven’t logged it yet.</div>
+      </div>
+      <div class="apFieldRow">
+        <label for="apCurrentBodyFatInput">Current body fat %</label>
+        <input id="apCurrentBodyFatInput" type="number" min="1" max="99" step="0.1" placeholder="e.g. 24.5"/>
+        <div class="mutedSmall">If you log body fat % with weigh‑ins, this can be auto‑filled.</div>
+      </div>
+      <div class="apFieldRow">
+        <label for="apTargetBodyFatInput">Target body fat %</label>
+        <input id="apTargetBodyFatInput" type="number" min="1" max="99" step="0.1" placeholder="e.g. 18.0"/>
+      </div>
+      <div class="apFieldRow">
+        <label for="apBodyFatGoalDateInput">Target date</label>
+        <input id="apBodyFatGoalDateInput" type="date"/>
+      </div>
+      <div class="muted" id="apImpliedTargetWeight"></div>
+    </div>
+
+
     <div class="muted" id="apSettingsHint">Autopilot will suggest weekly calorie changes based on your recent logs and weigh‑ins.</div>
   </div>
 

@@ -1,4 +1,4 @@
-(function initAppBilling(global) {
+console.log("APP_VERSION v12");
 
 // --- iOS Safari audio unlock + playback helpers (prevents autoplay blocking) ---
 let __audioUnlocked = false;
@@ -51,161 +51,6 @@ async function playAssistantAudio(j) {
   }
 }
 // --- end iOS helpers ---
-  function createBillingController(deps) {
-    const { api, authHeaders, el, setStatus, getCurrentUser } = deps;
-    let billingState = null;
-    let nearLimitEventSent = false;
-
-    function trackEvent(eventName, eventProps = {}) {
-      if (!getCurrentUser()) return;
-      fetch('/api/track-event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ event_name: eventName, event_props: eventProps })
-      }).catch(() => {});
-    }
-
-    function renderBillingStatus() {
-      const tier = billingState?.plan_tier === 'premium' ? 'Premium' : 'Free';
-      const limits = billingState?.limits;
-      const usage = billingState?.usage_today;
-
-      const tierEl = el('planTierValue');
-      const usageEl = el('planUsageValue');
-      const limitsEl = el('planLimitsValue');
-      const upgradeHint = el('upgradeHint');
-      const monthlyBtn = el('upgradeMonthlyBtn');
-      const yearlyBtn = el('upgradeYearlyBtn');
-      const exportBtn = el('exportDataBtn');
-      const manageBtn = el('manageSubscriptionBtn');
-
-      if (tierEl) tierEl.innerText = tier;
-      if (usageEl) usageEl.innerText = usage ? `Food entries today: ${usage.food_entries || 0} • AI actions today: ${usage.ai_actions || 0}` : '—';
-      if (limitsEl) limitsEl.innerText = limits ? `Food/day: ${limits.food_entries_per_day ?? 'Unlimited'} • AI/day: ${limits.ai_actions_per_day ?? 'Unlimited'} • History: ${limits.history_days ?? 'Unlimited'} days` : '—';
-      if (monthlyBtn && billingState?.monthly_price_usd) monthlyBtn.innerText = `Upgrade Monthly ($${billingState.monthly_price_usd})`;
-      if (yearlyBtn && billingState?.yearly_price_usd) yearlyBtn.innerText = `Upgrade Yearly ($${billingState.yearly_price_usd})`;
-
-      if (upgradeHint) {
-        upgradeHint.classList.toggle('hidden', !!billingState?.is_premium);
-        upgradeHint.innerText = billingState?.is_premium
-          ? ''
-          : 'Free plan includes 5 food entries/day, 5 AI actions/day, 20-day history, and no export. Upgrade for unlimited access.';
-      }
-
-      if (!billingState?.is_premium && usage) {
-        const foodLeft = Math.max(0, Number(limits?.food_entries_per_day || 0) - Number(usage.food_entries || 0));
-        const aiLeft = Math.max(0, Number(limits?.ai_actions_per_day || 0) - Number(usage.ai_actions || 0));
-        const near = (foodLeft <= 2) || (aiLeft <= 1);
-        if (near && upgradeHint) {
-          upgradeHint.classList.remove('hidden');
-          upgradeHint.innerText = `You're close to today's free limit (${foodLeft} food entries left, ${aiLeft} AI actions left). Upgrade for unlimited usage.`;
-          if (!nearLimitEventSent) {
-            nearLimitEventSent = true;
-            trackEvent('near_limit_warning_shown', { food_left: foodLeft, ai_left: aiLeft });
-          }
-        }
-      }
-
-      if (exportBtn) exportBtn.disabled = !billingState?.is_premium;
-      if (manageBtn) manageBtn.disabled = !billingState?.is_premium;
-    }
-
-    async function loadBillingStatus() {
-      try {
-        billingState = await api('billing-status');
-      } catch {
-        billingState = null;
-      }
-      renderBillingStatus();
-    }
-
-    async function startUpgradeCheckout(interval) {
-      try {
-        setStatus('Creating Stripe checkout link…');
-        trackEvent('upgrade_click', { interval });
-        const out = await api('create-checkout-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interval }) });
-        if (out?.url) {
-          window.location.href = out.url;
-          return;
-        }
-        setStatus('Upgrade link unavailable. Please try again.');
-      } catch (e) {
-        setStatus(e.message || 'Could not start checkout');
-      }
-    }
-
-    async function openManageSubscription() {
-      try {
-        trackEvent('manage_subscription_click');
-        const out = await api('manage-subscription', { method: 'POST' });
-        if (out?.url) {
-          window.location.href = out.url;
-          return;
-        }
-        setStatus('Manage subscription is not available right now.');
-      } catch (e) {
-        setStatus(e.message || 'Could not open subscription management');
-      }
-    }
-
-    async function exportMyData() {
-      try {
-        setStatus('Preparing export…');
-        trackEvent('export_data_click', { format: 'txt' });
-
-        const today = new Date().toISOString().slice(0, 10);
-        const data = await api(`export-data?format=csv`);
-
-        const downloadText = (filename, text, mime = 'text/plain') => {
-          const blob = new Blob([text || ''], { type: `${mime};charset=utf-8` });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          URL.revokeObjectURL(url);
-        };
-
-        // Single Notepad-friendly TXT file (no JSON).
-        const parts = [];
-        parts.push(`AETHON EXPORT  (${today})`);
-        parts.push('');
-        parts.push('=== PROFILE ===');
-        parts.push(data.profile_csv || '(none)');
-        parts.push('');
-        parts.push('=== GOALS ===');
-        parts.push(data.goals_csv || '(none)');
-        parts.push('');
-        parts.push('=== WEIGHTS ===');
-        parts.push(data.weights_csv || '(none)');
-        parts.push('');
-        parts.push('=== ENTRIES ===');
-        parts.push(data.entries_csv || '(none)');
-        parts.push('');
-
-        downloadText(`aethon-export-${today}.txt`, parts.join('\n'), 'text/plain');
-
-        setStatus('Export downloaded (TXT).');
-      } catch (e) {
-        setStatus(e.message || 'Could not export data');
-      }
-    }
-
-    return {
-      loadBillingStatus,
-      startUpgradeCheckout,
-      openManageSubscription,
-      exportMyData
-    };
-  }
-
-  global.AppBilling = { createBillingController };
-})(window);
-
-;
-console.log("APP_VERSION v12");
 let currentUser = null;
 let skipOnboardingAfterLogin = false;
 const QUERY = new URLSearchParams(window.location.search);
@@ -245,6 +90,8 @@ function defaultMockState() {
       goal_weight_lbs: null,
       activity_level: null,
       goal_date: null,
+      goal_body_fat_percent: null,
+      goal_body_fat_date: null,
       quick_fills: []
     },
     daily_calories: 2200,
@@ -379,22 +226,6 @@ async function mockApi(path, opts = {}) {
     return { ok: true };
   }
   if (route === 'goal-get') return { daily_calories: mockState.daily_calories };
-
-  // Progress (admin todos) - mock
-  if (route === 'todos-public-list') return { todos: mockState.admin_todos || [] };
-  if (route === 'todos-suggest-add' && method === 'POST') {
-    const next = {
-      id: `t_${Date.now()}_${Math.floor(Math.random()*10000)}`,
-      text: String(payload.text || '').trim(),
-      priority: (mockState.admin_todos || []).length + 1,
-      done: false,
-      source: 'client'
-    };
-    mockState.admin_todos = [...(mockState.admin_todos || []), next];
-    persistMockState();
-    return { ok: true, todo: next };
-  }
-
   if (route === 'goal-set' && method === 'POST') {
     mockState.daily_calories = Number(payload.daily_calories) || 0;
     persistMockState();
@@ -561,93 +392,6 @@ let deviceAutoLoginEnabled = localStorage.getItem(DEVICE_AUTO_LOGIN_STORAGE_KEY)
 let viewSpanEnabled = localStorage.getItem(VIEW_SPAN_ENABLED_KEY) === 'true';
 let viewSpanPastDays = Math.max(0, Math.min(6, Number(localStorage.getItem(VIEW_SPAN_PAST_DAYS_KEY) || '3') || 3));
 let viewSpanFutureDays = Math.max(0, Math.min(7, Number(localStorage.getItem(VIEW_SPAN_FUTURE_DAYS_KEY) || '2') || 2));
-
-
-// Client-visible admin todos ("Progress")
-let publicTodos = [];
-let publicTodosLoadedAt = 0;
-let publicUpdate = null;
-let publicUpdateLoadedAt = 0;
-
-async function loadPublicTodos(force = false) {
-  try {
-    if (!force && publicTodosLoadedAt && (Date.now() - publicTodosLoadedAt) < 15000) return;
-    const j = await api('todos-public-list');
-    publicTodos = Array.isArray(j?.todos) ? j.todos : [];
-    publicTodosLoadedAt = Date.now();
-  } catch (e) {
-    // non-blocking
-  }
-}
-
-async function loadPublicUpdate(force = false) {
-  try {
-    if (!force && publicUpdateLoadedAt && (Date.now() - publicUpdateLoadedAt) < 30_000) return;
-    const r = await fetch('/api/update-public-get');
-    const j = await r.json();
-    publicUpdate = j && j.update ? j.update : null;
-    publicUpdateLoadedAt = Date.now();
-  } catch (e) {
-    // non-blocking
-  }
-}
-
-function renderProgressCard() {
-  const list = el('progressList');
-  const empty = el('progressEmpty');
-  if (!list || !empty) return;
-
-  list.innerHTML = '';
-  const items = Array.isArray(publicTodos) ? publicTodos : [];
-  if (!items.length) {
-    empty.classList.remove('hidden');
-    return;
-  }
-  empty.classList.add('hidden');
-
-  for (const t of items) {
-    const li = document.createElement('li');
-    li.className = t.done ? 'done' : '';
-    const prefix = t.done ? '✅ ' : '• ';
-    li.textContent = prefix + (t.text || '');
-    list.appendChild(li);
-  }
-
-  // Client update banner
-  const box = el('clientUpdateBox');
-  const descEl = el('clientUpdateDesc');
-  const linkEl = el('clientUpdateLink');
-  if (box && descEl && linkEl) {
-    const u = publicUpdate;
-    if (u && u.link) {
-      box.classList.remove('hidden');
-      descEl.textContent = u.description || '';
-      linkEl.href = u.link;
-    } else {
-      box.classList.add('hidden');
-      descEl.textContent = '';
-      linkEl.href = '#';
-    }
-  }
-}
-
-async function handleSuggestUpdate() {
-  try {
-    const raw = prompt('Suggest an update (bullet point):');
-    const text = (raw || '').trim();
-    if (!text) return;
-    await api('todos-suggest-add', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
-    });
-    await loadPublicTodos(true);
-    renderProgressCard();
-    if (typeof showQuickFillToast === 'function') showQuickFillToast('Suggested :)');
-  } catch (e) {
-    alert('Could not send suggestion. Please try again.');
-  }
-}
 let selectedDayOffset = 0;
 let linkedDevicesState = [];
 
@@ -774,21 +518,6 @@ function macroPct(total, goal) {
 const el = (id) => document.getElementById(id);
 
 function setStatus(msg) { el('status').innerText = msg || ''; }
-
-let quickFillToastTimer = null;
-function showQuickFillToast(msg) {
-  const n = el('quickFillToast');
-  if (!n) return;
-  n.innerText = msg || '';
-  n.classList.toggle('hidden', !msg);
-  if (quickFillToastTimer) clearTimeout(quickFillToastTimer);
-  if (msg) {
-    quickFillToastTimer = setTimeout(() => {
-      n.classList.add('hidden');
-      n.innerText = '';
-    }, 1400);
-  }
-}
 
 function maybePromptUpgradeForAiLimit(message) {
   const m = String(message || '');
@@ -969,6 +698,8 @@ async function loadProfile() {
   try{
     if(profileState.goal_weight_lbs!=null) { localStorage.setItem('goal_weight_lbs', String(profileState.goal_weight_lbs)); localStorage.setItem('goal_weight', String(profileState.goal_weight_lbs)); }
     if(profileState.goal_date) { localStorage.setItem('goal_date', String(profileState.goal_date)); localStorage.setItem('goalDate', String(profileState.goal_date)); }
+    if(profileState.goal_body_fat_percent!=null) { localStorage.setItem('goal_body_fat_percent', String(profileState.goal_body_fat_percent)); localStorage.setItem('goalBodyFat', String(profileState.goal_body_fat_percent)); }
+    if(profileState.goal_body_fat_date) { localStorage.setItem('goal_body_fat_date', String(profileState.goal_body_fat_date)); localStorage.setItem('goalBodyFatDate', String(profileState.goal_body_fat_date)); }
   }catch{}
 
   renderQuickFillButtons();
@@ -2165,11 +1896,6 @@ async function loadToday() {
   el('fatProgressBar').style.width = `${fatPercent ?? 0}%`;
 
   renderEntries(entries);
-
-  // Progress (admin todo list) for clients
-  await loadPublicTodos();
-  await loadPublicUpdate();
-  renderProgressCard();
 }
 
 function applyManualPreset(preset) {
@@ -2186,13 +1912,6 @@ function applyManualPreset(preset) {
 // QUICK FILL AUTO LOG (v42)
 // ===============================
 async function applyQuickFillAndLog(presetId) {
-  try {
-    if (typeof window !== 'undefined' && window.__suppressAutoLogUntil && Date.now() < window.__suppressAutoLogUntil) {
-      // If something programmatically triggers a quick fill during a settings re-render, ignore it.
-      if (typeof showQuickFillToast === 'function') showQuickFillToast('Saved :)');
-      return;
-    }
-  } catch(e) {}
   // Fill the manual inputs from the preset, then immediately save the entry.
   applyManualPreset(presetId);
   // Ensure notes defaults to the preset name if empty
@@ -2203,8 +1922,6 @@ async function applyQuickFillAndLog(presetId) {
   }
   try {
     await saveManualEntry();
-    // Lightweight visual confirmation near the quick fill buttons.
-    showQuickFillToast(`Added ${p?.name || 'item'} :)`);
   } catch (e) {
     // saveManualEntry already sets status; keep console for debugging
     console.error('Quick Fill save failed', e);
@@ -2229,10 +1946,7 @@ function renderQuickFillButtons() {
     btn.className = 'quickFillBtn';
     btn.dataset.preset = q.id;
     btn.innerText = q.name;
-    btn.addEventListener('click', (ev) => {
-      if (ev && ev.isTrusted === false) return;
-      applyQuickFillAndLog(q.id);
-    });
+    btn.onclick = () => applyQuickFillAndLog(q.id);
     row.appendChild(btn);
   }
 }
@@ -2511,10 +2225,6 @@ function bindUI() {
   const setBtn = el('tabSettingsBtn');
   const panelDash = el('panelDashboard');
   const panelSet = el('panelSettings');
-
-  const suggestBtn = el('suggestUpdateBtn');
-  if (suggestBtn) suggestBtn.addEventListener('click', handleSuggestUpdate);
-
 
   function activateTab(which) {
     const isDash = which === 'dashboard';
@@ -3067,27 +2777,12 @@ function getBaseDailyCalorieGoal() {
   return base;
 }
 
-function _parseLocalDateInput(date) {
-  // Avoid timezone-induced off-by-one issues when parsing YYYY-MM-DD strings.
-  // - If a Date is provided, use it as-is.
-  // - If an ISO date string (YYYY-MM-DD) is provided, force local midnight.
-  // - Otherwise, fall back to Date parsing.
-  if (!date) return new Date();
-  if (date instanceof Date) return date;
-  if (typeof date === 'string') {
-    // If it's already a full ISO timestamp, Date() is fine.
-    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return new Date(date + 'T00:00:00');
-    return new Date(date);
-  }
-  return new Date(date);
-}
-
 function getEffectiveDailyCalorieGoal(date) {
   const base = getBaseDailyCalorieGoal();
   const cfg = getCheatDayConfig();
   if (!base || !cfg.enabled || !cfg.extra) return base;
 
-  const d = _parseLocalDateInput(date);
+  const d = date ? new Date(date) : new Date();
   const dow = d.getDay(); // 0=Sun..6=Sat
   const deltaOther = Math.round(cfg.extra / 6);
 
@@ -3117,16 +2812,6 @@ function getWeeklyCaloriePlanText() {
   return `Cheat day: ${cheat} kcal • Other days: ${other} kcal`;
 }
 
-function showCheatDaySavedToast() {
-  const el = document.getElementById('cheatDaySavedToast');
-  if (!el) return;
-  el.classList.add('show');
-  clearTimeout(el.__hideTimer);
-  el.__hideTimer = setTimeout(() => {
-    el.classList.remove('show');
-  }, 1200);
-}
-
 function wireCheatDaySettings() {
   const toggle = document.getElementById('cheatDayToggle');
   const select = document.getElementById('cheatDaySelect');
@@ -3151,8 +2836,6 @@ function wireCheatDaySettings() {
     localStorage.setItem('cheat_day_dow', String(parseInt(select.value, 10)));
     const v = Math.max(0, parseInt(extraInput.value || '0', 10) || 0);
     localStorage.setItem('cheat_day_extra', String(v));
-    // Guard: prevent any accidental auto-log triggers right after saving cheat-day settings.
-    try { window.__suppressAutoLogUntil = Date.now() + 1500; } catch(e) {}
     refreshStatus();
     if (typeof renderAll === 'function') renderAll();
   }
@@ -3161,23 +2844,18 @@ function wireCheatDaySettings() {
     saveBtn.addEventListener('click', (e) => {
       e.preventDefault();
       applyCheatDayNow();
-      showCheatDaySavedToast();
     });
   }
 
 
   toggle.addEventListener('change', () => {
     localStorage.setItem('cheat_day_enabled', toggle.checked ? '1' : '0');
-    // Guard: prevent accidental quick-fill auto-log triggers during cheat-day rerender
-    try { window.__suppressAutoLogUntil = Date.now() + 1500; } catch(e) {}
     refreshStatus();
     if (typeof renderAll === 'function') renderAll();
   });
 
   select.addEventListener('change', () => {
     localStorage.setItem('cheat_day_dow', String(parseInt(select.value, 10)));
-    // Guard: prevent accidental quick-fill auto-log triggers during cheat-day rerender
-    try { window.__suppressAutoLogUntil = Date.now() + 1500; } catch(e) {}
     refreshStatus();
     if (typeof renderAll === 'function') renderAll();
   });
@@ -3185,8 +2863,6 @@ function wireCheatDaySettings() {
   extraInput.addEventListener('change', () => {
     const v = Math.max(0, parseInt(extraInput.value || '0', 10) || 0);
     localStorage.setItem('cheat_day_extra', String(v));
-    // Guard: prevent accidental quick-fill auto-log triggers during cheat-day rerender
-    try { window.__suppressAutoLogUntil = Date.now() + 1500; } catch(e) {}
     refreshStatus();
     if (typeof renderAll === 'function') renderAll();
   });
@@ -3215,7 +2891,7 @@ function getTodaysMacroGoals() {
   const baseCals = getBaseDailyCalorieGoal();
     const _activeISO = (typeof activeEntryDateISO === 'function') ? activeEntryDateISO() : null;
   const todayCals = (typeof getEffectiveDailyCalorieGoal === 'function' && _activeISO)
-    ? getEffectiveDailyCalorieGoal(_activeISO)
+    ? getEffectiveDailyCalorieGoal(new Date(_activeISO))
     : getTodaysCalorieGoal();
   const base = getBaseMacroGoals();
   if (!base.protein_g && !base.carbs_g && !base.fat_g) return base;
@@ -3326,25 +3002,28 @@ function _apGetLastNDaysKeys(n){const keys=[];const today=_apStartOfDay(new Date
 function _apLoadEntries(){try{return JSON.parse(localStorage.getItem('entries')||'[]');}catch(e){return [];}} 
 function _apLoadWeights(){try{return JSON.parse(localStorage.getItem('weights')||'[]');}catch(e){return [];}} 
 function _apFoodDaysLast7(){const entries=_apLoadEntries();const keys=new Set(_apGetLastNDaysKeys(7));const days=new Set();entries.forEach(e=>{const dt=_apParseDate(e.date||e.ts||e.created_at||e.createdAt);if(!dt)return;const k=_apIsoYmd(dt);if(keys.has(k))days.add(k);});return days.size;}
-function _apWeightsLast14(){const weights=_apLoadWeights();const keys=new Set(_apGetLastNDaysKeys(14));const points=[];weights.forEach(w=>{const dt=_apParseDate(w.date||w.ts||w.created_at||w.createdAt);if(!dt)return;const k=_apIsoYmd(dt);if(keys.has(k))points.push({k,dt,w:(w.weight??w.value??w.lbs??w.kg)});});points.sort((a,b)=>a.dt-b.dt);return points;}
+function _apWeightsLast14(){const weights=_apLoadWeights();const keys=new Set(_apGetLastNDaysKeys(14));const points=[];weights.forEach(w=>{const dt=_apParseDate(w.date||w.ts||w.created_at||w.createdAt);if(!dt)return;const k=_apIsoYmd(dt);if(keys.has(k))points.push({k,dt,w:(w.weight??w.weight_lbs??w.value??w.lbs??w.kg)});});points.sort((a,b)=>a.dt-b.dt);return points;}
+
 function _apHasGoalConfigured(){
   try{
+    const mode = (localStorage.getItem('ap_target_mode')||'weight');
+    if(mode==='bodyfat'){
+      const gbf0 = (profileState && profileState.goal_body_fat_percent!=null) ? Number(profileState.goal_body_fat_percent) : NaN;
+      const gbf = Number.isFinite(gbf0) ? gbf0 : parseFloat(localStorage.getItem('goal_body_fat_percent')||localStorage.getItem('goalBodyFat')||'');
+      return Number.isFinite(gbf) && gbf>0 && gbf<100;
+    }
     const gw0 = (profileState && profileState.goal_weight_lbs!=null) ? Number(profileState.goal_weight_lbs) : NaN;
-    const gd0 = (profileState && profileState.goal_date) ? String(profileState.goal_date) : '';
     const gw = Number.isFinite(gw0) ? gw0 : parseFloat(localStorage.getItem('goal_weight')||localStorage.getItem('goal_weight_lbs')||'');
-    const gd = gd0 || (localStorage.getItem('goal_date')||localStorage.getItem('goalDate')||'');
-    const okW = !isNaN(gw) && gw>0;
-    const okD = !!gd && !isNaN(new Date(gd).getTime());
-    return okW; // goal date is optional
+    return Number.isFinite(gw) && gw>0;
   }catch{
     return false;
   }
 }
-function computeAutopilotReadiness_v38(){const foodDays=_apFoodDaysLast7();const weightPts=_apWeightsLast14();const hasGoal=_apHasGoalConfigured();const foodScore=Math.min(1,foodDays/4)*40;let weightScore=0;if(weightPts.length>=2){let ok=false;for(let i=0;i<weightPts.length;i++){for(let j=i+1;j<weightPts.length;j++){const days=Math.abs((weightPts[j].dt-weightPts[i].dt)/86400000);if(days>=6){ok=true;break;}}if(ok)break;}weightScore=ok?40:25;}else if(weightPts.length===1){weightScore=15;}const goalScore=hasGoal?20:0;const score=Math.round(foodScore+weightScore+goalScore);const missing=[];if(foodDays<4)missing.push(`${4-foodDays} more food days`);if(weightPts.length<2)missing.push(`${2-weightPts.length} weigh-in(s)`);if(weightPts.length>=2){let ok=false;for(let i=0;i<weightPts.length;i++){for(let j=i+1;j<weightPts.length;j++){const days=Math.abs((weightPts[j].dt-weightPts[i].dt)/86400000);if(days>=6){ok=true;break;}}if(ok)break;}if(!ok)missing.push(`weigh-ins need 6+ days apart`);}if(!hasGoal)missing.push(`target weight + goal date`);let label='Ready';if(score<40)label='Not ready';else if(score<70)label='Almost ready';else if(score<90)label='Ready';else label='Very ready';return {score,label,missing,foodDays,weightPtsCount:weightPts.length};}
-function renderAutopilotReadiness_v38(){const s=computeAutopilotReadiness_v38();const badge=document.getElementById('apReadinessScore');const fill=document.getElementById('apReadinessFill');const label=document.getElementById('apReadinessLabel');const sub=document.getElementById('apReadinessSub');if(!badge||!fill||!label)return;badge.textContent=String(s.score);fill.style.width=`${Math.max(0,Math.min(100,s.score))}%`;label.textContent=`Readiness: ${s.label}`;if(sub){sub.textContent=s.missing.length?`To enable weekly reviews: log ${s.missing.join(', ')}.`:`You have enough data for weekly Autopilot reviews.`;}}
+function computeAutopilotReadiness_v38(){const foodDays=_apFoodDaysLast7();const weightPts=_apWeightsLast14();const hasGoal=_apHasGoalConfigured();const foodScore=Math.min(1,foodDays/4)*40;let weightScore=0;if(weightPts.length>=2){let ok=false;for(let i=0;i<weightPts.length;i++){for(let j=i+1;j<weightPts.length;j++){const days=Math.abs((weightPts[j].dt-weightPts[i].dt)/86400000);if(days>=6){ok=true;break;}}if(ok)break;}weightScore=ok?40:25;}else if(weightPts.length===1){weightScore=15;}const goalScore=hasGoal?20:0;const score=Math.round(foodScore+weightScore+goalScore);const missing=[];if(foodDays<4)missing.push(`${4-foodDays} more food-logging day${(4-foodDays)===1?'':'s'}`);if(weightPts.length<2)missing.push(`${2-weightPts.length} weigh-in${(2-weightPts.length)===1?'':'s'}`);if(weightPts.length>=2){let ok=false;for(let i=0;i<weightPts.length;i++){for(let j=i+1;j<weightPts.length;j++){const days=Math.abs((weightPts[j].dt-weightPts[i].dt)/86400000);if(days>=6){ok=true;break;}}if(ok)break;}if(!ok)missing.push(`at least 2 weigh-ins that are 6+ days apart`);}if(!hasGoal)missing.push(`a target weight (and optional goal date)`);let label='Ready';if(score<40)label='Not ready';else if(score<70)label='Almost ready';else if(score<90)label='Ready';else label='Very ready';return {score,label,missing,foodDays,weightPtsCount:weightPts.length};}
+function renderAutopilotReadiness_v38(){const s=computeAutopilotReadiness_v38();const badge=document.getElementById('apReadinessScore');const fill=document.getElementById('apReadinessFill');const label=document.getElementById('apReadinessLabel');const sub=document.getElementById('apReadinessSub');if(!badge||!fill||!label)return;badge.textContent=String(s.score);fill.style.width=`${Math.max(0,Math.min(100,s.score))}%`;label.textContent=`Readiness: ${s.label}`;if(sub){sub.textContent=s.missing.length?`To enable weekly Autopilot reviews, add: ${s.missing.join(' and ')}.`:`You have enough data for weekly Autopilot reviews.`;}}
 function getPlannedCaloriesForDow_v38(dow){const base=parseInt(localStorage.getItem('calorie_goal')||'0',10)||0;if(!base)return 0;let cfg=null;try{cfg=(typeof getCheatDayConfig==='function')?getCheatDayConfig():null;}catch(e){}if(!cfg||!cfg.enabled||!cfg.extra)return base;const deltaOther=Math.round(cfg.extra/6);const isCheat=dow===cfg.dow;const minFloor=1200;const v=isCheat?(base+cfg.extra):(base-deltaOther);return Math.max(minFloor,v);}
 function _apActualCaloriesByDayKeyLast7(){const entries=_apLoadEntries();const keys=_apGetLastNDaysKeys(7);const map={};keys.forEach(k=>map[k]=0);entries.forEach(e=>{const dt=_apParseDate(e.date||e.ts||e.created_at||e.createdAt);if(!dt)return;const k=_apIsoYmd(dt);if(!(k in map))return;const cals=(e.calories??e.kcal??e.cals??e.totalCalories);const n=parseFloat(cals);if(!isNaN(n))map[k]+=n;});return {keys,map};}
-function drawCaloriePlanGraph_v38(){const canvas=document.getElementById('apPlanCanvas');if(!canvas)return;const ctx=canvas.getContext('2d');if(!ctx)return;const rect=canvas.getBoundingClientRect();const dpr=window.devicePixelRatio||1;canvas.width=Math.max(300,Math.floor(rect.width*dpr));canvas.height=Math.floor(180*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);const W=rect.width;const H=180;ctx.clearRect(0,0,W,H);const padding=14;const chartTop=10;const chartBottom=H-24;const chartH=chartBottom-chartTop;const keys=_apGetLastNDaysKeys(7);const data=_apActualCaloriesByDayKeyLast7();const planned=keys.map(k=>{const dt=new Date(k+'T00:00:00');return getPlannedCaloriesForDow_v38(dt.getDay());});const actual=keys.map(k=>data.map[k]||0);const maxV=Math.max(1,...planned,...actual);const barGap=8;const barW=(W-padding*2-barGap*6)/7;ctx.fillStyle='rgba(255,255,255,0.06)';ctx.fillRect(padding,chartTop+chartH*0.5,W-padding*2,1);for(let i=0;i<7;i++){const x=padding+i*(barW+barGap);const pv=planned[i]||0;const av=actual[i]||0;const ph=(pv/maxV)*chartH;const ah=(av/maxV)*chartH;ctx.fillStyle='rgba(255,255,255,0.20)';ctx.fillRect(x,chartBottom-ph,barW,ph);ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=2;const inset=3;ctx.strokeRect(x+inset,chartBottom-ah,barW-inset*2,ah);const dt=new Date(keys[i]+'T00:00:00');const lbl=dt.toLocaleDateString(undefined,{weekday:'short'}).slice(0,3);ctx.fillStyle='rgba(255,255,255,0.75)';ctx.font='12px system-ui, -apple-system, Segoe UI, Roboto, Arial';ctx.textAlign='center';ctx.fillText(lbl,x+barW/2,H-8);}const sub=document.getElementById('apPlanSub');if(sub){const base=parseInt(localStorage.getItem('calorie_goal')||'0',10)||0;sub.textContent=base?'Planned vs. logged (last 7 days)':'Set a base calorie goal to see the preview.';}}
+function drawCaloriePlanGraph_v38(){const canvas=document.getElementById('apPlanCanvas');if(!canvas)return;const ctx=canvas.getContext('2d');if(!ctx)return;const rect=canvas.getBoundingClientRect();const dpr=window.devicePixelRatio||1;canvas.width=Math.max(300,Math.floor(rect.width*dpr));canvas.height=Math.floor(180*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);const W=rect.width;const H=180;ctx.clearRect(0,0,W,H);const padding=14;const chartTop=10;const chartBottom=H-24;const chartH=chartBottom-chartTop;ctx.fillStyle='rgba(0,0,0,0.03)';ctx.fillRect(padding,chartTop,W-padding*2,chartH);const keys=_apGetLastNDaysKeys(7);const data=_apActualCaloriesByDayKeyLast7();const planned=keys.map(k=>{const dt=new Date(k+'T00:00:00');return getPlannedCaloriesForDow_v38(dt.getDay());});const actual=keys.map(k=>data.map[k]||0);const maxV=Math.max(1,...planned,...actual);const barGap=8;const barW=(W-padding*2-barGap*6)/7;ctx.fillStyle='rgba(0,0,0,0.06)';ctx.fillRect(padding,chartTop+chartH*0.5,W-padding*2,1);for(let i=0;i<7;i++){const x=padding+i*(barW+barGap);const pv=planned[i]||0;const av=actual[i]||0;const ph=(pv/maxV)*chartH;const ah=(av/maxV)*chartH;ctx.fillStyle='rgba(0,0,0,0.14)';ctx.fillRect(x,chartBottom-ph,barW,ph);ctx.strokeStyle='rgba(0,0,0,0.55)';ctx.lineWidth=2.5;const inset=3;ctx.strokeRect(x+inset,chartBottom-ah,barW-inset*2,ah);const dt=new Date(keys[i]+'T00:00:00');const lbl=dt.toLocaleDateString(undefined,{weekday:'short'}).slice(0,3);ctx.fillStyle='rgba(0,0,0,0.72)';ctx.font='12px system-ui, -apple-system, Segoe UI, Roboto, Arial';ctx.textAlign='center';ctx.fillText(lbl,x+barW/2,H-8);}const sub=document.getElementById('apPlanSub');if(sub){const base=parseInt(localStorage.getItem('calorie_goal')||'0',10)||0;sub.textContent=base?'Planned vs. logged (last 7 days)':'Set a base calorie goal to see the preview.';}}
 function initAutopilotWidgets_v38(){renderAutopilotReadiness_v38();drawCaloriePlanGraph_v38();const btn=document.getElementById('apPlanRefreshBtn');if(btn&&!btn.__apBound){btn.__apBound=true;btn.addEventListener('click',()=>{renderAutopilotReadiness_v38();drawCaloriePlanGraph_v38();});}if(!window.__apResizeBound){window.__apResizeBound=true;window.addEventListener('resize',()=>{try{drawCaloriePlanGraph_v38();}catch(e){}});}if(typeof window.renderAll==='function'&&!window.renderAll.__apWrapped){const _orig=window.renderAll;const wrapped=function(){const r=_orig.apply(this,arguments);try{renderAutopilotReadiness_v38();drawCaloriePlanGraph_v38();}catch(e){}return r;};wrapped.__apWrapped=true;window.renderAll=wrapped;}}
 document.addEventListener('DOMContentLoaded',()=>{try{initAutopilotWidgets_v38();initAutopilotMode_v40();}catch(e){}});
 
@@ -3352,21 +3031,14 @@ document.addEventListener('DOMContentLoaded',()=>{try{initAutopilotWidgets_v38()
 // ===============================
 // AUTOPILOT MODE (weekly suggestions) (v40)
 // ===============================
-function apGetSettings_v40(){
-  // Universal goal fields live in profileState (DB-backed when logged in).
-  // Keep localStorage goal_* as a fallback for mock/offline compatibility.
-  const gw = (profileState && profileState.goal_weight_lbs!=null) ? Number(profileState.goal_weight_lbs)
-    : parseFloat(localStorage.getItem('goal_weight_lbs')||localStorage.getItem('goal_weight')||'');
-  const gd = (profileState && profileState.goal_date) ? String(profileState.goal_date)
-    : (localStorage.getItem('goal_date')||localStorage.getItem('goalDate')||'');
-  return {
-    enabled: localStorage.getItem('ap_enabled') === '1',
-    targetWeightLbs: (Number.isFinite(gw) && gw>0) ? gw : null,
-    goalDate: gd || '',
-    lastReviewedWeek: localStorage.getItem('ap_last_review_week') || ''
-  };
-}
-function apSetEnabled_v40(on){ localStorage.setItem('ap_enabled', on ? '1' : '0'); }
+document.getElementById('apWeeklyExplainer').textContent = (()=>{
+    if(s.mode==='bodyfat'){
+      const tb = (s.meta && s.meta.targetBodyFatPercent!=null) ? `${s.meta.targetBodyFatPercent}%` : 'your target';
+      const implied = (s.meta && Number.isFinite(s.meta.impliedTargetWeight)) ? ` (~${Math.round(s.meta.impliedTargetWeight*10)/10} lbs implied)` : '';
+      return `Based on your last week of logging and recent weigh‑ins, Autopilot recommends updating your daily calorie goal to stay on track toward ${tb} body fat${implied}.`;
+    }
+    return `Based on your last week of logging and recent weigh‑ins, Autopilot recommends updating your daily calorie goal to stay on track toward ${s.targetWeight} lbs.`;
+  })();(on){ localStorage.setItem('ap_enabled', on ? '1' : '0'); }
 
 // Universal goal setter (shared across Profile / AI plan / Autopilot)
 async function apSaveUniversalGoal_v41(nextWeightLbs, nextGoalDate){
@@ -3396,6 +3068,52 @@ async function apSaveUniversalGoal_v41(nextWeightLbs, nextGoalDate){
     console.warn('profile-set (goal fields) failed', e);
   }
 }
+
+// Universal body fat goal setter (DB-backed when logged in, local fallback in mock/offline)
+async function apSaveBodyFatGoal_v43(nextTargetBf, nextGoalDate){
+  const bf = (Number.isFinite(nextTargetBf) && nextTargetBf>0 && nextTargetBf<100) ? nextTargetBf : null;
+  const d = (nextGoalDate && !isNaN(new Date(nextGoalDate).getTime())) ? String(nextGoalDate) : null;
+
+  try{
+    if(typeof profileState === 'object' && profileState){
+      profileState.goal_body_fat_percent = bf;
+      profileState.goal_body_fat_date = d;
+    }
+  }catch{}
+
+  try{
+    if(bf==null){ localStorage.removeItem('goal_body_fat_percent'); localStorage.removeItem('goalBodyFat'); }
+    else { localStorage.setItem('goal_body_fat_percent', String(bf)); localStorage.setItem('goalBodyFat', String(bf)); }
+    if(!d){ localStorage.removeItem('goal_body_fat_date'); localStorage.removeItem('goalBodyFatDate'); }
+    else { localStorage.setItem('goal_body_fat_date', d); localStorage.setItem('goalBodyFatDate', d); }
+  }catch{}
+
+  try{
+    await api('profile-set', { method:'POST', body: JSON.stringify({ goal_body_fat_percent: bf, goal_body_fat_date: d }) });
+  }catch(e){
+    console.warn('profile-set (body fat goal) failed', e);
+  }
+}
+
+function apSaveBodyFatSnapshot_v43(curWeight, curBf){
+  // Manual override snapshot used for BF% mode computations.
+  // Weight defaults from latest weigh-in; this is only used when the user overrides or supplies BF%.
+  try{
+    if(curWeight==null || curWeight===''){ localStorage.removeItem('ap_bf_current_weight'); }
+    else {
+      const w=Number(curWeight);
+      if(Number.isFinite(w) && w>0) localStorage.setItem('ap_bf_current_weight', String(w));
+    }
+  }catch{}
+  try{
+    if(curBf==null || curBf===''){ localStorage.removeItem('ap_bf_current_bf'); }
+    else {
+      const b=Number(curBf);
+      if(Number.isFinite(b) && b>0 && b<100) localStorage.setItem('ap_bf_current_bf', String(b));
+    }
+  }catch{}
+}
+
 function apWeekStartISO_v40(d=new Date()){
   const dt=new Date(d.getTime());
   dt.setHours(0,0,0,0);
@@ -3435,11 +3153,79 @@ function apLoadUnifiedWeights_v40(){
   }catch{ return []; }
 }
 
+function apGetLatestWeight_v42(){
+  const ws=apLoadUnifiedWeights_v40();
+  let best=null;
+  ws.forEach(w=>{
+    const dt=_apParseDate(w.entry_date||w.date||w.ts||w.created_at);
+    const val=Number(w.weight_lbs ?? w.weight ?? w.lbs ?? w.value);
+    if(!dt || !Number.isFinite(val) || val<=0) return;
+    if(!best || dt>best.dt){
+      best = {
+        dt,
+        weight_lbs: val,
+        body_fat_percent: (w.body_fat_percent!=null && Number.isFinite(Number(w.body_fat_percent))) ? Number(w.body_fat_percent) : null
+      };
+    }
+  });
+  return best;
+}
+
+function apUpdateImpliedTargetWeight_v42(){
+  const el=document.getElementById('apImpliedTargetWeight');
+  if(!el) return;
+  const s=apGetSettings_v40();
+  if(s.mode!=='bodyfat'){
+    el.textContent='';
+    return;
+  }
+  const curW = s.currentWeightOverride || (apGetLatestWeight_v42()?.weight_lbs) || null;
+  const curBf = s.currentBodyFatPercent || (apGetLatestWeight_v42()?.body_fat_percent) || null;
+  const tgtBf = s.targetBodyFatPercent || null;
+  if(!curW || !curBf || !tgtBf){
+    el.textContent='Enter current and target body fat % to see your implied target weight.';
+    return;
+  }
+  const lean = curW * (1 - (curBf/100));
+  const implied = lean / (1 - (tgtBf/100));
+  if(!Number.isFinite(implied) || implied<=0){
+    el.textContent='Body fat inputs look invalid.';
+    return;
+  }
+  el.textContent = `Implied target weight: ${Math.round(implied*10)/10} lbs (assuming lean mass stays constant).`;
+}
+
 function apComputeSuggestion_v40(){
   const settings=apGetSettings_v40();
   const base=parseInt(localStorage.getItem('calorie_goal')||'0',10)||0;
   if(!settings.enabled) return { ok:false, reason:'Autopilot is off.' };
-  if(!settings.targetWeightLbs) return { ok:false, reason:'Set a target weight to enable Autopilot.' };
+
+  // Resolve target + goal date based on mode.
+  let targetWeightLbs = targetWeightLbs;
+  let goalDate = goalDate || '';
+  let meta = {};
+  if(settings.mode==='bodyfat'){
+    const tgtBf = settings.targetBodyFatPercent;
+    goalDate = settings.bodyFatGoalDate || '';
+    if(!tgtBf) return { ok:false, reason:'Set a target body fat % to enable Autopilot.' };
+
+    const latest = apGetLatestWeight_v42 ? apGetLatestWeight_v42() : null;
+    const curW = settings.currentWeightOverride || (latest && latest.weight_lbs) || null;
+    const curBf = settings.currentBodyFatPercent || (latest && latest.body_fat_percent) || null;
+
+    if(!curW) return { ok:false, reason:'Add a weigh-in (or enter your current weight) to use Body Fat % mode.' };
+    if(!curBf) return { ok:false, reason:'Enter your current body fat % to use Body Fat % mode.' };
+
+    const fatMass = curW*(curBf/100);
+    const leanMass = curW - fatMass;
+    const impliedTarget = leanMass / (1 - (tgtBf/100));
+    if(!Number.isFinite(impliedTarget) || impliedTarget<=0) return { ok:false, reason:'Body fat inputs look invalid. Please double-check your numbers.' };
+
+    targetWeightLbs = impliedTarget;
+    meta = { targetBodyFatPercent: tgtBf, impliedTargetWeight: impliedTarget, currentWeight: curW, currentBodyFatPercent: curBf, leanMass };
+  }
+
+  if(!targetWeightLbs) return { ok:false, reason:'Set a target weight to enable Autopilot.' };
 
   // readiness: reuse existing readiness scoring
   const r=computeAutopilotReadiness_v38();
@@ -3481,9 +3267,9 @@ function apComputeSuggestion_v40(){
   const deficitPerDay = -(lbsPerWeek*500); // gaining -> negative deficit
   const tdee = avgCals + deficitPerDay;
 
-  const currentWeight=last.w;
-  const needLoss = currentWeight > settings.targetWeightLbs + 0.5;
-  const needGain = currentWeight < settings.targetWeightLbs - 0.5;
+  const currentWeight=(settings.mode==='bodyfat' && meta.currentWeight)? meta.currentWeight : last.w;
+  const needLoss = currentWeight > targetWeightLbs + 0.5;
+  const needGain = currentWeight < targetWeightLbs - 0.5;
   if(!needLoss && !needGain){
     return { ok:false, reason:'You are at (or very close to) your target weight.' };
   }
@@ -3491,14 +3277,14 @@ function apComputeSuggestion_v40(){
   // - If a goal date is set, compute required lbs/week to reach target by that date.
   // - Otherwise default to a reasonable rate.
   let desiredLbsPerWeek = needLoss ? 1.0 : -0.5; // default: lose 1 lb/wk or gain 0.5 lb/wk
-  if(settings.goalDate){
-    const goalDt = new Date(settings.goalDate+'T00:00:00');
+  if(goalDate){
+    const goalDt = new Date(goalDate+'T00:00:00');
     const today = new Date();
     today.setHours(0,0,0,0);
     const daysLeft = Math.round((goalDt.getTime()-today.getTime())/86400000);
     if(daysLeft >= 7){
       const weeksLeft = daysLeft/7;
-      const lbsNeeded = (currentWeight - settings.targetWeightLbs); // positive if need to lose
+      const lbsNeeded = (currentWeight - targetWeightLbs); // positive if need to lose
       const req = lbsNeeded / weeksLeft; // positive lose, negative gain
       if(Number.isFinite(req) && req!==0){
         desiredLbsPerWeek = req;
@@ -3532,22 +3318,49 @@ function apComputeSuggestion_v40(){
     tdee: Math.round(tdee),
     weightTrendLbsPerWeek: Math.round(lbsPerWeek*10)/10,
     currentWeight: Math.round(currentWeight*10)/10,
-    targetWeight: settings.targetWeightLbs
+    targetWeight: targetWeightLbs,
+    mode: settings.mode,
+    goalDate,
+    meta
   };
 }
+
 
 function apShowWeeklyModal_v40(s){
   const overlay=document.getElementById('apWeeklyOverlay');
   const sheet=document.getElementById('apWeeklySheet');
   if(!overlay||!sheet) return;
-  document.getElementById('apWeeklyError').textContent='';
-  document.getElementById('apWeeklyExplainer').textContent =
-    `Based on your last week of logging and recent weigh‑ins, Autopilot recommends updating your daily calorie goal to stay on track toward ${s.targetWeight} lbs.`;
-  document.getElementById('apWeeklyCurrentKcal').textContent = (s.baseGoal!=null? `${s.baseGoal} kcal` : '—');
-  document.getElementById('apWeeklySuggestedKcal').textContent = `${s.suggestedGoal} kcal`;
-  const trend = (s.weightTrendLbsPerWeek>0? `+${s.weightTrendLbsPerWeek}` : `${s.weightTrendLbsPerWeek}`);
-  document.getElementById('apWeeklyProjection').textContent =
-    `Recent trend: ${trend} lb/week. Avg logged: ${s.avgCals} kcal/day. Estimated TDEE: ${s.tdee} kcal/day.`;
+
+  const errEl=document.getElementById('apWeeklyError');
+  if(errEl) errEl.textContent='';
+
+  let goalLine='';
+  if(s.mode==='bodyfat'){
+    const tb = s.meta && s.meta.targetBodyFatPercent ? `${s.meta.targetBodyFatPercent}%` : '—';
+    const implied = (s.meta && Number.isFinite(s.meta.impliedTargetWeight)) ? ` (~${Math.round(s.meta.impliedTargetWeight*10)/10} lbs implied)` : '';
+    goalLine = `toward ${tb} body fat${implied}${s.goalDate?` by ${s.goalDate}`:''}`;
+  }else{
+    goalLine = `toward ${s.targetWeight} lbs${s.goalDate?` by ${s.goalDate}`:''}`;
+  }
+
+  const expl=document.getElementById('apWeeklyExplainer');
+  if(expl){
+    expl.textContent = `Based on your recent logs and weigh-ins, Autopilot recommends updating your daily calorie goal to stay on track ${goalLine}.`;
+  }
+
+  const cur=document.getElementById('apWeeklyCurrentKcal');
+  if(cur) cur.textContent = (s.baseCalories!=null? `${s.baseCalories} kcal` : '—');
+  const sug=document.getElementById('apWeeklySuggestedKcal');
+  if(sug) sug.textContent = `${s.suggestedCalories} kcal`;
+
+  const proj=document.getElementById('apWeeklyProjection');
+  if(proj){
+    const trend = (s.weightTrendLbsPerWeek!=null && Number.isFinite(s.weightTrendLbsPerWeek)) ? `${s.weightTrendLbsPerWeek} lb/week` : '—';
+    const avg = `${s.avgCalories7d} kcal/day`;
+    const tdee = `${s.tdeeEstimate} kcal/day`;
+    proj.textContent = `Recent trend: ${trend}. Avg calories (7d): ${avg}. Estimated maintenance: ${tdee}.`;
+  }
+
   overlay.classList.remove('hidden');
   sheet.classList.remove('hidden');
 }
@@ -3668,6 +3481,115 @@ function initAutopilotMode_v40(){
       apRenderHomeSuggestion_v40();
       renderAutopilotReadiness_v38();
     });
+
+  // target mode toggle + body fat fields
+  const modeWeightBtn=document.getElementById('apModeWeightBtn');
+  const modeBodyFatBtn=document.getElementById('apModeBodyFatBtn');
+  const weightFields=document.getElementById('apModeWeightFields');
+  const bfFields=document.getElementById('apModeBodyFatFields');
+  const curWEl=document.getElementById('apCurrentWeightInput');
+  const curBfEl=document.getElementById('apCurrentBodyFatInput');
+  const tgtBfEl=document.getElementById('apTargetBodyFatInput');
+  const bfDateEl=document.getElementById('apBodyFatGoalDateInput');
+
+  function apApplyModeUI_v43(){
+    const s=apGetSettings_v40();
+    const isBf = s.mode==='bodyfat';
+    if(modeWeightBtn) modeWeightBtn.setAttribute('aria-pressed', isBf ? 'false':'true');
+    if(modeBodyFatBtn) modeBodyFatBtn.setAttribute('aria-pressed', isBf ? 'true':'false');
+    if(weightFields) weightFields.style.display = isBf ? 'none':'block';
+    if(bfFields) bfFields.style.display = isBf ? 'block':'none';
+
+    // Fill visible fields from current settings / latest weight
+    if(isBf){
+      const latest = (typeof apGetLatestWeight_v42==='function') ? apGetLatestWeight_v42() : null;
+      if(curWEl && !curWEl.value){
+        const w0 = s.currentWeightOverride || (latest && latest.weight_lbs) || '';
+        if(w0) curWEl.value = String(Math.round(Number(w0)*10)/10);
+      }
+      if(curBfEl && !curBfEl.value){
+        const b0 = s.currentBodyFatPercent || (latest && latest.body_fat_percent) || '';
+        if(b0) curBfEl.value = String(Math.round(Number(b0)*10)/10);
+      }
+      if(tgtBfEl){
+        tgtBfEl.value = s.targetBodyFatPercent!=null ? String(s.targetBodyFatPercent) : '';
+      }
+      if(bfDateEl){
+        bfDateEl.value = s.bodyFatGoalDate || '';
+      }
+      try{ if(typeof apUpdateImpliedTargetWeight_v42==='function') apUpdateImpliedTargetWeight_v42(); }catch{}
+    }else{
+      if(w){ // already defined above
+        const sw=apGetSettings_v40();
+        w.value = sw.targetWeightLbs!=null ? String(sw.targetWeightLbs) : '';
+      }
+      if(d){
+        const sd=apGetSettings_v40();
+        d.value = sd.goalDate || '';
+      }
+    }
+  }
+
+  if(modeWeightBtn && !modeWeightBtn.__apBound){
+    modeWeightBtn.__apBound=true;
+    modeWeightBtn.addEventListener('click', ()=>{
+      apSetTargetMode_v43('weight');
+      apApplyModeUI_v43();
+      apRenderHomeSuggestion_v40();
+      renderAutopilotReadiness_v38();
+    });
+  }
+  if(modeBodyFatBtn && !modeBodyFatBtn.__apBound){
+    modeBodyFatBtn.__apBound=true;
+    modeBodyFatBtn.addEventListener('click', ()=>{
+      apSetTargetMode_v43('bodyfat');
+      apApplyModeUI_v43();
+      apRenderHomeSuggestion_v40();
+      renderAutopilotReadiness_v38();
+    });
+  }
+
+  if(curWEl && !curWEl.__apBound){
+    curWEl.__apBound=true;
+    curWEl.addEventListener('change', ()=>{
+      apSaveBodyFatSnapshot_v43(curWEl.value, curBfEl?curBfEl.value:null);
+      try{ if(typeof apUpdateImpliedTargetWeight_v42==='function') apUpdateImpliedTargetWeight_v42(); }catch{}
+      apRenderHomeSuggestion_v40();
+      renderAutopilotReadiness_v38();
+    });
+  }
+  if(curBfEl && !curBfEl.__apBound){
+    curBfEl.__apBound=true;
+    curBfEl.addEventListener('change', ()=>{
+      apSaveBodyFatSnapshot_v43(curWEl?curWEl.value:null, curBfEl.value);
+      try{ if(typeof apUpdateImpliedTargetWeight_v42==='function') apUpdateImpliedTargetWeight_v42(); }catch{}
+      apRenderHomeSuggestion_v40();
+      renderAutopilotReadiness_v38();
+    });
+  }
+  if(tgtBfEl && !tgtBfEl.__apBound){
+    tgtBfEl.__apBound=true;
+    tgtBfEl.addEventListener('change', async ()=>{
+      const v=parseFloat(tgtBfEl.value);
+      await apSaveBodyFatGoal_v43(v, apGetSettings_v40().bodyFatGoalDate);
+      try{ if(typeof apUpdateImpliedTargetWeight_v42==='function') apUpdateImpliedTargetWeight_v42(); }catch{}
+      apRenderHomeSuggestion_v40();
+      renderAutopilotReadiness_v38();
+    });
+  }
+  if(bfDateEl && !bfDateEl.__apBound){
+    bfDateEl.__apBound=true;
+    bfDateEl.addEventListener('change', async ()=>{
+      const next = bfDateEl.value || '';
+      await apSaveBodyFatGoal_v43(apGetSettings_v40().targetBodyFatPercent, next);
+      apRenderHomeSuggestion_v40();
+      renderAutopilotReadiness_v38();
+    });
+  }
+
+  // ensure UI reflects current mode on load
+  apApplyModeUI_v43();
+
   }
 
   // modal buttons
@@ -3836,14 +3758,17 @@ function _apSyncFromApi(path, body) {
 
     // week-summary (store daily totals as synthetic entries so we can count "food days")
     if (path.startsWith('week-summary') && body) {
-      const days = body.days || body.week || body.data || null;
-      if (Array.isArray(days)) {
+      const series = Array.isArray(body.series) ? body.series
+        : (Array.isArray(body.days) ? body.days
+        : (Array.isArray(body.week) ? body.week
+        : (Array.isArray(body.data) ? body.data : null)));
+      if (Array.isArray(series)) {
         const synthetic = days
-          .filter(d => d && (d.date || d.day))
+          .filter(d => d && (d.entry_date || d.date || d.day))
           .map(d => ({
-            id: 'syn_' + String(d.date || d.day),
-            date: d.date || d.day,
-            calories: d.calories || d.kcal || d.total_calories || 0,
+            id: 'syn_' + String(d.entry_date || d.date || d.day),
+            date: d.entry_date || d.date || d.day,
+            calories: (d.total_calories ?? d.calories ?? d.kcal ?? 0),
             raw_extraction: { source: 'week_summary' },
           }));
         const cur = _apSafeJsonParse('entries', []);
@@ -3883,47 +3808,3 @@ function _apSyncFromApi(path, body) {
     // no-op
   }
 }
-
-// ===============================
-// AMBASSADOR REFERRALS (v1)
-// Capture ?ref=CODE and claim it server-side for attribution (free + paid).
-function captureReferralCodeFromUrl() {
-  try {
-    const u = new URL(window.location.href);
-    const ref = (u.searchParams.get('ref') || u.searchParams.get('REF') || '').trim().toLowerCase();
-    if (ref && /^[a-z0-9]{6,32}$/.test(ref)) {
-      localStorage.setItem('amb_ref_code', ref);
-      localStorage.setItem('amb_ref_captured_at', String(Date.now()));
-    }
-  } catch (e) {}
-}
-
-let __ambReferralClaimInFlight = false;
-async function claimReferralIfPresent() {
-  try {
-    if (__ambReferralClaimInFlight) return;
-    const ref = (localStorage.getItem('amb_ref_code') || '').trim().toLowerCase();
-    if (!ref) return;
-    // Avoid spamming: only claim once per device unless code changes.
-    const claimed = (localStorage.getItem('amb_ref_claimed') || '').trim().toLowerCase();
-    if (claimed === ref) return;
-
-    __ambReferralClaimInFlight = true;
-    const r = await api('referral-claim', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ref_code: ref })
-    });
-    if (r && r.ok) {
-      localStorage.setItem('amb_ref_claimed', ref);
-    }
-  } catch (e) {
-    // If invalid/unknown code, don't loop.
-    try { localStorage.setItem('amb_ref_claimed', localStorage.getItem('amb_ref_code') || ''); } catch {}
-  } finally {
-    __ambReferralClaimInFlight = false;
-  }
-}
-
-document.addEventListener('DOMContentLoaded', ()=>{ try { captureReferralCodeFromUrl(); claimReferralIfPresent(); } catch(e){} });
-
