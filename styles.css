@@ -1037,7 +1037,8 @@ body.invertedTheme #finishDayCard::before{
   background-size: cover;
   background-position: right center;
   background-repeat: no-repeat;
-  filter: invert(1) hue-rotate(180deg);
+  /* No invert filters in true dark theme. Keep images/colors intact. */
+  filter: none !important;
 }
 
 /* Per-section dark assets */
@@ -1082,8 +1083,9 @@ body.invertedTheme #finishDayCard::before{
   display:block;
 }
 .headerBrand .bannerDark{ display:none; }
-body.invertedTheme .headerBrand .bannerLight{ display:none; }
-body.invertedTheme .headerBrand .bannerDark{ display:block; }
+/* Keep the primary (light) brand assets visible; don't swap via inversion. */
+body.invertedTheme .headerBrand .bannerLight{ display:block !important; }
+body.invertedTheme .headerBrand .bannerDark{ display:none !important; }
 
 .appHeader .auth{align-self:flex-end; display:flex; gap:10px; align-items:center;}
 
@@ -1171,7 +1173,7 @@ body.invertedTheme #tabs .tabbtn.active {
 #coachChatCard{position:relative;overflow:hidden;}
 #coachChatCard::before{content:"";position:absolute;inset:0;background-image:url("assets/backgrounds/coachchat_light.png");background-size:cover;background-position:center;opacity:0.22;pointer-events:none;}
 #coachChatCard > *{position:relative;z-index:1;}
-body.invertedTheme #coachChatCard::before{background-image:url("assets/backgrounds/coachchat_dark.png");filter:invert(1) hue-rotate(180deg);opacity:0.30;}
+body.invertedTheme #coachChatCard::before{background-image:url("assets/backgrounds/coachchat_dark.png");filter:none !important;opacity:0.30;}
 .estimate-overlay.hidden{ display:none; }
 .estimate-overlay[hidden]{ display:none; }
 
@@ -1489,3 +1491,63 @@ button:hover{
 .adminTable th, .adminTable td { border-bottom:1px solid #222; padding:10px; vertical-align:top; }
 .adminTable th { text-align:left; font-size:12px; color:#b9b9b9; font-weight:600; }
 .adminDetails summary { cursor:pointer; color:#d6b15f; }
+
+/* ============================================================
+   Dark background only (no card/theme inversion)
+   Keep card/photo visuals exactly like the original light theme.
+   ============================================================ */
+
+html, body {
+  background: #000 !important;
+  background-image: none !important;
+}
+
+/* Completely disable legacy filter-based dark mode */
+body.invertedTheme,
+body.invertedTheme * {
+  filter: none !important;
+}
+
+/* Always use the light banner assets */
+.bannerDark,
+body.invertedTheme .bannerDark {
+  display: none !important;
+}
+.bannerLight,
+body.invertedTheme .bannerLight {
+  display: block !important;
+}
+
+/* Force original (light) card background images even if invertedTheme is present */
+body.invertedTheme #todayCard::before{background-image:url("assets/backgrounds/today_light.png") !important; opacity:0.22 !important;}
+body.invertedTheme #addFoodCard::before{background-image:url("assets/backgrounds/addfood_light.png") !important; opacity:0.22 !important;}
+body.invertedTheme #dailyGoalsCard::before{background-image:url("assets/backgrounds/dailygoals_light.png") !important; opacity:0.22 !important;}
+body.invertedTheme #trendsCard::before{background-image:url("assets/backgrounds/trends_light.png") !important; opacity:0.22 !important;}
+body.invertedTheme #weightCard::before{background-image:url("assets/backgrounds/weight_light.png") !important; opacity:0.22 !important;}
+body.invertedTheme #finishDayCard::before{background-image:url("assets/backgrounds/finishday_light.png") !important; opacity:0.22 !important;}
+body.invertedTheme #coachChatCard::before{background-image:url("assets/backgrounds/coachchat_light.png") !important; opacity:0.22 !important;}
+
+/* Keep surfaces in their original (light card) styling even if invertedTheme is present */
+body.invertedTheme .card,
+body.invertedTheme header.row,
+body.invertedTheme .addFoodPanel.modalActive,
+body.invertedTheme .addFoodOverlay,
+body.invertedTheme #onboardingOverlay {
+  background: rgba(255,255,255,0.94) !important;
+  border-color: var(--border) !important;
+  color: inherit !important;
+}
+
+body.invertedTheme button {
+  background: rgba(0,0,0,0.05) !important;
+  border-color: rgba(0,0,0,0.08) !important;
+  color: inherit !important;
+}
+
+body.invertedTheme input,
+body.invertedTheme select,
+body.invertedTheme textarea {
+  background: #fff !important;
+  color: #111 !important;
+  border-color: rgba(0,0,0,0.12) !important;
+}
