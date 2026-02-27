@@ -9,13 +9,6 @@ function asIntOrNull(v, field) {
   return Math.round(n);
 }
 
-function asNumberOrNull(v, field, { min = 0, max = 1e9 } = {}) {
-  if (v == null || v === '') return null;
-  const n = Number(v);
-  if (!Number.isFinite(n) || n < min || n > max) throw new Error(`${field} must be between ${min} and ${max}`);
-  return n;
-}
-
 function normalizeQuickFills(raw) {
   if (!Array.isArray(raw)) throw new Error("quick_fills must be an array");
   if (raw.length > 30) throw new Error("quick_fills supports up to 30 items");
@@ -110,32 +103,6 @@ exports.handler = async (event, context) => {
       }
       values.push(body.goal_date ?? null);
       updates.push(`goal_date = $${values.length}`);
-    }
-
-    // Body fat goals
-    if (Object.prototype.hasOwnProperty.call(body, 'goal_body_fat_percent')) {
-      // allow null
-      values.push(asNumberOrNull(body.goal_body_fat_percent, 'goal_body_fat_percent', { min: 1, max: 80 }));
-      updates.push(`goal_body_fat_percent = $${values.length}`);
-    }
-
-    if (Object.prototype.hasOwnProperty.call(body, 'goal_body_fat_date')) {
-      if (body.goal_body_fat_date != null && !/^\d{4}-\d{2}-\d{2}$/.test(String(body.goal_body_fat_date))) {
-        return json(400, { error: 'goal_body_fat_date must be YYYY-MM-DD or null' });
-      }
-      values.push(body.goal_body_fat_date ?? null);
-      updates.push(`goal_body_fat_date = $${values.length}`);
-    }
-
-    // Current snapshot for BF% mode (manual entry allowed)
-    if (Object.prototype.hasOwnProperty.call(body, 'current_body_fat_percent')) {
-      values.push(asNumberOrNull(body.current_body_fat_percent, 'current_body_fat_percent', { min: 1, max: 80 }));
-      updates.push(`current_body_fat_percent = $${values.length}`);
-    }
-
-    if (Object.prototype.hasOwnProperty.call(body, 'current_body_fat_weight_lbs')) {
-      values.push(asNumberOrNull(body.current_body_fat_weight_lbs, 'current_body_fat_weight_lbs', { min: 50, max: 1000 }));
-      updates.push(`current_body_fat_weight_lbs = $${values.length}`);
     }
 
     if (Object.prototype.hasOwnProperty.call(body, "quick_fills")) {
