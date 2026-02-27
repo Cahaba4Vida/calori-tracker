@@ -5,6 +5,8 @@ const { DEFAULTS } = require('./_plan');
 
 const DEFAULT_WAU_GOAL = 500;
 const DEFAULT_PAYING_GOAL = 30;
+const DEFAULT_MAX_DB_SIZE_GB = 0.49;
+const URGENT_DB_THRESHOLD_GB = 0.4;
 
 exports.handler = async (event) => {
   if (event.httpMethod && event.httpMethod !== 'GET') {
@@ -92,6 +94,11 @@ exports.handler = async (event) => {
     const wau = Number(activeUsers7d.rows[0]?.count || 0);
     const paid = Number(payingUsers.rows[0]?.count || 0);
 
+    const dbBytes = Number(dbSize.rows[0]?.bytes || 0);
+    const dbGb = dbBytes / 1024 / 1024 / 1024;
+    const maxDbGb = Number(process.env.MAX_DB_SIZE_GB || DEFAULT_MAX_DB_SIZE_GB);
+    const dbPct = maxDbGb > 0 ? (dbGb / maxDbGb) * 100 : 0;
+
     return json(200, {
       users_total: users.rows[0]?.count || 0,
       active_users_7d: wau,
@@ -126,7 +133,12 @@ exports.handler = async (event) => {
       daily_summaries_archive: summariesArchive.rows[0]?.count || 0,
       feedback_responses_total: feedbackResponseCount.rows[0]?.count || 0,
       users_pending_feedback: feedbackRequiredUsers.rows[0]?.count || 0,
-      db_size_bytes: Number(dbSize.rows[0]?.bytes || 0),
+      db_size_bytes: dbBytes,
+      db_size_gb: Math.round(dbGb * 1000) / 1000,
+      max_db_size_gb: maxDbGb,
+      db_size_pct: Math.round(dbPct * 10) / 10,
+      urgent_db_threshold_gb: URGENT_DB_THRESHOLD_GB,
+      db_is_urgent: dbGb >= URGENT_DB_THRESHOLD_GB,
       latest_feedback_campaign: feedbackCampaign.rows[0] || null
     });
   } catch (e) {
