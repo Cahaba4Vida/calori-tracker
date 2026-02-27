@@ -23,7 +23,7 @@ exports.handler = async (event, context) => {
   const fromISO = from.toISOString().slice(0,10);
 
   const r = await query(
-    `select entry_date::text as entry_date, weight_lbs::float8 as weight_lbs
+    `select entry_date::text as entry_date, weight_lbs::float8 as weight_lbs, body_fat_percent::float8 as body_fat_percent
      from daily_weights
      where user_id=$1 and entry_date between $2 and $3
      order by entry_date asc`,

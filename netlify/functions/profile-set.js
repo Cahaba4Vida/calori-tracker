@@ -105,7 +105,27 @@ exports.handler = async (event, context) => {
       updates.push(`goal_date = $${values.length}`);
     }
 
-    if (Object.prototype.hasOwnProperty.call(body, "quick_fills")) {
+    
+    if (Object.prototype.hasOwnProperty.call(body, "goal_body_fat_percent")) {
+      if (body.goal_body_fat_percent == null) {
+        values.push(null);
+      } else {
+        const n = Number(body.goal_body_fat_percent);
+        if (!Number.isFinite(n) || n <= 0 || n >= 100) return json(400, { error: "goal_body_fat_percent must be a number between 0 and 100" });
+        values.push(n);
+      }
+      updates.push(`goal_body_fat_percent = $${values.length}`);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "goal_body_fat_date")) {
+      if (body.goal_body_fat_date != null && !/^\d{4}-\d{2}-\d{2}$/.test(String(body.goal_body_fat_date))) {
+        return json(400, { error: "goal_body_fat_date must be YYYY-MM-DD or null" });
+      }
+      values.push(body.goal_body_fat_date ?? null);
+      updates.push(`goal_body_fat_date = $${values.length}`);
+    }
+
+if (Object.prototype.hasOwnProperty.call(body, "quick_fills")) {
       values.push(JSON.stringify(normalizeQuickFills(body.quick_fills)));
       updates.push(`quick_fills = $${values.length}::jsonb`);
     }

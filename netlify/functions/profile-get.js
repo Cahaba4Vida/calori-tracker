@@ -15,7 +15,7 @@ exports.handler = async (event, context) => {
   let r;
   try {
     r = await query(
-      `select onboarding_completed, macro_protein_g, macro_carbs_g, macro_fat_g, goal_weight_lbs, activity_level, goal_date, quick_fills
+      `select onboarding_completed, macro_protein_g, macro_carbs_g, macro_fat_g, goal_weight_lbs, activity_level, goal_date, goal_body_fat_percent, goal_body_fat_date, quick_fills
        from user_profiles
        where user_id = $1`,
       [userId]
