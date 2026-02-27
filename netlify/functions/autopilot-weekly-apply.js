@@ -45,9 +45,10 @@ exports.handler = async (event, context) => {
     return json(400, { error: 'suggested_daily_calories must be a reasonable number' });
   }
 
+  try {
   const gr = await query('select daily_calories from calorie_goals where user_id=$1', [userId]);
   const currentGoal = gr.rows[0]?.daily_calories == null ? null : Number(gr.rows[0].daily_calories);
-  if (!currentGoal) return json(400, { error: 'No current calorie goal to update' });
+  if (!Number.isFinite(currentGoal) || currentGoal <= 0) return json(400, { error: 'No current calorie goal to update' });
 
   const maxStep = 150;
   const delta = Math.max(-maxStep, Math.min(maxStep, suggested - currentGoal));
@@ -61,4 +62,8 @@ exports.handler = async (event, context) => {
   );
 
   return json(200, { ok: true, applied: true, week_start: thisWeek, applied_daily_calories: appliedGoal });
+  } catch (e) {
+    return json(500, { error: 'Failed to apply autopilot update', detail: String(e && e.message || e) });
+  }
+
 };
