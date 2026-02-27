@@ -25,44 +25,6 @@
     el('paidGoalLabel').innerText = `${paid} / ${paidGoal} (${paidPct}%)`;
     el('billingHealthSummary').innerText = `At-risk paying users: ${stats.at_risk_paying_users_total || 0} • Payment failed (7d): ${stats.payment_failed_7d || 0} • Webhook failures (24h): ${stats.webhook_failures_24h || 0} • Reconcile errors (24h): ${stats.reconcile_errors_24h || 0} • Alerts sent (24h): ${stats.alerts_sent_24h || 0} • Upgrade clicks (7d): ${stats.upgrade_clicks_7d || 0} • Manage clicks (7d): ${stats.manage_subscription_clicks_7d || 0}`;
     el('webhookEventsOut').innerText = JSON.stringify(stats.recent_webhook_events || [], null, 2);
-
-    // DB usage (DB1)
-    try {
-      const bytes = Number(stats.db_size_bytes || 0);
-      const gb = (bytes / 1024 / 1024 / 1024);
-      const gbRounded = Math.round(gb * 1000) / 1000;
-      const maxGb = Number(stats.max_db_size_gb || 0.49);
-      const pct = maxGb > 0 ? Math.min(100, (gb / maxGb) * 100) : 0;
-      const pctRounded = Math.round(pct * 10) / 10;
-      const urgentAt = Number(stats.urgent_db_threshold_gb || 0.4);
-      const isUrgent = gb >= urgentAt;
-
-      const bar = el('dbUsageBar');
-      if (bar) {
-        bar.style.width = `${pct}%`;
-        bar.classList.toggle('urgent', isUrgent);
-        bar.classList.toggle('warn', !isUrgent && pct >= 85);
-      }
-
-      const label = el('dbUsageLabel');
-      if (label) {
-        label.innerText = `${gbRounded} / ${maxGb} GB (${pctRounded}%)`;
-      }
-
-      const status = el('dbUsageStatus');
-      if (status) {
-        status.innerText = isUrgent ? `URGENT ≥ ${urgentAt} GB` : (pct >= 85 ? 'Warning' : 'OK');
-      }
-
-      const banner = el('dbUrgentBanner');
-      if (banner) {
-        banner.classList.toggle('hidden', !isUrgent);
-        banner.classList.toggle('urgent', isUrgent);
-        if (isUrgent) {
-          banner.innerText = `🚨 URGENT: DB1 usage is ${gbRounded} GB (≥ ${urgentAt} GB). Consider splitting to DB2 soon.`;
-        }
-      }
-    } catch (_) {}
   }
 
   global.AdminRender = { renderGoalProgress };

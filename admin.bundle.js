@@ -45,87 +45,6 @@
     el('paidGoalLabel').innerText = `${paid} / ${paidGoal} (${paidPct}%)`;
     el('billingHealthSummary').innerText = `At-risk paying users: ${stats.at_risk_paying_users_total || 0} • Payment failed (7d): ${stats.payment_failed_7d || 0} • Webhook failures (24h): ${stats.webhook_failures_24h || 0} • Reconcile errors (24h): ${stats.reconcile_errors_24h || 0} • Alerts sent (24h): ${stats.alerts_sent_24h || 0} • Upgrade clicks (7d): ${stats.upgrade_clicks_7d || 0} • Manage clicks (7d): ${stats.manage_subscription_clicks_7d || 0}`;
     el('webhookEventsOut').innerText = JSON.stringify(stats.recent_webhook_events || [], null, 2);
-
-    // DB usage (DB1)
-    try {
-      const bytes = Number(stats.db_size_bytes || 0);
-      const gb = (bytes / 1024 / 1024 / 1024);
-      const gbRounded = Math.round(gb * 1000) / 1000;
-      const maxGb = Number(stats.max_db_size_gb || 0.49);
-      const pct = maxGb > 0 ? Math.min(100, (gb / maxGb) * 100) : 0;
-      const pctRounded = Math.round(pct * 10) / 10;
-      const urgentAt = Number(stats.urgent_db_threshold_gb || 0.4);
-      const isUrgent = gb >= urgentAt;
-
-      const bar = el('dbUsageBar');
-      if (bar) {
-        bar.style.width = `${pct}%`;
-        bar.classList.toggle('urgent', isUrgent);
-        bar.classList.toggle('warn', !isUrgent && pct >= 85);
-      }
-      const label = el('dbUsageLabel');
-      if (label) label.innerText = `${gbRounded} / ${maxGb} GB (${pctRounded}%)`;
-      const status = el('dbUsageStatus');
-      if (status) status.innerText = isUrgent ? `URGENT ≥ ${urgentAt} GB` : (pct >= 85 ? 'Warning' : 'OK');
-
-      // Estimate days until urgent threshold using last 7 days DB growth rate (stored locally in admin browser)
-      try {
-        const ETA_KEY = 'db_usage_samples_v1';
-        const now = Date.now();
-        let samples = [];
-        try { samples = JSON.parse(localStorage.getItem(ETA_KEY) || '[]') || []; } catch { samples = []; }
-        // prune > 8 days old (buffer) and invalid
-        const cutoff = now - (8 * 24 * 60 * 60 * 1000);
-        samples = samples.filter(s => s && typeof s.t === 'number' && typeof s.gb === 'number' && s.t >= cutoff);
-        // de-duplicate: if last sample within 1h, replace it
-        if (samples.length && (now - samples[samples.length - 1].t) < (60 * 60 * 1000)) {
-          samples[samples.length - 1] = { t: now, gb };
-        } else {
-          samples.push({ t: now, gb });
-        }
-        // keep at most 200 samples
-        if (samples.length > 200) samples = samples.slice(samples.length - 200);
-        localStorage.setItem(ETA_KEY, JSON.stringify(samples));
-
-        const etaEl = el('dbUsageEta');
-        if (etaEl) {
-          // use last 7 days window for slope
-          const winCutoff = now - (7 * 24 * 60 * 60 * 1000);
-          const win = samples.filter(s => s.t >= winCutoff);
-          if (win.length >= 2) {
-            const first = win[0];
-            const last = win[win.length - 1];
-            const spanDays = (last.t - first.t) / (24 * 60 * 60 * 1000);
-            const deltaGb = last.gb - first.gb;
-            const rate = spanDays > 0 ? (deltaGb / spanDays) : 0; // GB/day
-            if (spanDays >= 0.25 && rate > 0.0001) {
-              const daysTo = (urgentAt - gb) / rate;
-              const rateStr = `${Math.round(rate * 1000) / 1000} GB/day`;
-              if (daysTo <= 0) {
-                etaEl.innerText = `At or above ${urgentAt} GB (7d rate: ${rateStr})`;
-              } else if (daysTo < 1) {
-                const hours = Math.max(1, Math.round(daysTo * 24));
-                etaEl.innerText = `Est. ${hours}h to ${urgentAt} GB (7d rate: ${rateStr})`;
-              } else {
-                etaEl.innerText = `Est. ${Math.round(daysTo * 10) / 10} days to ${urgentAt} GB (7d rate: ${rateStr})`;
-              }
-            } else {
-              etaEl.innerText = 'Est. time to 0.40 GB: need more history';
-            }
-          } else {
-            etaEl.innerText = 'Est. time to 0.40 GB: collecting history…';
-          }
-        }
-      } catch {}
-
-
-      const banner = el('dbUrgentBanner');
-      if (banner) {
-        banner.classList.toggle('hidden', !isUrgent);
-        banner.classList.toggle('urgent', isUrgent);
-        if (isUrgent) banner.innerText = `🚨 URGENT: DB1 usage is ${gbRounded} GB (≥ ${urgentAt} GB). Consider splitting to DB2 soon.`;
-      }
-    } catch (_) {}
   }
 
   global.AdminRender = { renderGoalProgress };
@@ -361,12 +280,13 @@ const el = (id) => document.getElementById(id);
     document.querySelectorAll('.tabBtn').forEach((b) => {
       b.classList.toggle('active', b.getAttribute('data-tab') === tab);
     });
-    ['users','dashboard','feedback'].forEach((k) => {
+    ['users','billing','insights','ops','todo','ambassadors'].forEach((k) => {
       const p = el('tab_' + k);
       if (p) p.classList.toggle('hidden', k !== tab);
     });
-    if (tab === 'dashboard') { loadDashboardMetrics(); }
-    if (tab === 'feedback') { ensureTodosLoaded(); ensureFeedbackLoaded(); }    try { location.hash = tab; } catch {}
+    if (tab === 'todo') { ensureTodosLoaded(); }
+    if (tab === 'ambassadors') { ensureAmbassadorsLoaded(); }
+    try { location.hash = tab; } catch {}
   }
 
   function moveLegacyCards() {
@@ -403,148 +323,6 @@ const el = (id) => document.getElementById(id);
       const opsCards = Array.from(ops.querySelectorAll(':scope > section.card'));
       opsCards.forEach((c) => advanced.appendChild(c));
       ops.appendChild(advanced);
-    }
-  }
-
-  // Dashboard metrics (30d trends + linear projection)
-  function fmtInt(n) { return (n == null) ? '—' : String(Math.round(Number(n))); }
-
-  function drawLineChart(canvas, points, opts = {}) {
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const w = canvas.width;
-    const h = canvas.height;
-    const padL = 40, padR = 10, padT = 10, padB = 28;
-    const plotW = w - padL - padR;
-    const plotH = h - padT - padB;
-
-    ctx.clearRect(0, 0, w, h);
-
-    // background
-    ctx.fillStyle = '#0b0b0b';
-    ctx.fillRect(0, 0, w, h);
-
-    const vals = (points || []).map(p => Number(p || 0));
-    const maxV = Math.max(1, ...vals);
-    const minV = Math.min(0, ...vals);
-
-    function x(i) { return padL + (i / Math.max(1, vals.length - 1)) * plotW; }
-    function y(v) { return padT + (1 - ((v - minV) / (maxV - minV))) * plotH; }
-
-    // axes
-    ctx.strokeStyle = '#222';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(padL, padT);
-    ctx.lineTo(padL, padT + plotH);
-    ctx.lineTo(padL + plotW, padT + plotH);
-    ctx.stroke();
-
-    // y labels
-    ctx.fillStyle = '#9a9a9a';
-    ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
-    ctx.fillText(String(Math.round(maxV)), 6, padT + 12);
-    ctx.fillText(String(Math.round(minV)), 6, padT + plotH);
-
-    // line
-    ctx.strokeStyle = '#d6b15f';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    vals.forEach((v, i) => {
-      const xx = x(i);
-      const yy = y(v);
-      if (i === 0) ctx.moveTo(xx, yy);
-      else ctx.lineTo(xx, yy);
-    });
-    ctx.stroke();
-
-    // points
-    ctx.fillStyle = '#d6b15f';
-    vals.forEach((v, i) => {
-      const xx = x(i);
-      const yy = y(v);
-      ctx.beginPath();
-      ctx.arc(xx, yy, 2.2, 0, Math.PI * 2);
-      ctx.fill();
-    });
-
-    // x labels
-    if (opts.firstLabel && opts.lastLabel) {
-      ctx.fillStyle = '#9a9a9a';
-      ctx.fillText(opts.firstLabel, padL, h - 10);
-      const lastW = ctx.measureText(opts.lastLabel).width;
-      ctx.fillText(opts.lastLabel, w - padR - lastW, h - 10);
-    }
-  }
-
-  async function loadDashboardMetrics(options = {}) {
-    const { throwOnError = false } = options;
-    try {
-      setStatus(el('dashStatus'), 'Loading…');
-      const data = await adminClient.adminApi('admin-dashboard-metrics');
-
-      el('kpiTotalUsers').innerText = fmtInt(data?.totals?.total_users);
-      el('kpiNewUsers7d').innerText = fmtInt(data?.totals?.new_users_7d);
-      el('kpiDauToday').innerText = fmtInt(data?.totals?.dau_today);
-      el('kpiWau').innerText = fmtInt(data?.totals?.wau);
-      el('kpiEntriesToday').innerText = fmtInt(data?.totals?.entries_today);
-      el('kpiAiToday').innerText = fmtInt(data?.totals?.ai_actions_today);
-
-      const series = data?.series || [];
-      const firstDay = series[0]?.day || '';
-      const lastDay = series[series.length - 1]?.day || '';
-
-      drawLineChart(el('chartSignups'), series.map(x => Number(x.signups || 0)), { firstLabel: firstDay, lastLabel: lastDay });
-      drawLineChart(el('chartDau'), series.map(x => Number(x.dau || 0)), { firstLabel: firstDay, lastLabel: lastDay });
-      drawLineChart(el('chartEntries'), series.map(x => Number(x.entries || 0)), { firstLabel: firstDay, lastLabel: lastDay });
-
-      const pS = data?.projections?.signups;
-      const pD = data?.projections?.dau;
-      const pE = data?.projections?.entries;
-      el('projSignupsText').innerText = pS ? `Next 30d: ~${fmtInt(pS.next_30d_sum)} (slope ${pS.slope_per_day}/day)` : '—';
-      el('projDauText').innerText = pD ? `Next 30d avg/day: ~${pD.next_30d_avg_per_day} (slope ${pD.slope_per_day}/day)` : '—';
-      el('projEntriesText').innerText = pE ? `Next 30d: ~${fmtInt(pE.next_30d_sum)} (slope ${pE.slope_per_day}/day)` : '—';
-
-      setStatus(el('dashStatus'), 'Loaded.');
-    } catch (e) {
-      setStatus(el('dashStatus'), e.message || String(e));
-      if (throwOnError) throw e;
-    }
-  }
-
-  // Feedback inbox
-  let _feedbackLoaded = false;
-  async function ensureFeedbackLoaded() {
-    if (_feedbackLoaded) return;
-    _feedbackLoaded = true;
-    await loadFeedbackList();
-  }
-
-  async function loadFeedbackList(options = {}) {
-    const { throwOnError = false } = options;
-    try {
-      const days = Number(el('feedbackRangeSelect')?.value || 30);
-      setStatus(el('feedbackListStatus'), 'Loading…');
-      const data = await adminClient.adminApi(`admin-feedback-list?days=${encodeURIComponent(days)}`);
-      const rows = data?.responses || [];
-      const body = el('feedbackTableBody');
-      if (!body) return;
-
-      if (!rows.length) {
-        body.innerHTML = `<tr><td colspan="3" class="muted">No feedback in this range.</td></tr>`;
-      } else {
-        body.innerHTML = rows.map((r) => {
-          const ts = (r.submitted_at || '').slice(0, 19).replace('T', ' ');
-          const email = r.email || '(unknown)';
-          const txt = String(r.response_text || '').replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
-          return `<tr><td>${ts}</td><td>${email}</td><td>${txt}</td></tr>`;
-        }).join('');
-      }
-
-      setStatus(el('feedbackListStatus'), `Loaded ${rows.length} responses (last ${days} days).`);
-    } catch (e) {
-      setStatus(el('feedbackListStatus'), e.message || String(e));
-      if (throwOnError) throw e;
     }
   }
 
@@ -1264,14 +1042,8 @@ const el = (id) => document.getElementById(id);
     window.setTimeout(() => {
       moveLegacyCards();
       const tabFromHash = (location.hash || '').replace('#','') || 'users';
-      setActiveTab(['users','dashboard','feedback'].includes(tabFromHash) ? tabFromHash : 'users');
+      setActiveTab(['users','billing','insights','ops','todo','ambassadors'].includes(tabFromHash) ? tabFromHash : 'users');
       showToast('Admin authorized.', 'success', 1500);
     }, 50);
   });
-
-  // Dashboard + Feedback UI handlers
-  el('dashRefreshBtn')?.addEventListener('click', () => loadDashboardMetrics());
-  el('feedbackRefreshBtn')?.addEventListener('click', () => loadFeedbackList());
-  el('feedbackRangeSelect')?.addEventListener('change', () => loadFeedbackList());
-
 })();

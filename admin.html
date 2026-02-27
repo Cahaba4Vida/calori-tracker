@@ -28,11 +28,13 @@
 </section>
 <div class="hidden" id="adminProtected">
 <div class="toast hidden" id="adminToast"></div>
-<div class="adminAlertBanner hidden" id="dbUrgentBanner"></div>
 <nav class="tabs">
-  <button class="tabBtn" data-tab="users">Users</button>
-  <button class="tabBtn" data-tab="dashboard">Dashboard</button>
-  <button class="tabBtn" data-tab="feedback">Feedback</button>
+<button class="tabBtn" data-tab="users">Users</button>
+<button class="tabBtn" data-tab="billing">Billing</button>
+<button class="tabBtn" data-tab="insights">Insights</button>
+<button class="tabBtn" data-tab="ops">Ops</button>
+<button class="tabBtn" data-tab="todo">Todo</button>
+<button class="tabBtn" data-tab="ambassadors">Ambassadors</button>
 </nav>
 <section class="tabPanel" id="tab_users">
 <section class="card">
@@ -45,7 +47,6 @@
 <div class="muted" id="userLookupStatus"></div>
 <div class="userCard hidden" id="userCard"></div>
 </section>
-
 <section class="card">
 <h2>Signed-up Users (Email Accounts)</h2>
 <div class="row">
@@ -71,7 +72,6 @@
 </div>
 <div class="muted" style="margin-top:8px;">Edits apply to <code>user_profiles</code>. Deleting removes the user’s stored data (entries, weights, AI actions) from the database.</div>
 </section>
-
 <section class="card">
 <h2>Access Overrides</h2>
 <div class="grid2">
@@ -101,7 +101,6 @@
 </div>
 <div class="muted" id="overrideStatus"></div>
 </section>
-
 <section class="card">
 <h2>Recent Admin Actions</h2>
 <div class="row">
@@ -111,10 +110,11 @@
 <div class="muted" id="auditStatus"></div>
 <div class="auditList" id="auditList"></div>
 </section>
-
-<details class="adminDetails" style="margin-top:12px;">
-  <summary>Advanced: Ambassadors</summary>
-  <div style="margin-top:10px;">
+</section>
+<section class="tabPanel hidden" id="tab_billing"></section>
+<section class="tabPanel hidden" id="tab_insights"></section>
+<section class="tabPanel hidden" id="tab_ops"></section>
+<section class="tabPanel hidden" id="tab_ambassadors">
 <section class="card">
 <h2>Ambassadors</h2>
 <div class="muted" style="margin-bottom:10px;">Create ambassador accounts that can share custom monthly/yearly Stripe subscription links. Premium access is enforced strictly by Stripe subscription status.</div>
@@ -151,7 +151,6 @@
 <div class="muted" style="margin-top:10px;">Ambassador portal link: <code id="ambPortalLink">(select an ambassador)</code></div>
 <div class="muted" style="margin-top:6px;">Token is shown only when created/rotated. Save it somewhere safe.</div>
 </section>
-
 <section class="card">
 <h2>Existing Ambassadors</h2>
 <div class="row">
@@ -173,54 +172,8 @@
 </table>
 </div>
 </section>
-
-</div></details>
 </section>
-<section class="tabPanel hidden" id="tab_dashboard">
-<section class="card">
-  <h2>Dashboard</h2>
-  <div class="row" style="justify-content:space-between; align-items:center;">
-    <div class="muted" id="dashStatus">—</div>
-    <button class="btnMini" id="dashRefreshBtn">Refresh</button>
-  </div>
-
-  <div class="kpiGrid" style="margin-top:12px;">
-    <div class="kpiCard"><div class="kpiLabel">Total users</div><div class="kpiValue" id="kpiTotalUsers">—</div></div>
-    <div class="kpiCard"><div class="kpiLabel">New users (7d)</div><div class="kpiValue" id="kpiNewUsers7d">—</div></div>
-    <div class="kpiCard"><div class="kpiLabel">DAU (today)</div><div class="kpiValue" id="kpiDauToday">—</div></div>
-    <div class="kpiCard"><div class="kpiLabel">WAU</div><div class="kpiValue" id="kpiWau">—</div></div>
-    <div class="kpiCard"><div class="kpiLabel">Entries (today)</div><div class="kpiValue" id="kpiEntriesToday">—</div></div>
-    <div class="kpiCard"><div class="kpiLabel">AI actions (today)</div><div class="kpiValue" id="kpiAiToday">—</div></div>
-  </div>
-
-  <div style="margin-top:14px;">
-    <h3 style="margin:0 0 8px 0;">Trends (last 30 days) + next 30-day projection</h3>
-
-    <div class="chartBlock">
-      <div class="row" style="justify-content:space-between; align-items:baseline;">
-        <div><b>New signups</b></div>
-        <div class="muted" id="projSignupsText">—</div>
-      </div>
-      <canvas class="adminChart" id="chartSignups" width="900" height="220"></canvas>
-    </div>
-
-    <div class="chartBlock" style="margin-top:14px;">
-      <div class="row" style="justify-content:space-between; align-items:baseline;">
-        <div><b>Daily active users (DAU)</b></div>
-        <div class="muted" id="projDauText">—</div>
-      </div>
-      <canvas class="adminChart" id="chartDau" width="900" height="220"></canvas>
-    </div>
-
-    <div class="chartBlock" style="margin-top:14px;">
-      <div class="row" style="justify-content:space-between; align-items:baseline;">
-        <div><b>Food entries logged</b></div>
-        <div class="muted" id="projEntriesText">—</div>
-      </div>
-      <canvas class="adminChart" id="chartEntries" width="900" height="220"></canvas>
-    </div>
-  </div>
-</section>
+<div class="hidden" id="legacyAdminCards">
 <section class="card">
 <h2>Growth Goals</h2>
 <div><strong>Weekly active users goal:</strong> <span id="wauGoalTarget">500</span></div>
@@ -274,7 +227,6 @@
 <div class="row" style="margin-top:10px;"><button id="saveGoalsBtn">Save Goals + Pricing</button></div>
 <div class="muted" id="goalsStatus"></div>
 </section>
-
 <section class="card">
 <h2>Premium Pass Override</h2>
 <div class="muted">Grant or revoke premium access for a specific user without requiring payment.</div>
@@ -295,7 +247,6 @@
 </div>
 <div class="muted" id="passStatus"></div>
 </section>
-
 <section class="card">
 <h2>Billing Health</h2>
 <div class="muted" id="billingHealthSummary">No billing health loaded yet.</div>
@@ -303,27 +254,10 @@
 <div class="muted" id="reconcileStatus"></div>
 <pre class="pre" id="webhookEventsOut">No webhook events yet.</pre>
 </section>
-
-
-<section class="card">
-<h2>Database Usage</h2>
-<div class="muted">Current database size (DB1). Urgent warning triggers at <b>0.40 GB</b>.</div>
-<div class="progressOuter" style="margin-top:10px;">
-  <div class="progressInner" id="dbUsageBar" style="width:0%;"></div>
-</div>
-<div class="row" style="justify-content:space-between; align-items:center; margin-top:8px;">
-  <div class="muted" id="dbUsageLabel">—</div>
-  <div class="muted" id="dbUsageStatus"></div>
-</div>
-<div class="muted" id="dbUsageEta" style="margin-top:6px;">—</div>
-</section>
-
-
 <section class="card">
 <h2>App Statistics</h2>
 <pre class="pre" id="statsOut">Load stats to view data.</pre>
 </section>
-
 <section class="card">
 <h2>AI Insights</h2>
 <div class="muted">Ask product questions (usage patterns, improvement ideas) using current app metrics.</div>
@@ -332,38 +266,6 @@
 <div class="row" style="margin-top:10px;"><button id="getInsightsBtn">Get AI Insights</button></div>
 <pre class="pre" id="insightsOut">No insights yet.</pre>
 <div class="muted" id="insightsStatus"></div>
-</section>
-
-</section>
-<section class="tabPanel hidden" id="tab_feedback">
-<section class="card">
-  <h2>Feedback Inbox</h2>
-  <div class="row" style="justify-content:space-between; align-items:center;">
-    <div class="row" style="gap:10px; align-items:center;">
-      <label class="muted" style="margin:0;">Range</label>
-      <select id="feedbackRangeSelect">
-        <option value="7">Last 7 days</option>
-        <option value="30" selected>Last 30 days</option>
-        <option value="90">Last 90 days</option>
-      </select>
-    </div>
-    <button class="btnMini" id="feedbackRefreshBtn">Refresh</button>
-  </div>
-  <div class="muted" id="feedbackListStatus" style="margin-top:8px;">—</div>
-  <div style="overflow:auto; margin-top:10px;">
-    <table class="adminTable" id="feedbackTable">
-      <thead>
-        <tr>
-          <th style="min-width:120px;">Submitted</th>
-          <th style="min-width:220px;">Email</th>
-          <th>Response</th>
-        </tr>
-      </thead>
-      <tbody id="feedbackTableBody">
-        <tr><td colspan="3" class="muted">No data yet.</td></tr>
-      </tbody>
-    </table>
-  </div>
 </section>
 <section class="card">
 <h2>Feedback Form Broadcast (Mandatory)</h2>
@@ -382,7 +284,8 @@
 </div>
 <div class="muted" id="campaignStatus"></div>
 </section>
-
+</div>
+<section class="tabPanel hidden" id="tab_todo">
 <section class="card">
 <h2>Todo</h2>
 <div class="muted" style="margin-bottom:10px;">Private admin to-do list. Items are stored in the database and shared across admins using the same DB.</div>
@@ -418,7 +321,6 @@
 <div id="todoList" style="margin-top:10px;"></div>
 </div>
 </section>
-
 </section>
 </div>
 <script src="admin.bundle.js?v=1"></script>

@@ -74,19 +74,14 @@ input { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border);
 .hidden { display: none; }
 
 body.invertedTheme {
-  /* True dark theme (no invert filters).
-     This avoids "negative" images and keeps background photos/textures intact. */
-  --border: #2a2f3b;
-  --muted: #a1a8b8;
-  --bg: #000000;
-  --ink: #f5f7ff;
-  --accent: #c6a95f; /* subtle gold */
-
-  background: #000000 !important;
-  background-image: none !important;
+  /* Dark mode is implemented via an invert filter, but applying filter on <body>
+     breaks position:fixed in some browsers (it creates a containing block).
+     So we keep body unfiltered and invert only the scrollable UI layers. */
+  background: #111;
 }
 
-/* Disable legacy invert-filter dark mode entirely. */
+
+/* Inverted scope for dark mode (keeps fixed-position elements working) */
 body.invertedTheme header,
 body.invertedTheme main,
 body.invertedTheme #adminFooter,
@@ -94,51 +89,25 @@ body.invertedTheme #coachChatCard,
 body.invertedTheme .addFoodOverlay,
 body.invertedTheme .addFoodPanel.modalActive,
 body.invertedTheme #onboardingOverlay {
-  filter: none !important;
+  filter: invert(1) hue-rotate(180deg);
 }
 
-/* Dark theme surface styles */
-body.invertedTheme header.row {
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(20,20,20,0.72);
-  box-shadow: 0 10px 28px rgba(0,0,0,0.55);
-}
-
-body.invertedTheme .card {
-  background: rgba(17,17,17,0.92);
-  border: 1px solid rgba(255,255,255,0.10);
-  box-shadow: 0 10px 26px rgba(0,0,0,0.55);
-}
-
-body.invertedTheme .muted { color: var(--muted); }
-
-body.invertedTheme button {
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.06);
-  color: var(--ink);
-}
-body.invertedTheme button:hover {
-  background: rgba(255,255,255,0.09);
-  border-color: rgba(255,255,255,0.16);
-}
-
-body.invertedTheme input,
-body.invertedTheme select,
-body.invertedTheme textarea {
-  background: rgba(15,15,16,0.95);
-  color: var(--ink);
-  border: 1px solid rgba(255,255,255,0.14);
-}
-
-body.invertedTheme .tabbtn {
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.06);
-  color: var(--ink);
-}
-body.invertedTheme .tabbtn.active {
-  background: rgba(198,169,95,0.18);
-  border-color: rgba(198,169,95,0.55);
-  color: #fff;
+body.invertedTheme header img,
+body.invertedTheme header video,
+body.invertedTheme main img,
+body.invertedTheme main video,
+body.invertedTheme #adminFooter img,
+body.invertedTheme #coachChatCard img,
+body.invertedTheme #adminFooter video,
+body.invertedTheme #coachChatCard video,
+body.invertedTheme .addFoodOverlay img,
+body.invertedTheme .addFoodOverlay video,
+body.invertedTheme .addFoodPanel.modalActive img,
+body.invertedTheme .addFoodPanel.modalActive video,
+body.invertedTheme #onboardingOverlay img,
+body.invertedTheme #onboardingOverlay video {
+  /* re-invert media so photos/icons don't look like negatives */
+  filter: invert(1) hue-rotate(180deg);
 }
 
 .pre { white-space: pre-wrap; background: #f6f6f6; padding: 10px; border-radius: 10px; border: 1px solid var(--border); }
@@ -1037,8 +1006,7 @@ body.invertedTheme #finishDayCard::before{
   background-size: cover;
   background-position: right center;
   background-repeat: no-repeat;
-  /* No invert filters in true dark theme. Keep images/colors intact. */
-  filter: none !important;
+  filter: invert(1) hue-rotate(180deg);
 }
 
 /* Per-section dark assets */
@@ -1083,9 +1051,8 @@ body.invertedTheme #finishDayCard::before{
   display:block;
 }
 .headerBrand .bannerDark{ display:none; }
-/* Keep the primary (light) brand assets visible; don't swap via inversion. */
-body.invertedTheme .headerBrand .bannerLight{ display:block !important; }
-body.invertedTheme .headerBrand .bannerDark{ display:none !important; }
+body.invertedTheme .headerBrand .bannerLight{ display:none; }
+body.invertedTheme .headerBrand .bannerDark{ display:block; }
 
 .appHeader .auth{align-self:flex-end; display:flex; gap:10px; align-items:center;}
 
@@ -1173,7 +1140,7 @@ body.invertedTheme #tabs .tabbtn.active {
 #coachChatCard{position:relative;overflow:hidden;}
 #coachChatCard::before{content:"";position:absolute;inset:0;background-image:url("assets/backgrounds/coachchat_light.png");background-size:cover;background-position:center;opacity:0.22;pointer-events:none;}
 #coachChatCard > *{position:relative;z-index:1;}
-body.invertedTheme #coachChatCard::before{background-image:url("assets/backgrounds/coachchat_dark.png");filter:none !important;opacity:0.30;}
+body.invertedTheme #coachChatCard::before{background-image:url("assets/backgrounds/coachchat_dark.png");filter:invert(1) hue-rotate(180deg);opacity:0.30;}
 .estimate-overlay.hidden{ display:none; }
 .estimate-overlay[hidden]{ display:none; }
 
@@ -1321,233 +1288,3 @@ body.invertedTheme .aiGlobalLoadingCard {
 /* Client update banner */
 .updateBox{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px;border:1px solid rgba(0,0,0,0.08);border-radius:12px;background:rgba(0,0,0,0.02)}
 .updateBox .btnMini{white-space:nowrap}
-
-
-/* --- iOS Safari: prevent auto-zoom on form field focus (requires >=16px computed font-size) --- */
-@media (max-width: 1024px) {
-  input, textarea, select {
-    font-size: 16px !important;
-  }
-  /* If you use contenteditable for chat/voice transcripts */
-  [contenteditable="true"] {
-    font-size: 16px !important;
-  }
-}
-
-
-
-/* Autopilot home suggestion + settings */
-.apHomeSuggestion{border:1px solid rgba(0,0,0,0.08); border-radius:14px; padding:12px; margin:10px 0 0 0; background:rgba(0,0,0,0.02);}
-.apHomeTop{display:flex; align-items:center; justify-content:space-between; gap:12px;}
-.apHomeTitle{font-weight:700;}
-.apHomeSub{font-size:13px; opacity:0.8; margin-top:2px;}
-.apHomeBtn{padding:8px 12px; border-radius:12px;}
-.apControls{margin:8px 0 14px 0; display:grid; gap:10px;}
-.apToggleRow{display:flex; align-items:center; gap:10px; user-select:none;}
-.apFieldRow{display:grid; gap:6px;}
-.apWeeklyNumbers{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;}
-.apWeeklyKcal{font-size:22px; font-weight:800;}
-
-
-
-/* Autopilot home banner disabled state */
-button.disabled{opacity:0.6;cursor:not-allowed;}
-
-#apPlanCanvas{width:100%;border:1px solid rgba(0,0,0,0.12);border-radius:12px;background:rgba(255,255,255,0.85);}
-
-
-/* ===========================
-   Dark Background + Gold Accent (Theme C)
-   =========================== */
-
-:root{
-  --bg:#000000;
-  --ink:#f8fafc;
-  --muted:#b7c0d1;
-  --border:#1f2937;
-  --accent:#d4af37;
-}
-
-html, body{
-  background:#000 !important;
-  background-image:none !important;
-}
-
-body{
-  color: var(--ink);
-}
-
-/* Links */
-a{ color: var(--accent); }
-a:hover{ filter: brightness(1.05); }
-
-/* Primary surfaces */
-.card,
-.sheet,
-.addFoodPanel,
-.estimate-sheet,
-.onboardingModal{
-  background: rgba(17, 17, 22, 0.92) !important;
-  border-color: rgba(255,255,255,0.08) !important;
-  box-shadow: 0 10px 28px rgba(0,0,0,0.45);
-}
-
-/* Inputs */
-input, textarea, select{
-  background: rgba(255,255,255,0.06) !important;
-  color: var(--ink) !important;
-  border-color: rgba(255,255,255,0.12) !important;
-}
-input::placeholder, textarea::placeholder{
-  color: rgba(248,250,252,0.55);
-}
-
-/* Buttons */
-button{
-  border-color: rgba(212,175,55,0.22) !important;
-  background: rgba(255,255,255,0.06) !important;
-  color: var(--ink) !important;
-}
-button:hover{
-  border-color: rgba(212,175,55,0.32) !important;
-  background: rgba(255,255,255,0.10) !important;
-}
-
-.ctaPrimary{
-  background: linear-gradient(180deg, rgba(212,175,55,0.22), rgba(212,175,55,0.10)) !important;
-  border-color: rgba(212,175,55,0.45) !important;
-  color: #fff !important;
-  box-shadow: 0 10px 28px rgba(212,175,55,0.12);
-}
-
-.ctaSecondary{
-  border-color: rgba(212,175,55,0.28) !important;
-}
-
-/* Tabs */
-.tabbtn{
-  border-color: rgba(255,255,255,0.10) !important;
-}
-.tabbtn.active{
-  background: rgba(212,175,55,0.18) !important;
-  border-color: rgba(212,175,55,0.35) !important;
-  color: #fff !important;
-}
-
-/* Pills/badges */
-.pill{
-  background: rgba(255,255,255,0.06) !important;
-  border-color: rgba(255,255,255,0.10) !important;
-  color: var(--ink) !important;
-}
-
-/* ===== Admin-only helpers (DB usage bar + alerts) ===== */
-.adminAlertBanner{
-  padding:10px 12px;
-  border-radius:10px;
-  margin:10px 0 0 0;
-  border:1px solid rgba(212,175,55,0.25);
-  background: rgba(212,175,55,0.10);
-  color:#ffd36e;
-  font-weight:600;
-}
-.adminAlertBanner.urgent{
-  border-color: rgba(255,77,77,0.35);
-  background: rgba(255,77,77,0.10);
-  color:#ffb3b3;
-}
-
-.progressOuter{
-  width:100%;
-  height:14px;
-  border-radius:999px;
-  border:1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.04);
-  overflow:hidden;
-}
-.progressInner{
-  height:100%;
-  width:0%;
-  border-radius:999px;
-  background: linear-gradient(90deg, rgba(212,175,55,0.55), rgba(212,175,55,0.95));
-}
-.progressInner.warn{
-  background: linear-gradient(90deg, rgba(255,179,71,0.55), rgba(255,179,71,0.95));
-}
-.progressInner.urgent{
-  background: linear-gradient(90deg, rgba(255,77,77,0.55), rgba(255,77,77,0.95));
-}
-
-
-
-/* ===== Admin v2 ===== */
-.kpiGrid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:10px; }
-@media (max-width: 900px){ .kpiGrid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
-.kpiCard { border:1px solid #222; background:#111; border-radius:12px; padding:10px; }
-.kpiLabel { font-size:12px; color:#b9b9b9; }
-.kpiValue { font-size:22px; font-weight:700; margin-top:4px; color:#fff; }
-.adminChart { width:100%; height:auto; display:block; border:1px solid #222; border-radius:12px; background:#0b0b0b; }
-.adminTable { width:100%; border-collapse: collapse; }
-.adminTable th, .adminTable td { border-bottom:1px solid #222; padding:10px; vertical-align:top; }
-.adminTable th { text-align:left; font-size:12px; color:#b9b9b9; font-weight:600; }
-.adminDetails summary { cursor:pointer; color:#d6b15f; }
-
-/* ============================================================
-   Dark background only (no card/theme inversion)
-   Keep card/photo visuals exactly like the original light theme.
-   ============================================================ */
-
-html, body {
-  background: #000 !important;
-  background-image: none !important;
-}
-
-/* Completely disable legacy filter-based dark mode */
-body.invertedTheme,
-body.invertedTheme * {
-  filter: none !important;
-}
-
-/* Always use the light banner assets */
-.bannerDark,
-body.invertedTheme .bannerDark {
-  display: none !important;
-}
-.bannerLight,
-body.invertedTheme .bannerLight {
-  display: block !important;
-}
-
-/* Force original (light) card background images even if invertedTheme is present */
-body.invertedTheme #todayCard::before{background-image:url("assets/backgrounds/today_light.png") !important; opacity:0.22 !important;}
-body.invertedTheme #addFoodCard::before{background-image:url("assets/backgrounds/addfood_light.png") !important; opacity:0.22 !important;}
-body.invertedTheme #dailyGoalsCard::before{background-image:url("assets/backgrounds/dailygoals_light.png") !important; opacity:0.22 !important;}
-body.invertedTheme #trendsCard::before{background-image:url("assets/backgrounds/trends_light.png") !important; opacity:0.22 !important;}
-body.invertedTheme #weightCard::before{background-image:url("assets/backgrounds/weight_light.png") !important; opacity:0.22 !important;}
-body.invertedTheme #finishDayCard::before{background-image:url("assets/backgrounds/finishday_light.png") !important; opacity:0.22 !important;}
-body.invertedTheme #coachChatCard::before{background-image:url("assets/backgrounds/coachchat_light.png") !important; opacity:0.22 !important;}
-
-/* Keep surfaces in their original (light card) styling even if invertedTheme is present */
-body.invertedTheme .card,
-body.invertedTheme header.row,
-body.invertedTheme .addFoodPanel.modalActive,
-body.invertedTheme .addFoodOverlay,
-body.invertedTheme #onboardingOverlay {
-  background: rgba(255,255,255,0.94) !important;
-  border-color: var(--border) !important;
-  color: inherit !important;
-}
-
-body.invertedTheme button {
-  background: rgba(0,0,0,0.05) !important;
-  border-color: rgba(0,0,0,0.08) !important;
-  color: inherit !important;
-}
-
-body.invertedTheme input,
-body.invertedTheme select,
-body.invertedTheme textarea {
-  background: #fff !important;
-  color: #111 !important;
-  border-color: rgba(0,0,0,0.12) !important;
-}
