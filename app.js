@@ -90,8 +90,6 @@ function defaultMockState() {
       goal_weight_lbs: null,
       activity_level: null,
       goal_date: null,
-      goal_body_fat_percent: null,
-      goal_body_fat_date: null,
       quick_fills: []
     },
     daily_calories: 2200,
@@ -3000,7 +2998,7 @@ function _apGetLastNDaysKeys(n){const keys=[];const today=_apStartOfDay(new Date
 function _apLoadEntries(){try{return JSON.parse(localStorage.getItem('entries')||'[]');}catch(e){return [];}} 
 function _apLoadWeights(){try{return JSON.parse(localStorage.getItem('weights')||'[]');}catch(e){return [];}} 
 function _apFoodDaysLast7(){const entries=_apLoadEntries();const keys=new Set(_apGetLastNDaysKeys(7));const days=new Set();entries.forEach(e=>{const dt=_apParseDate(e.date||e.ts||e.created_at||e.createdAt);if(!dt)return;const k=_apIsoYmd(dt);if(keys.has(k))days.add(k);});return days.size;}
-function _apWeightsLast14(){const weights=_apLoadWeights();const keys=new Set(_apGetLastNDaysKeys(14));const points=[];weights.forEach(w=>{const dt=_apParseDate(w.date||w.ts||w.created_at||w.createdAt);if(!dt)return;const k=_apIsoYmd(dt);if(keys.has(k))points.push({k,dt,w:(w.weight??w.weight_lbs??w.value??w.lbs??w.kg)});});points.sort((a,b)=>a.dt-b.dt);return points;}
+function _apWeightsLast14(){const weights=_apLoadWeights();const keys=new Set(_apGetLastNDaysKeys(14));const points=[];weights.forEach(w=>{const dt=_apParseDate(w.date||w.ts||w.created_at||w.createdAt);if(!dt)return;const k=_apIsoYmd(dt);if(keys.has(k))points.push({k,dt,w:(w.weight??w.value??w.lbs??w.kg)});});points.sort((a,b)=>a.dt-b.dt);return points;}
 function _apHasGoalConfigured(){
   try{
     const gw0 = (profileState && profileState.goal_weight_lbs!=null) ? Number(profileState.goal_weight_lbs) : NaN;
@@ -3014,11 +3012,11 @@ function _apHasGoalConfigured(){
     return false;
   }
 }
-function computeAutopilotReadiness_v38(){const foodDays=_apFoodDaysLast7();const weightPts=_apWeightsLast14();const hasGoal=_apHasGoalConfigured();const foodScore=Math.min(1,foodDays/4)*40;let weightScore=0;if(weightPts.length>=2){let ok=false;for(let i=0;i<weightPts.length;i++){for(let j=i+1;j<weightPts.length;j++){const days=Math.abs((weightPts[j].dt-weightPts[i].dt)/86400000);if(days>=6){ok=true;break;}}if(ok)break;}weightScore=ok?40:25;}else if(weightPts.length===1){weightScore=15;}const goalScore=hasGoal?20:0;const score=Math.round(foodScore+weightScore+goalScore);const missing=[];if(foodDays<4)missing.push(`${4-foodDays} more food-logging day${(4-foodDays)===1?'':'s'}`);if(weightPts.length<2)missing.push(`${2-weightPts.length} weigh-in${(2-weightPts.length)===1?'':'s'}`);if(weightPts.length>=2){let ok=false;for(let i=0;i<weightPts.length;i++){for(let j=i+1;j<weightPts.length;j++){const days=Math.abs((weightPts[j].dt-weightPts[i].dt)/86400000);if(days>=6){ok=true;break;}}if(ok)break;}if(!ok)missing.push(`at least 2 weigh-ins that are 6+ days apart`);}if(!hasGoal)missing.push(`a target weight (and optional goal date)`);let label='Ready';if(score<40)label='Not ready';else if(score<70)label='Almost ready';else if(score<90)label='Ready';else label='Very ready';return {score,label,missing,foodDays,weightPtsCount:weightPts.length};}
-function renderAutopilotReadiness_v38(){const s=computeAutopilotReadiness_v38();const badge=document.getElementById('apReadinessScore');const fill=document.getElementById('apReadinessFill');const label=document.getElementById('apReadinessLabel');const sub=document.getElementById('apReadinessSub');if(!badge||!fill||!label)return;badge.textContent=String(s.score);fill.style.width=`${Math.max(0,Math.min(100,s.score))}%`;label.textContent=`Readiness: ${s.label}`;if(sub){sub.textContent=s.missing.length?`To enable weekly Autopilot reviews, add: ${s.missing.join(' and ')}.`:`You have enough data for weekly Autopilot reviews.`;}}
+function computeAutopilotReadiness_v38(){const foodDays=_apFoodDaysLast7();const weightPts=_apWeightsLast14();const hasGoal=_apHasGoalConfigured();const foodScore=Math.min(1,foodDays/4)*40;let weightScore=0;if(weightPts.length>=2){let ok=false;for(let i=0;i<weightPts.length;i++){for(let j=i+1;j<weightPts.length;j++){const days=Math.abs((weightPts[j].dt-weightPts[i].dt)/86400000);if(days>=6){ok=true;break;}}if(ok)break;}weightScore=ok?40:25;}else if(weightPts.length===1){weightScore=15;}const goalScore=hasGoal?20:0;const score=Math.round(foodScore+weightScore+goalScore);const missing=[];if(foodDays<4)missing.push(`${4-foodDays} more food days`);if(weightPts.length<2)missing.push(`${2-weightPts.length} weigh-in(s)`);if(weightPts.length>=2){let ok=false;for(let i=0;i<weightPts.length;i++){for(let j=i+1;j<weightPts.length;j++){const days=Math.abs((weightPts[j].dt-weightPts[i].dt)/86400000);if(days>=6){ok=true;break;}}if(ok)break;}if(!ok)missing.push(`weigh-ins need 6+ days apart`);}if(!hasGoal)missing.push(`target weight + goal date`);let label='Ready';if(score<40)label='Not ready';else if(score<70)label='Almost ready';else if(score<90)label='Ready';else label='Very ready';return {score,label,missing,foodDays,weightPtsCount:weightPts.length};}
+function renderAutopilotReadiness_v38(){const s=computeAutopilotReadiness_v38();const badge=document.getElementById('apReadinessScore');const fill=document.getElementById('apReadinessFill');const label=document.getElementById('apReadinessLabel');const sub=document.getElementById('apReadinessSub');if(!badge||!fill||!label)return;badge.textContent=String(s.score);fill.style.width=`${Math.max(0,Math.min(100,s.score))}%`;label.textContent=`Readiness: ${s.label}`;if(sub){sub.textContent=s.missing.length?`To enable weekly reviews: log ${s.missing.join(', ')}.`:`You have enough data for weekly Autopilot reviews.`;}}
 function getPlannedCaloriesForDow_v38(dow){const base=parseInt(localStorage.getItem('calorie_goal')||'0',10)||0;if(!base)return 0;let cfg=null;try{cfg=(typeof getCheatDayConfig==='function')?getCheatDayConfig():null;}catch(e){}if(!cfg||!cfg.enabled||!cfg.extra)return base;const deltaOther=Math.round(cfg.extra/6);const isCheat=dow===cfg.dow;const minFloor=1200;const v=isCheat?(base+cfg.extra):(base-deltaOther);return Math.max(minFloor,v);}
 function _apActualCaloriesByDayKeyLast7(){const entries=_apLoadEntries();const keys=_apGetLastNDaysKeys(7);const map={};keys.forEach(k=>map[k]=0);entries.forEach(e=>{const dt=_apParseDate(e.date||e.ts||e.created_at||e.createdAt);if(!dt)return;const k=_apIsoYmd(dt);if(!(k in map))return;const cals=(e.calories??e.kcal??e.cals??e.totalCalories);const n=parseFloat(cals);if(!isNaN(n))map[k]+=n;});return {keys,map};}
-function drawCaloriePlanGraph_v38(){const canvas=document.getElementById('apPlanCanvas');if(!canvas)return;const ctx=canvas.getContext('2d');if(!ctx)return;const rect=canvas.getBoundingClientRect();const dpr=window.devicePixelRatio||1;canvas.width=Math.max(300,Math.floor(rect.width*dpr));canvas.height=Math.floor(180*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);const W=rect.width;const H=180;ctx.clearRect(0,0,W,H);const padding=14;const chartTop=10;const chartBottom=H-24;const chartH=chartBottom-chartTop;ctx.fillStyle='rgba(0,0,0,0.03)';ctx.fillRect(padding,chartTop,W-padding*2,chartH);const keys=_apGetLastNDaysKeys(7);const data=_apActualCaloriesByDayKeyLast7();const planned=keys.map(k=>{const dt=new Date(k+'T00:00:00');return getPlannedCaloriesForDow_v38(dt.getDay());});const actual=keys.map(k=>data.map[k]||0);const maxV=Math.max(1,...planned,...actual);const barGap=8;const barW=(W-padding*2-barGap*6)/7;ctx.fillStyle='rgba(0,0,0,0.06)';ctx.fillRect(padding,chartTop+chartH*0.5,W-padding*2,1);for(let i=0;i<7;i++){const x=padding+i*(barW+barGap);const pv=planned[i]||0;const av=actual[i]||0;const ph=(pv/maxV)*chartH;const ah=(av/maxV)*chartH;ctx.fillStyle='rgba(0,0,0,0.14)';ctx.fillRect(x,chartBottom-ph,barW,ph);ctx.strokeStyle='rgba(0,0,0,0.55)';ctx.lineWidth=2.5;const inset=3;ctx.strokeRect(x+inset,chartBottom-ah,barW-inset*2,ah);const dt=new Date(keys[i]+'T00:00:00');const lbl=dt.toLocaleDateString(undefined,{weekday:'short'}).slice(0,3);ctx.fillStyle='rgba(0,0,0,0.72)';ctx.font='12px system-ui, -apple-system, Segoe UI, Roboto, Arial';ctx.textAlign='center';ctx.fillText(lbl,x+barW/2,H-8);}const sub=document.getElementById('apPlanSub');if(sub){const base=parseInt(localStorage.getItem('calorie_goal')||'0',10)||0;sub.textContent=base?'Planned vs. logged (last 7 days)':'Set a base calorie goal to see the preview.';}}
+function drawCaloriePlanGraph_v38(){const canvas=document.getElementById('apPlanCanvas');if(!canvas)return;const ctx=canvas.getContext('2d');if(!ctx)return;const rect=canvas.getBoundingClientRect();const dpr=window.devicePixelRatio||1;canvas.width=Math.max(300,Math.floor(rect.width*dpr));canvas.height=Math.floor(180*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);const W=rect.width;const H=180;ctx.clearRect(0,0,W,H);const padding=14;const chartTop=10;const chartBottom=H-24;const chartH=chartBottom-chartTop;const keys=_apGetLastNDaysKeys(7);const data=_apActualCaloriesByDayKeyLast7();const planned=keys.map(k=>{const dt=new Date(k+'T00:00:00');return getPlannedCaloriesForDow_v38(dt.getDay());});const actual=keys.map(k=>data.map[k]||0);const maxV=Math.max(1,...planned,...actual);const barGap=8;const barW=(W-padding*2-barGap*6)/7;ctx.fillStyle='rgba(255,255,255,0.06)';ctx.fillRect(padding,chartTop+chartH*0.5,W-padding*2,1);for(let i=0;i<7;i++){const x=padding+i*(barW+barGap);const pv=planned[i]||0;const av=actual[i]||0;const ph=(pv/maxV)*chartH;const ah=(av/maxV)*chartH;ctx.fillStyle='rgba(255,255,255,0.20)';ctx.fillRect(x,chartBottom-ph,barW,ph);ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=2;const inset=3;ctx.strokeRect(x+inset,chartBottom-ah,barW-inset*2,ah);const dt=new Date(keys[i]+'T00:00:00');const lbl=dt.toLocaleDateString(undefined,{weekday:'short'}).slice(0,3);ctx.fillStyle='rgba(255,255,255,0.75)';ctx.font='12px system-ui, -apple-system, Segoe UI, Roboto, Arial';ctx.textAlign='center';ctx.fillText(lbl,x+barW/2,H-8);}const sub=document.getElementById('apPlanSub');if(sub){const base=parseInt(localStorage.getItem('calorie_goal')||'0',10)||0;sub.textContent=base?'Planned vs. logged (last 7 days)':'Set a base calorie goal to see the preview.';}}
 function initAutopilotWidgets_v38(){renderAutopilotReadiness_v38();drawCaloriePlanGraph_v38();const btn=document.getElementById('apPlanRefreshBtn');if(btn&&!btn.__apBound){btn.__apBound=true;btn.addEventListener('click',()=>{renderAutopilotReadiness_v38();drawCaloriePlanGraph_v38();});}if(!window.__apResizeBound){window.__apResizeBound=true;window.addEventListener('resize',()=>{try{drawCaloriePlanGraph_v38();}catch(e){}});}if(typeof window.renderAll==='function'&&!window.renderAll.__apWrapped){const _orig=window.renderAll;const wrapped=function(){const r=_orig.apply(this,arguments);try{renderAutopilotReadiness_v38();drawCaloriePlanGraph_v38();}catch(e){}return r;};wrapped.__apWrapped=true;window.renderAll=wrapped;}}
 document.addEventListener('DOMContentLoaded',()=>{try{initAutopilotWidgets_v38();initAutopilotMode_v40();}catch(e){}});
 
@@ -3026,42 +3024,17 @@ document.addEventListener('DOMContentLoaded',()=>{try{initAutopilotWidgets_v38()
 // ===============================
 // AUTOPILOT MODE (weekly suggestions) (v40)
 // ===============================
-function apGetTargetMode_v43(){
-  const m = (localStorage.getItem('ap_target_mode')||'weight').toLowerCase();
-  return (m==='bodyfat' || m==='bf') ? 'bodyfat' : 'weight';
-}
-function apSetTargetMode_v43(mode){
-  const m = (mode==='bodyfat' || mode==='bf') ? 'bodyfat' : 'weight';
-  localStorage.setItem('ap_target_mode', m);
-}
-
 function apGetSettings_v40(){
-  const mode = apGetTargetMode_v43();
-
   // Universal goal fields live in profileState (DB-backed when logged in).
   // Keep localStorage goal_* as a fallback for mock/offline compatibility.
   const gw = (profileState && profileState.goal_weight_lbs!=null) ? Number(profileState.goal_weight_lbs)
     : parseFloat(localStorage.getItem('goal_weight_lbs')||localStorage.getItem('goal_weight')||'');
   const gd = (profileState && profileState.goal_date) ? String(profileState.goal_date)
     : (localStorage.getItem('goal_date')||localStorage.getItem('goalDate')||'');
-
-  const gbf0 = (profileState && profileState.goal_body_fat_percent!=null) ? Number(profileState.goal_body_fat_percent) : NaN;
-  const gbf = Number.isFinite(gbf0) ? gbf0 : parseFloat(localStorage.getItem('goal_body_fat_percent')||localStorage.getItem('goalBodyFat')||'');
-  const gbd = (profileState && profileState.goal_body_fat_date) ? String(profileState.goal_body_fat_date)
-    : (localStorage.getItem('goal_body_fat_date')||localStorage.getItem('goalBodyFatDate')||'');
-
-  const cw = parseFloat(localStorage.getItem('ap_bf_current_weight')||'');
-  const cbf = parseFloat(localStorage.getItem('ap_bf_current_bf')||'');
-
   return {
     enabled: localStorage.getItem('ap_enabled') === '1',
-    mode,
     targetWeightLbs: (Number.isFinite(gw) && gw>0) ? gw : null,
     goalDate: gd || '',
-    targetBodyFatPercent: (Number.isFinite(gbf) && gbf>0 && gbf<100) ? gbf : null,
-    bodyFatGoalDate: gbd || '',
-    currentWeightOverride: (Number.isFinite(cw) && cw>0) ? cw : null,
-    currentBodyFatPercent: (Number.isFinite(cbf) && cbf>0 && cbf<100) ? cbf : null,
     lastReviewedWeek: localStorage.getItem('ap_last_review_week') || ''
   };
 }
@@ -3095,52 +3068,6 @@ async function apSaveUniversalGoal_v41(nextWeightLbs, nextGoalDate){
     console.warn('profile-set (goal fields) failed', e);
   }
 }
-
-// Universal body fat goal setter (DB-backed when logged in, local fallback in mock/offline)
-async function apSaveBodyFatGoal_v43(nextTargetBf, nextGoalDate){
-  const bf = (Number.isFinite(nextTargetBf) && nextTargetBf>0 && nextTargetBf<100) ? nextTargetBf : null;
-  const d = (nextGoalDate && !isNaN(new Date(nextGoalDate).getTime())) ? String(nextGoalDate) : null;
-
-  try{
-    if(typeof profileState === 'object' && profileState){
-      profileState.goal_body_fat_percent = bf;
-      profileState.goal_body_fat_date = d;
-    }
-  }catch{}
-
-  try{
-    if(bf==null){ localStorage.removeItem('goal_body_fat_percent'); localStorage.removeItem('goalBodyFat'); }
-    else { localStorage.setItem('goal_body_fat_percent', String(bf)); localStorage.setItem('goalBodyFat', String(bf)); }
-    if(!d){ localStorage.removeItem('goal_body_fat_date'); localStorage.removeItem('goalBodyFatDate'); }
-    else { localStorage.setItem('goal_body_fat_date', d); localStorage.setItem('goalBodyFatDate', d); }
-  }catch{}
-
-  try{
-    await api('profile-set', { method:'POST', body: JSON.stringify({ goal_body_fat_percent: bf, goal_body_fat_date: d }) });
-  }catch(e){
-    console.warn('profile-set (body fat goal) failed', e);
-  }
-}
-
-function apSaveBodyFatSnapshot_v43(curWeight, curBf){
-  // Manual override snapshot used for BF% mode computations.
-  // Weight defaults from latest weigh-in; this is only used when the user overrides or supplies BF%.
-  try{
-    if(curWeight==null || curWeight===''){ localStorage.removeItem('ap_bf_current_weight'); }
-    else {
-      const w=Number(curWeight);
-      if(Number.isFinite(w) && w>0) localStorage.setItem('ap_bf_current_weight', String(w));
-    }
-  }catch{}
-  try{
-    if(curBf==null || curBf===''){ localStorage.removeItem('ap_bf_current_bf'); }
-    else {
-      const b=Number(curBf);
-      if(Number.isFinite(b) && b>0 && b<100) localStorage.setItem('ap_bf_current_bf', String(b));
-    }
-  }catch{}
-}
-
 function apWeekStartISO_v40(d=new Date()){
   const dt=new Date(d.getTime());
   dt.setHours(0,0,0,0);
@@ -3184,33 +3111,7 @@ function apComputeSuggestion_v40(){
   const settings=apGetSettings_v40();
   const base=parseInt(localStorage.getItem('calorie_goal')||'0',10)||0;
   if(!settings.enabled) return { ok:false, reason:'Autopilot is off.' };
-
-  // Resolve target + goal date based on mode.
-  let targetWeightLbs = targetWeightLbs;
-  let goalDate = goalDate || '';
-  let meta = {};
-  if(settings.mode==='bodyfat'){
-    const tgtBf = settings.targetBodyFatPercent;
-    goalDate = settings.bodyFatGoalDate || '';
-    if(!tgtBf) return { ok:false, reason:'Set a target body fat % to enable Autopilot.' };
-
-    const latest = apGetLatestWeight_v42 ? apGetLatestWeight_v42() : null;
-    const curW = settings.currentWeightOverride || (latest && latest.weight_lbs) || null;
-    const curBf = settings.currentBodyFatPercent || (latest && latest.body_fat_percent) || null;
-
-    if(!curW) return { ok:false, reason:'Add a weigh-in (or enter your current weight) to use Body Fat % mode.' };
-    if(!curBf) return { ok:false, reason:'Enter your current body fat % to use Body Fat % mode.' };
-
-    const fatMass = curW*(curBf/100);
-    const leanMass = curW - fatMass;
-    const impliedTarget = leanMass / (1 - (tgtBf/100));
-    if(!Number.isFinite(impliedTarget) || impliedTarget<=0) return { ok:false, reason:'Body fat inputs look invalid. Please double-check your numbers.' };
-
-    targetWeightLbs = impliedTarget;
-    meta = { targetBodyFatPercent: tgtBf, impliedTargetWeight: impliedTarget, currentWeight: curW, currentBodyFatPercent: curBf, leanMass };
-  }
-
-  if(!targetWeightLbs) return { ok:false, reason:'Set a target weight to enable Autopilot.' };
+  if(!settings.targetWeightLbs) return { ok:false, reason:'Set a target weight to enable Autopilot.' };
 
   // readiness: reuse existing readiness scoring
   const r=computeAutopilotReadiness_v38();
@@ -3252,9 +3153,9 @@ function apComputeSuggestion_v40(){
   const deficitPerDay = -(lbsPerWeek*500); // gaining -> negative deficit
   const tdee = avgCals + deficitPerDay;
 
-  const currentWeight=(settings.mode==='bodyfat' && meta.currentWeight)? meta.currentWeight : last.w;
-  const needLoss = currentWeight > targetWeightLbs + 0.5;
-  const needGain = currentWeight < targetWeightLbs - 0.5;
+  const currentWeight=last.w;
+  const needLoss = currentWeight > settings.targetWeightLbs + 0.5;
+  const needGain = currentWeight < settings.targetWeightLbs - 0.5;
   if(!needLoss && !needGain){
     return { ok:false, reason:'You are at (or very close to) your target weight.' };
   }
@@ -3262,14 +3163,14 @@ function apComputeSuggestion_v40(){
   // - If a goal date is set, compute required lbs/week to reach target by that date.
   // - Otherwise default to a reasonable rate.
   let desiredLbsPerWeek = needLoss ? 1.0 : -0.5; // default: lose 1 lb/wk or gain 0.5 lb/wk
-  if(goalDate){
-    const goalDt = new Date(goalDate+'T00:00:00');
+  if(settings.goalDate){
+    const goalDt = new Date(settings.goalDate+'T00:00:00');
     const today = new Date();
     today.setHours(0,0,0,0);
     const daysLeft = Math.round((goalDt.getTime()-today.getTime())/86400000);
     if(daysLeft >= 7){
       const weeksLeft = daysLeft/7;
-      const lbsNeeded = (currentWeight - targetWeightLbs); // positive if need to lose
+      const lbsNeeded = (currentWeight - settings.targetWeightLbs); // positive if need to lose
       const req = lbsNeeded / weeksLeft; // positive lose, negative gain
       if(Number.isFinite(req) && req!==0){
         desiredLbsPerWeek = req;
@@ -3303,10 +3204,7 @@ function apComputeSuggestion_v40(){
     tdee: Math.round(tdee),
     weightTrendLbsPerWeek: Math.round(lbsPerWeek*10)/10,
     currentWeight: Math.round(currentWeight*10)/10,
-    targetWeight: targetWeightLbs,
-    mode: settings.mode,
-    goalDate,
-    meta
+    targetWeight: settings.targetWeightLbs
   };
 }
 
@@ -3315,14 +3213,8 @@ function apShowWeeklyModal_v40(s){
   const sheet=document.getElementById('apWeeklySheet');
   if(!overlay||!sheet) return;
   document.getElementById('apWeeklyError').textContent='';
-  document.getElementById('apWeeklyExplainer').textContent = (()=>{
-    if(s.mode==='bodyfat'){
-      const tb = (s.meta && s.meta.targetBodyFatPercent!=null) ? `${s.meta.targetBodyFatPercent}%` : 'your target';
-      const implied = (s.meta && Number.isFinite(s.meta.impliedTargetWeight)) ? ` (~${Math.round(s.meta.impliedTargetWeight*10)/10} lbs implied)` : '';
-      return `Based on your last week of logging and recent weigh‑ins, Autopilot recommends updating your daily calorie goal to stay on track toward ${tb} body fat${implied}.`;
-    }
-    return `Based on your last week of logging and recent weigh‑ins, Autopilot recommends updating your daily calorie goal to stay on track toward ${s.targetWeight} lbs.`;
-  })();
+  document.getElementById('apWeeklyExplainer').textContent =
+    `Based on your last week of logging and recent weigh‑ins, Autopilot recommends updating your daily calorie goal to stay on track toward ${s.targetWeight} lbs.`;
   document.getElementById('apWeeklyCurrentKcal').textContent = (s.baseGoal!=null? `${s.baseGoal} kcal` : '—');
   document.getElementById('apWeeklySuggestedKcal').textContent = `${s.suggestedGoal} kcal`;
   const trend = (s.weightTrendLbsPerWeek>0? `+${s.weightTrendLbsPerWeek}` : `${s.weightTrendLbsPerWeek}`);
@@ -3448,115 +3340,6 @@ function initAutopilotMode_v40(){
       apRenderHomeSuggestion_v40();
       renderAutopilotReadiness_v38();
     });
-
-  // target mode toggle + body fat fields
-  const modeWeightBtn=document.getElementById('apModeWeightBtn');
-  const modeBodyFatBtn=document.getElementById('apModeBodyFatBtn');
-  const weightFields=document.getElementById('apModeWeightFields');
-  const bfFields=document.getElementById('apModeBodyFatFields');
-  const curWEl=document.getElementById('apCurrentWeightInput');
-  const curBfEl=document.getElementById('apCurrentBodyFatInput');
-  const tgtBfEl=document.getElementById('apTargetBodyFatInput');
-  const bfDateEl=document.getElementById('apBodyFatGoalDateInput');
-
-  function apApplyModeUI_v43(){
-    const s=apGetSettings_v40();
-    const isBf = s.mode==='bodyfat';
-    if(modeWeightBtn) modeWeightBtn.setAttribute('aria-pressed', isBf ? 'false':'true');
-    if(modeBodyFatBtn) modeBodyFatBtn.setAttribute('aria-pressed', isBf ? 'true':'false');
-    if(weightFields) weightFields.style.display = isBf ? 'none':'block';
-    if(bfFields) bfFields.style.display = isBf ? 'block':'none';
-
-    // Fill visible fields from current settings / latest weight
-    if(isBf){
-      const latest = (typeof apGetLatestWeight_v42==='function') ? apGetLatestWeight_v42() : null;
-      if(curWEl && !curWEl.value){
-        const w0 = s.currentWeightOverride || (latest && latest.weight_lbs) || '';
-        if(w0) curWEl.value = String(Math.round(Number(w0)*10)/10);
-      }
-      if(curBfEl && !curBfEl.value){
-        const b0 = s.currentBodyFatPercent || (latest && latest.body_fat_percent) || '';
-        if(b0) curBfEl.value = String(Math.round(Number(b0)*10)/10);
-      }
-      if(tgtBfEl){
-        tgtBfEl.value = s.targetBodyFatPercent!=null ? String(s.targetBodyFatPercent) : '';
-      }
-      if(bfDateEl){
-        bfDateEl.value = s.bodyFatGoalDate || '';
-      }
-      try{ if(typeof apUpdateImpliedTargetWeight_v42==='function') apUpdateImpliedTargetWeight_v42(); }catch{}
-    }else{
-      if(w){ // already defined above
-        const sw=apGetSettings_v40();
-        w.value = sw.targetWeightLbs!=null ? String(sw.targetWeightLbs) : '';
-      }
-      if(d){
-        const sd=apGetSettings_v40();
-        d.value = sd.goalDate || '';
-      }
-    }
-  }
-
-  if(modeWeightBtn && !modeWeightBtn.__apBound){
-    modeWeightBtn.__apBound=true;
-    modeWeightBtn.addEventListener('click', ()=>{
-      apSetTargetMode_v43('weight');
-      apApplyModeUI_v43();
-      apRenderHomeSuggestion_v40();
-      renderAutopilotReadiness_v38();
-    });
-  }
-  if(modeBodyFatBtn && !modeBodyFatBtn.__apBound){
-    modeBodyFatBtn.__apBound=true;
-    modeBodyFatBtn.addEventListener('click', ()=>{
-      apSetTargetMode_v43('bodyfat');
-      apApplyModeUI_v43();
-      apRenderHomeSuggestion_v40();
-      renderAutopilotReadiness_v38();
-    });
-  }
-
-  if(curWEl && !curWEl.__apBound){
-    curWEl.__apBound=true;
-    curWEl.addEventListener('change', ()=>{
-      apSaveBodyFatSnapshot_v43(curWEl.value, curBfEl?curBfEl.value:null);
-      try{ if(typeof apUpdateImpliedTargetWeight_v42==='function') apUpdateImpliedTargetWeight_v42(); }catch{}
-      apRenderHomeSuggestion_v40();
-      renderAutopilotReadiness_v38();
-    });
-  }
-  if(curBfEl && !curBfEl.__apBound){
-    curBfEl.__apBound=true;
-    curBfEl.addEventListener('change', ()=>{
-      apSaveBodyFatSnapshot_v43(curWEl?curWEl.value:null, curBfEl.value);
-      try{ if(typeof apUpdateImpliedTargetWeight_v42==='function') apUpdateImpliedTargetWeight_v42(); }catch{}
-      apRenderHomeSuggestion_v40();
-      renderAutopilotReadiness_v38();
-    });
-  }
-  if(tgtBfEl && !tgtBfEl.__apBound){
-    tgtBfEl.__apBound=true;
-    tgtBfEl.addEventListener('change', async ()=>{
-      const v=parseFloat(tgtBfEl.value);
-      await apSaveBodyFatGoal_v43(v, apGetSettings_v40().bodyFatGoalDate);
-      try{ if(typeof apUpdateImpliedTargetWeight_v42==='function') apUpdateImpliedTargetWeight_v42(); }catch{}
-      apRenderHomeSuggestion_v40();
-      renderAutopilotReadiness_v38();
-    });
-  }
-  if(bfDateEl && !bfDateEl.__apBound){
-    bfDateEl.__apBound=true;
-    bfDateEl.addEventListener('change', async ()=>{
-      const next = bfDateEl.value || '';
-      await apSaveBodyFatGoal_v43(apGetSettings_v40().targetBodyFatPercent, next);
-      apRenderHomeSuggestion_v40();
-      renderAutopilotReadiness_v38();
-    });
-  }
-
-  // ensure UI reflects current mode on load
-  apApplyModeUI_v43();
-
   }
 
   // modal buttons
@@ -3725,17 +3508,14 @@ function _apSyncFromApi(path, body) {
 
     // week-summary (store daily totals as synthetic entries so we can count "food days")
     if (path.startsWith('week-summary') && body) {
-      const series = Array.isArray(body.series) ? body.series
-        : (Array.isArray(body.days) ? body.days
-        : (Array.isArray(body.week) ? body.week
-        : (Array.isArray(body.data) ? body.data : null)));
-      if (Array.isArray(series)) {
+      const days = body.days || body.week || body.data || null;
+      if (Array.isArray(days)) {
         const synthetic = days
-          .filter(d => d && (d.entry_date || d.date || d.day))
+          .filter(d => d && (d.date || d.day))
           .map(d => ({
-            id: 'syn_' + String(d.entry_date || d.date || d.day),
-            date: d.entry_date || d.date || d.day,
-            calories: (d.total_calories ?? d.calories ?? d.kcal ?? 0),
+            id: 'syn_' + String(d.date || d.day),
+            date: d.date || d.day,
+            calories: d.calories || d.kcal || d.total_calories || 0,
             raw_extraction: { source: 'week_summary' },
           }));
         const cur = _apSafeJsonParse('entries', []);

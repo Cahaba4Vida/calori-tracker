@@ -1315,16 +1315,3 @@ body.invertedTheme .aiGlobalLoadingCard {
 .apWeeklyNumbers{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;}
 .apWeeklyKcal{font-size:22px; font-weight:800;}
 
-
-
-/* Autopilot home banner disabled state */
-button.disabled{opacity:0.6;cursor:not-allowed;}
-
-#apPlanCanvas{width:100%;border:1px solid rgba(0,0,0,0.12);border-radius:12px;background:rgba(255,255,255,0.85);}
-
-
-/* Autopilot target mode toggle */
-.apModeToggle{display:flex;gap:8px;flex-wrap:wrap;}
-.apModeBtn{border:1px solid rgba(0,0,0,0.15);background:#fff;border-radius:12px;padding:8px 10px;font-size:14px;}
-.apModeBtn[aria-pressed="true"]{border-color:rgba(0,0,0,0.35);font-weight:600;}
-.mutedSmall{font-size:12px;opacity:0.75;margin-top:4px;}
