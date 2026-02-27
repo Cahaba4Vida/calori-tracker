@@ -1315,3 +1315,146 @@ body.invertedTheme .aiGlobalLoadingCard {
 .apWeeklyNumbers{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;}
 .apWeeklyKcal{font-size:22px; font-weight:800;}
 
+
+
+/* Autopilot home banner disabled state */
+button.disabled{opacity:0.6;cursor:not-allowed;}
+
+#apPlanCanvas{width:100%;border:1px solid rgba(0,0,0,0.12);border-radius:12px;background:rgba(255,255,255,0.85);}
+
+
+/* ===========================
+   Dark Background + Gold Accent (Theme C)
+   =========================== */
+
+:root{
+  --bg:#000000;
+  --ink:#f8fafc;
+  --muted:#b7c0d1;
+  --border:#1f2937;
+  --accent:#d4af37;
+}
+
+html, body{
+  background:#000 !important;
+  background-image:none !important;
+}
+
+body{
+  color: var(--ink);
+}
+
+/* Links */
+a{ color: var(--accent); }
+a:hover{ filter: brightness(1.05); }
+
+/* Primary surfaces */
+.card,
+.sheet,
+.addFoodPanel,
+.estimate-sheet,
+.onboardingModal{
+  background: rgba(17, 17, 22, 0.92) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+}
+
+/* Inputs */
+input, textarea, select{
+  background: rgba(255,255,255,0.06) !important;
+  color: var(--ink) !important;
+  border-color: rgba(255,255,255,0.12) !important;
+}
+input::placeholder, textarea::placeholder{
+  color: rgba(248,250,252,0.55);
+}
+
+/* Buttons */
+button{
+  border-color: rgba(212,175,55,0.22) !important;
+  background: rgba(255,255,255,0.06) !important;
+  color: var(--ink) !important;
+}
+button:hover{
+  border-color: rgba(212,175,55,0.32) !important;
+  background: rgba(255,255,255,0.10) !important;
+}
+
+.ctaPrimary{
+  background: linear-gradient(180deg, rgba(212,175,55,0.22), rgba(212,175,55,0.10)) !important;
+  border-color: rgba(212,175,55,0.45) !important;
+  color: #fff !important;
+  box-shadow: 0 10px 28px rgba(212,175,55,0.12);
+}
+
+.ctaSecondary{
+  border-color: rgba(212,175,55,0.28) !important;
+}
+
+/* Tabs */
+.tabbtn{
+  border-color: rgba(255,255,255,0.10) !important;
+}
+.tabbtn.active{
+  background: rgba(212,175,55,0.18) !important;
+  border-color: rgba(212,175,55,0.35) !important;
+  color: #fff !important;
+}
+
+/* Pills/badges */
+.pill{
+  background: rgba(255,255,255,0.06) !important;
+  border-color: rgba(255,255,255,0.10) !important;
+  color: var(--ink) !important;
+}
+
+/* ===== Admin-only helpers (DB usage bar + alerts) ===== */
+.adminAlertBanner{
+  padding:10px 12px;
+  border-radius:10px;
+  margin:10px 0 0 0;
+  border:1px solid rgba(212,175,55,0.25);
+  background: rgba(212,175,55,0.10);
+  color:#ffd36e;
+  font-weight:600;
+}
+.adminAlertBanner.urgent{
+  border-color: rgba(255,77,77,0.35);
+  background: rgba(255,77,77,0.10);
+  color:#ffb3b3;
+}
+
+.progressOuter{
+  width:100%;
+  height:14px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.04);
+  overflow:hidden;
+}
+.progressInner{
+  height:100%;
+  width:0%;
+  border-radius:999px;
+  background: linear-gradient(90deg, rgba(212,175,55,0.55), rgba(212,175,55,0.95));
+}
+.progressInner.warn{
+  background: linear-gradient(90deg, rgba(255,179,71,0.55), rgba(255,179,71,0.95));
+}
+.progressInner.urgent{
+  background: linear-gradient(90deg, rgba(255,77,77,0.55), rgba(255,77,77,0.95));
+}
+
+
+
+/* ===== Admin v2 ===== */
+.kpiGrid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:10px; }
+@media (max-width: 900px){ .kpiGrid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+.kpiCard { border:1px solid #222; background:#111; border-radius:12px; padding:10px; }
+.kpiLabel { font-size:12px; color:#b9b9b9; }
+.kpiValue { font-size:22px; font-weight:700; margin-top:4px; color:#fff; }
+.adminChart { width:100%; height:auto; display:block; border:1px solid #222; border-radius:12px; background:#0b0b0b; }
+.adminTable { width:100%; border-collapse: collapse; }
+.adminTable th, .adminTable td { border-bottom:1px solid #222; padding:10px; vertical-align:top; }
+.adminTable th { text-align:left; font-size:12px; color:#b9b9b9; font-weight:600; }
+.adminDetails summary { cursor:pointer; color:#d6b15f; }
