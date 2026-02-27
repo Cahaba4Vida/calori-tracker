@@ -2490,7 +2490,7 @@ function bindUI() {
   bindClick('photoLabelBtn', () => { activePhotoMode = 'label'; const n = el('photoModeCameraInput'); if (n) n.click(); });
   bindClick('photoPlateBtn', () => { activePhotoMode = 'plate'; const n = el('photoModeCameraInput'); if (n) n.click(); });
 
-  bindClick('voiceToggleBtn', () => {
+  window.__voiceToggleHandler = window.__voiceToggleHandler || (() => {
     unlockAudioOnce();
     const recognition = ensureVoiceRecognition();
     if (!recognition) {
@@ -2517,6 +2517,17 @@ function bindUI() {
       setStatus(`Unable to start voice input: ${e && e.message ? e.message : e}`);
     }
   });
+  bindClick('voiceToggleBtn', window.__voiceToggleHandler);
+  if (!window.__voiceDelegateInstalled) {
+    window.__voiceDelegateInstalled = true;
+    document.addEventListener('click', (ev) => {
+      const t = ev && ev.target;
+      if (t && t.id === 'voiceToggleBtn') {
+        ev.preventDefault();
+        try { window.__voiceToggleHandler && window.__voiceToggleHandler(); } catch (_) {}
+      }
+    }, true);
+  }
 
   bindClick('toggleDailyGoalsBtn', () => toggleSection('dailyGoalsBody', 'toggleDailyGoalsBtn'));
   bindClick('toggleAddFoodBtn', () => toggleSection('addFoodBody', 'toggleAddFoodBtn'));
