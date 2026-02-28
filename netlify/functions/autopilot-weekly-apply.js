@@ -62,8 +62,8 @@ exports.handler = async (event, context) => {
   // Upsert calorie goal (supports either schema)
   try {
     await query(
-      `insert into calorie_goals(user_id, daily_calories, created_at, updated_at)
-       values ($1, $2, now(), now())
+      `insert into calorie_goals(user_id, daily_calories, updated_at)
+       values ($1, $2, now())
        on conflict (user_id) do update set daily_calories=excluded.daily_calories, updated_at=now()`,
       [userId, appliedGoal]
     );
