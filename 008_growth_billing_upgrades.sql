@@ -1,19 +1,36 @@
-alter table user_profiles
-  add column if not exists plan_tier text not null default 'free',
-  add column if not exists subscription_status text not null default 'inactive',
-  add column if not exists stripe_customer_id text,
-  add column if not exists stripe_subscription_id text,
-  add column if not exists subscription_current_period_end timestamptz;
+const fs = require('fs');
 
-create index if not exists user_profiles_plan_tier_idx on user_profiles(plan_tier);
+const app = fs.readFileSync('app.js', 'utf8');
 
-create table if not exists ai_usage_events (
-  id bigserial primary key,
-  user_id text not null references user_profiles(user_id) on delete cascade,
-  entry_date date not null,
-  action_type text not null,
-  created_at timestamptz not null default now()
-);
+const conflictTargets = [
+  'app.js',
+  'index.html',
+  'styles.css',
+  'netlify/functions/demo-openai.js',
+  'netlify/functions/voice-food-add.js'
+];
 
-create index if not exists ai_usage_events_user_date_idx on ai_usage_events(user_id, entry_date);
-create index if not exists ai_usage_events_user_created_idx on ai_usage_events(user_id, created_at desc);
+function assert(cond, msg) {
+  if (!cond) {
+    console.error(`FAIL: ${msg}`);
+    process.exitCode = 1;
+  }
+}
+
+for (const file of conflictTargets) {
+  if (!fs.existsSync(file)) continue;
+  const text = fs.readFileSync(file, 'utf8');
+  assert(!text.includes('<<<<<<< '), `${file} should not contain unresolved merge marker <<<<<<<`);
+  assert(!text.includes('\n=======\n'), `${file} should not contain unresolved merge marker =======`);
+  assert(!text.includes('>>>>>>> '), `${file} should not contain unresolved merge marker >>>>>>>`);
+}
+
+assert(!app.includes('function showEstimateModal('), 'legacy estimate modal renderer should be removed');
+assert(!app.includes('function hideEstimateModal('), 'legacy estimate modal hide function should be removed');
+assert(!app.includes('api("/api/entries-add"'), 'api helper should not receive /api-prefixed path');
+assert(app.includes("await api('entries-add'"), 'entries-add should use api helper canonical path');
+
+if (process.exitCode) {
+  process.exit(process.exitCode);
+}
+console.log('Smoke checks passed.');

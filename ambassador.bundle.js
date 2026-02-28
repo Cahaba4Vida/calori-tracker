@@ -1,213 +1,69 @@
-(function () {
-  function el(id) { return document.getElementById(id); }
-  function setText(target, msg) {
-    const n = typeof target === 'string' ? el(target) : target;
-    if (n) n.innerText = msg || '';
-  }
+(function initAdminRender(global) {
+  function renderGoalProgress(el, stats) {
+    const wau = Number(stats.active_users_7d || 0);
+    const paid = Number(stats.paying_users_total || 0);
+    const wauGoal = Math.max(1, Number(stats.weekly_active_goal || 500));
+    const paidGoal = Math.max(1, Number(stats.paying_users_goal || 30));
+    const wauPct = Math.min(100, Math.round((wau / wauGoal) * 100));
+    const paidPct = Math.min(100, Math.round((paid / paidGoal) * 100));
 
-  function getEmail() { return (localStorage.getItem('amb_email') || el('ambEmailInput')?.value || '').trim(); }
-  function getToken() { return (localStorage.getItem('amb_token') || el('ambTokenInput')?.value || '').trim(); }
+    el('wauGoalTarget').innerText = String(wauGoal);
+    el('paidGoalTarget').innerText = String(paidGoal);
+    el('wauGoalInput').value = String(wauGoal);
+    el('paidGoalInput').value = String(paidGoal);
+    el('freeFoodLimitInput').value = String(stats.free_food_entries_per_day || 5);
+    el('freeAiLimitInput').value = String(stats.free_ai_actions_per_day || 3);
+    el('freeHistoryDaysInput').value = String(stats.free_history_days || 20);
+    el('monthlyPriceInput').value = String(stats.monthly_price_usd || 5);
+    el('yearlyPriceInput').value = String(stats.yearly_price_usd || 50);
+    el('monthlyUpgradeUrlInput').value = stats.monthly_upgrade_url || '';
+    el('yearlyUpgradeUrlInput').value = stats.yearly_upgrade_url || '';
+    el('manageSubUrlInput').value = stats.manage_subscription_url || '';
+    el('wauGoalBar').style.width = `${wauPct}%`;
+    el('paidGoalBar').style.width = `${paidPct}%`;
+    el('wauGoalLabel').innerText = `${wau} / ${wauGoal} (${wauPct}%)`;
+    el('paidGoalLabel').innerText = `${paid} / ${paidGoal} (${paidPct}%)`;
+    el('billingHealthSummary').innerText = `At-risk paying users: ${stats.at_risk_paying_users_total || 0} • Payment failed (7d): ${stats.payment_failed_7d || 0} • Webhook failures (24h): ${stats.webhook_failures_24h || 0} • Reconcile errors (24h): ${stats.reconcile_errors_24h || 0} • Alerts sent (24h): ${stats.alerts_sent_24h || 0} • Upgrade clicks (7d): ${stats.upgrade_clicks_7d || 0} • Manage clicks (7d): ${stats.manage_subscription_clicks_7d || 0}`;
+    el('webhookEventsOut').innerText = JSON.stringify(stats.recent_webhook_events || [], null, 2);
 
-  async function api(path, opts = {}) {
-    const headers = {
-      ...(opts.headers || {}),
-      'x-ambassador-email': getEmail(),
-      'x-ambassador-token': getToken(),
-    };
-    const r = await fetch('/api/' + path, { ...opts, headers });
-    const txt = await r.text();
-    let body = null;
-    try { body = txt ? JSON.parse(txt) : null; } catch { body = { raw: txt }; }
-    if (!r.ok) throw new Error((body && (body.error || body.message)) ? (body.error || body.message) : ('Request failed: ' + r.status));
-    return body;
-  }
-
-  function money(cents) {
-    const v = Number(cents || 0) / 100;
-    return '$' + v.toFixed(2);
-  }
-
-  function escapeHtml(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
-
-  function formatDateTime(v) {
+    // DB usage (DB1)
     try {
-      if (!v) return '';
-      const d = new Date(v);
-      if (Number.isNaN(d.getTime())) return String(v);
-      return d.toLocaleString();
-    } catch {
-      return String(v || '');
-    }
-  }
+      const bytes = Number(stats.db_size_bytes || 0);
+      const gb = (bytes / 1024 / 1024 / 1024);
+      const gbRounded = Math.round(gb * 1000) / 1000;
+      const maxGb = Number(stats.max_db_size_gb || 0.49);
+      const pct = maxGb > 0 ? Math.min(100, (gb / maxGb) * 100) : 0;
+      const pctRounded = Math.round(pct * 10) / 10;
+      const urgentAt = Number(stats.urgent_db_threshold_gb || 0.4);
+      const isUrgent = gb >= urgentAt;
 
-  function parseQuery() {
-    const q = new URLSearchParams(location.search || '');
-    const email = q.get('email');
-    const token = q.get('token');
-    if (email && el('ambEmailInput')) el('ambEmailInput').value = email;
-    if (token && el('ambTokenInput')) el('ambTokenInput').value = token;
-  }
-
-  async function refreshUsers() {
-    const status = el('ambUsersStatus');
-    const tbody = el('ambUsersTbody');
-    if (tbody) tbody.innerHTML = '';
-    setText(status, 'Loading…');
-    try {
-      const j = await api('ambassador-users-list', { method: 'GET' });
-      await loadAmbassadorStats();
-      const rows = j.users || [];
-      if (!rows.length) { setText(status, 'No referred users yet.'); return; }
-      setText(status, '');
-      for (const u of rows) {
-        const tr = document.createElement('tr');
-        const price = (u.price_paid_cents != null && Number.isFinite(Number(u.price_paid_cents))) ? money(Number(u.price_paid_cents)) : '—';
-        const currency = (u.currency || '').toUpperCase();
-        const sub = u.stripe_subscription_status ? String(u.stripe_subscription_status) : '—';
-        tr.innerHTML = `
-          <td>${escapeHtml(u.email || '')}</td>
-          <td class="mono">${escapeHtml(u.user_id || '')}</td>
-          <td>${escapeHtml(u.status || 'referred')}</td>
-          <td>${escapeHtml(sub)}</td>
-          <td>${escapeHtml(price)} ${escapeHtml(currency)}</td>
-          <td>${escapeHtml(formatDateTime(u.first_seen_at))}</td>
-          <td>${escapeHtml(formatDateTime(u.last_seen_at))}</td>
-        `;
-        tbody.appendChild(tr);
+      const bar = el('dbUsageBar');
+      if (bar) {
+        bar.style.width = `${pct}%`;
+        bar.classList.toggle('urgent', isUrgent);
+        bar.classList.toggle('warn', !isUrgent && pct >= 85);
       }
-    } catch (e) {
-      setText(status, e.message || String(e));
-    }
-  }
 
-  async function authorize() {
-    const email = (el('ambEmailInput')?.value || '').trim();
-    const token = (el('ambTokenInput')?.value || '').trim();
-    if (!email || !token) return setText('ambAuthStatus', 'Enter email + token.');
-    localStorage.setItem('amb_email', email);
-    localStorage.setItem('amb_token', token);
+      const label = el('dbUsageLabel');
+      if (label) {
+        label.innerText = `${gbRounded} / ${maxGb} GB (${pctRounded}%)`;
+      }
 
-    try {
-      const j = await api('ambassador-whoami', { method: 'GET' });
-      el('ambProtected')?.classList.remove('hidden');
-      setText('ambAuthStatus', 'Authorized as ' + (j.ambassador?.email || email));
+      const status = el('dbUsageStatus');
+      if (status) {
+        status.innerText = isUrgent ? `URGENT ≥ ${urgentAt} GB` : (pct >= 85 ? 'Warning' : 'OK');
+      }
 
-      const monthly = j.ambassador?.monthly_price_cents;
-      const yearly = j.ambassador?.yearly_price_cents;
-      if (el('ambMonthlyLabel')) el('ambMonthlyLabel').innerText = monthly != null ? money(monthly) : '—';
-      if (el('ambYearlyLabel')) el('ambYearlyLabel').innerText = yearly != null ? money(yearly) : '—';
-      await loadAmbassadorStats();
-
-      try {
-        const code = (j.ambassador?.referral_code || '').trim();
-        if (code) {
-          const link = (window.location.origin || '') + '/?ref=' + encodeURIComponent(code);
-          const a = el('ambReferralLink');
-          const t = el('ambReferralLinkText');
-          if (a) { a.href = link; a.innerText = 'Open referral link'; }
-          if (t) t.innerText = link;
+      const banner = el('dbUrgentBanner');
+      if (banner) {
+        banner.classList.toggle('hidden', !isUrgent);
+        banner.classList.toggle('urgent', isUrgent);
+        if (isUrgent) {
+          banner.innerText = `🚨 URGENT: DB1 usage is ${gbRounded} GB (≥ ${urgentAt} GB). Consider splitting to DB2 soon.`;
         }
-      } catch (e) {}
-
-      try { await refreshUsers(); } catch (e) {}
-    } catch (e) {
-      el('ambProtected')?.classList.add('hidden');
-      setText('ambAuthStatus', e.message || String(e));
-    }
-  }
-
-  function clearAuth() {
-    localStorage.removeItem('amb_email');
-    localStorage.removeItem('amb_token');
-    if (el('ambEmailInput')) el('ambEmailInput').value = '';
-    if (el('ambTokenInput')) el('ambTokenInput').value = '';
-    el('ambProtected')?.classList.add('hidden');
-    setText('ambAuthStatus', 'Cleared.');
-  }
-
-  async function createCheckout(interval) {
-    setText('checkoutStatus', 'Creating…');
-    el('checkoutLinkWrap')?.classList.add('hidden');
-
-    const customer_email = (el('checkoutCustomerEmail')?.value || '').trim();
-    if (!customer_email) {
-      setText('checkoutStatus', 'Customer email is required.');
-      return;
-    }
-
-    try {
-      const j = await api('ambassador-create-checkout', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ customer_email, interval })
-      });
-      const url = j.checkout_url || j.url;
-      if (url) {
-        el('checkoutLink').href = url;
-        el('checkoutUrlText').innerText = url;
-        el('checkoutLinkWrap')?.classList.remove('hidden');
-        setText('checkoutStatus', 'Ready.');
-      } else {
-        setText('checkoutStatus', 'No URL returned.');
       }
-    } catch (e) {
-      setText('checkoutStatus', e.message || String(e));
-    }
+    } catch (_) {}
   }
 
-  async function copyCheckout() {
-    const url = el('checkoutUrlText')?.innerText || '';
-    if (!url) return setText('checkoutStatus', 'Create a link first.');
-    try {
-      await navigator.clipboard.writeText(url);
-      setText('checkoutStatus', 'Copied.');
-    } catch {
-      setText('checkoutStatus', 'Copy failed — select and copy manually.');
-    }
-  }
-
-  parseQuery();
-
-  if (el('ambEmailInput')) el('ambEmailInput').value = localStorage.getItem('amb_email') || el('ambEmailInput').value || '';
-  if (el('ambTokenInput')) el('ambTokenInput').value = localStorage.getItem('amb_token') || el('ambTokenInput').value || '';
-
-  el('ambAuthBtn')?.addEventListener('click', authorize);
-  el('ambClearBtn')?.addEventListener('click', clearAuth);
-  el('createCheckoutMonthlyBtn')?.addEventListener('click', () => createCheckout('month'));
-  el('createCheckoutYearlyBtn')?.addEventListener('click', () => createCheckout('year'));
-  el('copyCheckoutBtn')?.addEventListener('click', copyCheckout);
-  el('copyReferralBtn')?.addEventListener('click', async () => {
-    try {
-      const txt = el('ambReferralLinkText')?.innerText || '';
-      if (txt) await navigator.clipboard.writeText(txt);
-    } catch (e) {}
-  });
-  el('refreshUsersBtn')?.addEventListener('click', refreshUsers);
-
-  if (getEmail() && getToken()) {
-    window.setTimeout(() => authorize(), 20);
-  }
-})();
-  async function loadAmbassadorStats() {
-    try {
-      const j = await api('ambassador-stats', { method: 'GET' });
-      const t = j.totals || {};
-      if (el('ambReferredCount')) el('ambReferredCount').innerText = String(t.referred ?? '0');
-      if (el('ambPaidCount')) el('ambPaidCount').innerText = String(t.paid ?? '0');
-      const cur = (j.currency || 'usd').toUpperCase();
-      const total = t.total_first_payment?.cents != null ? money(t.total_first_payment.cents) : '—';
-      const mrr = t.active_mrr_equiv?.cents != null ? money(t.active_mrr_equiv.cents) : '—';
-      if (el('ambTotalFirstPaid')) el('ambTotalFirstPaid').innerText = total;
-      if (el('ambActiveMrr')) el('ambActiveMrr').innerText = mrr;
-    } catch (e) {
-      // Non-fatal
-    }
-  }
-
+  global.AdminRender = { renderGoalProgress };
+})(window);
