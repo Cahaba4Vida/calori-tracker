@@ -29,11 +29,16 @@ exports.handler = async (event, context) => {
   const todayISO = getDenverDateISO(new Date());
   const thisWeek = weekStartISO(todayISO);
 
-  // Mark reviewed regardless
-  await query('update user_profiles set autopilot_last_review_week = $2 where user_id=$1', [userId, thisWeek]);
+  // Mark reviewed regardless (best-effort; column may not exist yet)
+  let reviewPersisted = true;
+  try {
+    await query('update user_profiles set autopilot_last_review_week = $2 where user_id=$1', [userId, thisWeek]);
+  } catch (e) {
+    reviewPersisted = false;
+  }
 
   if (!body.accept) {
-    return json(200, { ok: true, applied: false, week_start: thisWeek });
+    return json(200, { ok: true, applied: false, week_start: thisWeek, review_persisted: reviewPersisted });
   }
 
   // Recompute suggestion server-side by calling the logic in autopilot-weekly-suggest (inline minimal)
@@ -45,20 +50,31 @@ exports.handler = async (event, context) => {
     return json(400, { error: 'suggested_daily_calories must be a reasonable number' });
   }
 
+  try {
   const gr = await query('select daily_calories from calorie_goals where user_id=$1', [userId]);
   const currentGoal = gr.rows[0]?.daily_calories == null ? null : Number(gr.rows[0].daily_calories);
-  if (!currentGoal) return json(400, { error: 'No current calorie goal to update' });
+  if (!Number.isFinite(currentGoal) || currentGoal <= 0) return json(400, { error: 'No current calorie goal to update' });
 
   const maxStep = 150;
   const delta = Math.max(-maxStep, Math.min(maxStep, suggested - currentGoal));
   const appliedGoal = Math.round((currentGoal + delta) / 10) * 10;
 
-  await query(
-    `insert into calorie_goals(user_id, daily_calories, created_at, updated_at)
-     values ($1, $2, now(), now())
-     on conflict (user_id) do update set daily_calories=excluded.daily_calories, updated_at=now()`,
-    [userId, appliedGoal]
-  );
+  // Upsert calorie goal (supports either schema)
+  try {
+    await query(
+      `insert into calorie_goals(user_id, daily_calories, updated_at)
+       values ($1, $2, now())
+       on conflict (user_id) do update set daily_calories=excluded.daily_calories, updated_at=now()`,
+      [userId, appliedGoal]
+    );
+  } catch (e) {
+    // fallback: some DBs store goal on user_profiles
+    await query('update user_profiles set daily_calories=$2 where user_id=$1', [userId, appliedGoal]);
+  }
 
-  return json(200, { ok: true, applied: true, week_start: thisWeek, applied_daily_calories: appliedGoal });
+  return json(200, { ok: true, applied: true, week_start: thisWeek, applied_daily_calories: appliedGoal, review_persisted: reviewPersisted });
+  } catch (e) {
+    return json(500, { error: 'Failed to apply autopilot update', detail: String(e && e.message || e) });
+  }
+
 };
