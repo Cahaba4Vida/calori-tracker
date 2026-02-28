@@ -269,7 +269,21 @@
           </div>
 
           <div id="settingsTabContent">
-            <div data-tab-content="profile" class="settingsTabPane"></div>
+            <div data-tab-content="profile" class="settingsTabPane">
+  <div class="settingsSection" data-tab="profile">
+    <h3>Coach</h3>
+    <div class="row spaceBetween alignCenter">
+      <div>
+        <div style="font-weight:600;">Voice Mode</div>
+        <div class="muted" style="font-size:12px;">When enabled, the bottom-right Coach button starts voice input (no chat box).</div>
+      </div>
+      <label class="switch" title="Toggle voice dictation for Coach">
+        <input id="coachVoiceModeToggle" type="checkbox"/>
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+</div>
             <div data-tab-content="nutrition" class="settingsTabPane hidden"></div>
             <div data-tab-content="autopilot" class="settingsTabPane hidden"></div>
             <div data-tab-content="system" class="settingsTabPane hidden"></div>
@@ -394,6 +408,21 @@
 <div class="deviceList muted" id="deviceList">Loading devices…</div>
 <div class="muted" id="deviceSettingsStatus" style="margin-top:8px;"></div>
 </section></div>
+<div class="settingsSection" data-tab="nutrition" id="rolloverCaloriesSettings">
+  <div class="settingsHeaderRow"><h3 style="margin:0;">Rollover Calories</h3></div>
+  <div class="row spaceBetween alignCenter">
+    <div>
+      <div style="font-weight:600;">Enable rollover</div>
+      <div class="muted" style="font-size:12px;">If you eat under/over your target, the difference carries into tomorrow (one-day carry, capped).</div>
+    </div>
+    <label class="switch" title="Enable rollover calories">
+      <input id="rolloverCaloriesToggle" type="checkbox"/>
+      <span class="slider"></span>
+    </label>
+  </div>
+  <div class="muted" id="rolloverCaloriesStatus" style="margin-top:8px;"></div>
+</div>
+
 <!-- Cheat Day + Autopilot Readiness (tabbed settings sections) -->
 <div class="settingsSection" data-tab="autopilot" id="cheatDaySettings">
   <div class="settingsHeaderRow"><h3 style="margin:0;">Cheat Day</h3><button id="cheatDaySaveBtn" class="btnMini">Save</button></div>
@@ -508,11 +537,15 @@
 <section class="card floatingChat" id="coachChatCard">
 <div class="chatHeaderRow">
 <h2>Coach Chat</h2>
-<button aria-controls="coachChatBody" aria-expanded="true" class="sectionToggleBtn" id="chatToggleBtn" type="button">Hide</button>
+<div class="row" style="gap:10px; align-items:center;">
+  
+  <button aria-controls="coachChatBody" aria-expanded="true" class="sectionToggleBtn" id="chatToggleBtn" type="button">Hide</button>
+</div>
 </div>
 <div id="coachChatBody">
-<div class="row">
+<div class="row" id="coachChatInputRow">
 <input id="chatInput" placeholder="Ask about today's log…"/>
+<button class="ghost" id="coachVoiceBtn" style="display:none" title="Speak to Coach">🎤</button>
 <button id="sendChatBtn">Send</button>
 </div>
 <div aria-live="polite" class="thinking hidden" id="aiThinking">
@@ -521,6 +554,8 @@
 </span>
 <span>AI is thinking…</span>
 </div>
+<div id="coachPromptPanel" class="coachPromptPanel hidden"></div>
+
 <pre class="pre" id="chatOutput"></pre>
 </div>
 </section><div class="adminFooter" id="adminFooter">
@@ -530,6 +565,21 @@
 <button aria-controls="coachChatCard" aria-expanded="false" aria-label="Open coach chat" class="coachFab" id="coachFab" type="button">
 <img alt="Coach" src="assets/coach_icon.png">
 </img></button>
+
+<!-- Coach Daily Nudge Bubble (appears near Coach button) -->
+<div id="coachNudgeBubble" class="coachNudgeBubble hidden" aria-live="polite">
+  <div class="coachNudgeTitle" id="coachNudgeTitle">Quick idea…</div>
+  <div class="coachNudgeChips" id="coachNudgeChips"></div>
+</div>
+
+<!-- Coach Voice Listening Overlay -->
+<div class="coachListeningOverlay hidden" id="coachListeningOverlay" aria-hidden="true">
+  <div class="coachListeningToast" role="status" aria-live="polite">
+    <span class="coachListeningIcon">🎤</span>
+    <span>Listening…</span>
+  </div>
+</div>
+
 <div class="onboardingOverlay hidden" id="onboardingOverlay">
 <div class="onboardingModal">
 <div class="onboardingStep">Step <span id="onboardingStepNum">1</span> of 3</div>

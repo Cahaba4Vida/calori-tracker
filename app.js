@@ -1,4 +1,14 @@
-console.log("APP_VERSION v12");
+c
+function escapeHtml(str) {
+  const s = String(str == null ? '' : str);
+  return s.replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+}
+
+onsole.log("APP_VERSION v12");
 
 // --- iOS Safari audio unlock + playback helpers (prevents autoplay blocking) ---
 let __audioUnlocked = false;
@@ -47,6 +57,35 @@ async function playAssistantAudio(j) {
     try {
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(new SpeechSynthesisUtterance(j.reply));
+    } catch (e) {}
+  }
+}
+
+async function playAssistantAudioAndWait(j) {
+  // Prefer server-provided audio when available; resolve when playback finishes.
+  if (j && j.audio_base64) {
+    try {
+      const url = base64ToBlobUrl(j.audio_base64, j.audio_mime_type || 'audio/mpeg');
+      const audio = new Audio(url);
+      return await new Promise((resolve) => {
+        const cleanup = () => { try { URL.revokeObjectURL(url); } catch {} resolve(); };
+        audio.addEventListener('ended', cleanup, { once: true });
+        audio.addEventListener('error', cleanup, { once: true });
+        audio.play().catch(cleanup);
+      });
+    } catch (e) {
+      // fall through to TTS
+    }
+  }
+  if (j && j.reply && 'speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.cancel();
+      return await new Promise((resolve) => {
+        const u = new SpeechSynthesisUtterance(j.reply);
+        u.onend = () => resolve();
+        u.onerror = () => resolve();
+        window.speechSynthesis.speak(u);
+      });
     } catch (e) {}
   }
 }
@@ -561,6 +600,22 @@ function macroPct(total, goal) {
 
 
 const el = (id) => document.getElementById(id);
+
+const COACH_PENDING_KEY = 'coach_pending_food_log';
+function getCoachPending() {
+  try {
+    const raw = localStorage.getItem(COACH_PENDING_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+function setCoachPending(v) {
+  try {
+    if (v) localStorage.setItem(COACH_PENDING_KEY, JSON.stringify(v));
+    else localStorage.removeItem(COACH_PENDING_KEY);
+  } catch {}
+}
 
 function setStatus(msg) {
   const m = msg || '';
@@ -1363,14 +1418,26 @@ async function loadGoal() {
     fat_g: profileState.macro_fat_g
   };
 
-  // Store base daily calories for cheat-day calculations (base stays server-driven)
+  // Store base daily calories (server truth)
   try { localStorage.setItem('calorie_goal', String(j.daily_calories ?? 0)); } catch(e) {}
+
+  // Prefer server-computed effective goal (rollover), fall back to client-side adjustments.
   const _baseDaily = j.daily_calories ?? null;
+  const _serverEffective = (j.effective_daily_calories != null) ? Number(j.effective_daily_calories) : null;
   const _activeDateISO = (typeof activeEntryDateISO === 'function') ? activeEntryDateISO() : null;
-  const _effectiveDaily = (_baseDaily != null && _activeDateISO && typeof getEffectiveDailyCalorieGoal === 'function')
+  const _fallbackEffective = (_baseDaily != null && _activeDateISO && typeof getEffectiveDailyCalorieGoal === 'function')
     ? getEffectiveDailyCalorieGoal(new Date(_activeDateISO))
     : (_baseDaily ?? '—');
-  el('todayGoal').innerText = _effectiveDaily;
+  el('todayGoal').innerText = (_serverEffective != null ? _serverEffective : _fallbackEffective);
+
+  // Cache rollover state for settings display.
+  try {
+    if (typeof j.rollover_enabled !== 'undefined') localStorage.setItem('rollover_calories_enabled', j.rollover_enabled ? '1' : '0');
+    if (typeof j.rollover_cap !== 'undefined') localStorage.setItem('rollover_calories_max', String(j.rollover_cap || 500));
+    if (typeof j.rollover_delta !== 'undefined') localStorage.setItem('rollover_calories_delta_today', String(j.rollover_delta || 0));
+    if (typeof j.effective_daily_calories !== 'undefined') localStorage.setItem('rollover_effective_today', String(j.effective_daily_calories || 0));
+    localStorage.setItem('rollover_effective_today_date', activeEntryDateISO());
+  } catch(e) {}
 
   el('todayProteinGoal').innerText = fmtGoal(macroGoals.protein_g);
   el('todayCarbsGoal').innerText = fmtGoal(macroGoals.carbs_g);
@@ -1780,6 +1847,186 @@ function ensureVoiceRecognition() {
   return voiceRecognition;
 }
 
+
+function stopCoachVoiceRecognition() {
+  if (!coachVoiceRecognition) return;
+  coachVoiceIsListening = false;
+  setCoachListeningOverlay(false);
+  updateCoachVoiceBtn();
+  try { coachVoiceRecognition.stop(); } catch {}
+}
+
+function setCoachListeningOverlay(on) {
+  const ov = el('coachListeningOverlay');
+  if (!ov) return;
+  if (on) ov.classList.remove('hidden'); else ov.classList.add('hidden');
+  ov.setAttribute('aria-hidden', on ? 'false' : 'true');
+}
+
+function updateCoachVoiceBtn() {
+  const voiceMode = getCoachVoiceMode();
+  const btn = el('coachVoiceBtn');
+  if (btn) {
+    // Only show the in-chat mic button when voice mode is enabled AND the chat UI is open for review.
+    btn.style.display = voiceMode ? '' : 'none';
+    btn.innerText = coachVoiceIsListening ? '■' : '🎤';
+  }
+  // Hide the text input row entirely while Voice Mode is enabled (voice-first UX).
+  const row = el('coachChatInputRow');
+  if (row) row.style.display = voiceMode ? 'none' : '';
+}
+let coachVoiceFabFlow = false;
+
+async function processCoachTranscript(text) {
+  const t = (text || '').trim();
+  if (!t) return;
+  if (coachVoiceFabFlow) {
+    try { await sendChatMessage(t, { openAfterReply: true, clearInput: true }); } catch {}
+    return;
+  }
+  const field = el('chatInput');
+  if (field) field.value = [field.value, t].filter(Boolean).join(' ').trim();
+  try { await sendChat(); } catch {}
+}
+
+// Fallback for browsers without SpeechRecognition (e.g., iOS Safari): record audio + server transcription.
+let coachMediaRecorder = null;
+let coachMediaStream = null;
+let coachAudioCtx = null;
+let coachSilenceTimerMs = 0;
+let coachHeardSpeech = false;
+
+async function startCoachVoiceMediaRecorderSilence() {
+  if (coachVoiceIsListening) return;
+  const ok = await ensureMicPermission().catch(() => false);
+  if (!ok) return;
+
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    setStatus('Voice dictation not supported in this browser.');
+    return;
+  }
+
+  coachVoiceIsListening = true;
+  coachHeardSpeech = false;
+  coachSilenceTimerMs = 0;
+  setCoachListeningOverlay(true);
+  updateCoachVoiceBtn();
+
+  coachMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const chunks = [];
+  coachMediaRecorder = new MediaRecorder(coachMediaStream);
+  coachMediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+  coachMediaRecorder.onstop = async () => {
+    try {
+      const blob = new Blob(chunks, { type: coachMediaRecorder.mimeType || 'audio/webm' });
+      const buf = await blob.arrayBuffer();
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      const j = await api('audio-transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audio_base64: b64, mime_type: blob.type || 'audio/webm', filename: 'coach.webm' })
+      });
+      await processCoachTranscript(j?.transcript || '');
+    } catch (e) {
+      setStatus('Could not transcribe audio.');
+    } finally {
+      coachVoiceIsListening = false;
+      coachVoiceFabFlow = false;
+      setCoachListeningOverlay(false);
+      updateCoachVoiceBtn();
+      try { coachMediaStream?.getTracks()?.forEach(t => t.stop()); } catch {}
+      coachMediaStream = null;
+      coachMediaRecorder = null;
+      try { coachAudioCtx?.close(); } catch {}
+      coachAudioCtx = null;
+    }
+  };
+
+  // Silence detection using AnalyserNode.
+  coachAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = coachAudioCtx.createMediaStreamSource(coachMediaStream);
+  const analyser = coachAudioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  source.connect(analyser);
+  const data = new Uint8Array(analyser.fftSize);
+
+  const threshold = 0.018; // tuned for speech RMS
+  const pollMs = 200;
+  const stopAfterSilenceMs = 1200;
+  const maxMs = 15000;
+  let elapsed = 0;
+
+  function rms() {
+    analyser.getByteTimeDomainData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) {
+      const v = (data[i] - 128) / 128;
+      sum += v * v;
+    }
+    return Math.sqrt(sum / data.length);
+  }
+
+  const tick = () => {
+    if (!coachVoiceIsListening || !coachMediaRecorder) return;
+    elapsed += pollMs;
+    const r = rms();
+    if (r > threshold) {
+      coachHeardSpeech = true;
+      coachSilenceTimerMs = 0;
+    } else {
+      coachSilenceTimerMs += pollMs;
+    }
+
+    if ((coachHeardSpeech && coachSilenceTimerMs >= stopAfterSilenceMs) || elapsed >= maxMs) {
+      try { coachMediaRecorder.stop(); } catch {}
+      return;
+    }
+    setTimeout(tick, pollMs);
+  };
+
+  coachMediaRecorder.start();
+  setTimeout(tick, pollMs);
+}
+function ensureCoachVoiceRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return null;
+  if (coachVoiceRecognition) return coachVoiceRecognition;
+  coachVoiceRecognition = new SR();
+  coachVoiceRecognition.continuous = false;
+  coachVoiceRecognition.interimResults = false;
+  coachVoiceRecognition.lang = 'en-US';
+  coachVoiceRecognition.onresult = async (event) => {
+    const text = Array.from(event.results || []).map((r) => r[0]?.transcript || '').join(' ').trim();
+    await processCoachTranscript(text);
+  };
+coachVoiceRecognition.onend = () => {
+    coachVoiceIsListening = false;
+    coachVoiceFabFlow = false;
+    setCoachListeningOverlay(false);
+    updateCoachVoiceBtn();
+  };
+  coachVoiceRecognition.onerror = (e) => {
+    coachVoiceIsListening = false;
+    setCoachListeningOverlay(false);
+    updateCoachVoiceBtn();
+    setStatus(e?.error ? `Voice error: ${e.error}` : 'Voice error');
+  };
+  return coachVoiceRecognition;
+}
+async function ensureMicPermission() {
+  // Some browsers won't prompt for mic permission when using SpeechRecognition until start() is called,
+  // which can fail silently. We proactively request audio permission to surface the prompt.
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return true;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    try { stream.getTracks().forEach((t) => t.stop()); } catch {}
+    return true;
+  } catch (e) {
+    setStatus('Microphone access is blocked. Allow microphone permission in your browser settings, then try again.');
+    return false;
+  }
+}
+
 async function sendVoiceFoodMessage() {
   // Capture message immediately, append to UI, then queue the network call
   unlockAudioOnce();
@@ -2170,25 +2417,410 @@ async function finishDay() {
   setStatus('');
 }
 
-async function sendChat() {
-  const msg = el('chatInput').value.trim();
-  if (!msg) return;
+async function sendChatMessage(msg, opts = {}) {
+  const options = Object.assign({ openAfterReply: false, clearInput: false }, opts || {});
+  unlockAudioOnce();
+  const message = String(msg || '').trim();
+  if (!message) return;
 
   try {
     setThinking(true);
     setStatus('Thinking…');
+    const payload = getCoachPending()
+      ? { message, pending_food_log: getCoachPending() }
+      : { message };
+
     const j = await api('chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msg })
+      body: JSON.stringify(payload)
     });
+
+    // Optionally open the chat UI only after we have a reply (voice-first mode).
+    if (options.openAfterReply) {
+      const card = el('coachChatCard');
+      const fab = el('coachFab');
+    // Ensure Voice Mode UI state (hide input row) is applied before opening to prevent any flicker.
+    try { updateCoachVoiceBtn(); } catch {}
+      if (card) card.classList.add('open');
+      if (fab) fab.setAttribute('aria-expanded', 'true');
+    }
+
+    if (options.clearInput) {
+      const input = el('chatInput');
+      if (input) input.value = '';
+    }
+
     el('chatOutput').innerText = j.reply;
+    setCoachPending(j.pending_food_log || null);
+
+    if (j && j.logged_entry) {
+      try { await loadToday(); } catch (e) {}
+    }
+
+    // Keep the input row hidden while in Voice Mode (voice-first UX).
+    try { updateCoachVoiceBtn(); } catch {}
   } finally {
     setThinking(false);
     setStatus('');
   }
 }
 
+async function sendChatMessageAndSpeak(msg) {
+  unlockAudioOnce();
+  const message = String(msg || '').trim();
+  if (!message) return;
+  // If the daily nudge bubble is visible, keep it up while we think/speak.
+  try {
+    const b = el('coachNudgeBubble');
+    const t = el('coachNudgeTitle');
+    const c = el('coachNudgeChips');
+    if (b && t) {
+      b.classList.add('busy');
+      b.classList.remove('speaking');
+      t.textContent = 'Thinking…';
+      try { (c?.querySelectorAll('button') || []).forEach(btn => btn.disabled = true); } catch {}
+      b.classList.remove('hidden');
+    }
+  } catch {}
+  try {
+    setThinking(true);
+    setStatus('Thinking…');
+    const payload = getCoachPending()
+      ? { message, pending_food_log: getCoachPending() }
+      : { message };
+
+    const j = await api('chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    // Update transcript for later viewing, but do NOT open the chat UI in voice mode.
+    try { el('chatOutput').innerText = j.reply; } catch {}
+    setCoachPending(j.pending_food_log || null);
+
+    if (j && j.logged_entry) {
+      try { await loadToday(); } catch (e) {}
+    }
+
+    // Speak the assistant response if possible, and keep the nudge bubble visible until speech ends.
+    const __bubble = el('coachNudgeBubble');
+    const __titleEl = el('coachNudgeTitle');
+    const __chipsEl = el('coachNudgeChips');
+    if (__bubble && __titleEl) {
+      __bubble.classList.remove('busy');
+      __bubble.classList.add('speaking');
+      __titleEl.textContent = 'Speaking…';
+      try { (__chipsEl?.querySelectorAll('button') || []).forEach(b => b.disabled = true); } catch {}
+      __bubble.classList.remove('hidden');
+    }
+    try { await playAssistantAudioAndWait(j); } catch (e) {}
+    try { hideCoachNudgeBubble(); } catch {}
+
+    // Keep the input row hidden while in Voice Mode.
+    try { updateCoachVoiceBtn(); } catch {}
+  } finally {
+    setThinking(false);
+    setStatus('');
+  }
+}
+
+// ---- Coach quick prompts (AI-generated, data-aware) ----
+function getCoachPromptHistory() {
+  try { return JSON.parse(localStorage.getItem('coach_prompt_history') || '[]') || []; } catch { return []; }
+}
+function setCoachPromptHistory(arr) {
+  try { localStorage.setItem('coach_prompt_history', JSON.stringify(arr.slice(-12))); } catch {}
+}
+function shouldShowCoachPromptsNow() {
+  try {
+    const last = Number(localStorage.getItem('coach_last_prompt_shown') || '0');
+    const now = Date.now();
+    // "first time in a while" => 12 hours
+    return !last || (now - last) > 12 * 60 * 60 * 1000;
+  } catch {
+    return true;
+  }
+}
+function setCoachPromptsShownNow() {
+  try { localStorage.setItem('coach_last_prompt_shown', String(Date.now())); } catch {}
+}
+function hideCoachPromptPanel() {
+  const panel = el('coachPromptPanel');
+  if (panel) panel.classList.add('hidden');
+}
+function renderCoachPromptPanel(payload) {
+  const panel = el('coachPromptPanel');
+  if (!panel) return;
+  const title = String(payload?.title || "Try one of these:");
+  const prompts = Array.isArray(payload?.prompts) ? payload.prompts : [];
+  if (!prompts.length) { panel.classList.add('hidden'); return; }
+  panel.innerHTML = `
+    <div class="coachPromptTitle">${escapeHtml(title)}</div>
+    <div class="coachPromptChips">
+      ${prompts.map(p => `<button class="coachPromptChip" data-id="${escapeHtml(p.id || '')}" data-q="${escapeHtml(p.query || '')}">${escapeHtml(p.label || '')}</button>`).join('')}
+    </div>
+  `;
+  panel.classList.remove('hidden');
+  panel.querySelectorAll('button.coachPromptChip').forEach(btn => {
+    btn.onclick = async () => {
+      const q = btn.getAttribute('data-q') || '';
+      const id = btn.getAttribute('data-id') || '';
+      // Store history to reduce repetition
+      const hist = getCoachPromptHistory();
+      if (id) hist.push({ id, ts: Date.now() });
+      setCoachPromptHistory(hist);
+      hideCoachPromptPanel();
+      await sendChatMessage(q, { openAfterReply: false, clearInput: true });
+    };
+  });
+  // auto-hide after a few seconds unless user interacts
+  setTimeout(() => { hideCoachPromptPanel(); }, 4500);
+  // hide as soon as user types
+  const input = el('chatInput');
+  if (input) {
+    const handler = () => { hideCoachPromptPanel(); input.removeEventListener('input', handler); };
+    input.addEventListener('input', handler);
+  }
+}
+async function maybeShowCoachAiPrompts() {
+  if (!shouldShowCoachPromptsNow()) return;
+  // Don't show prompts in voice-first mode (no textbox UX).
+  if (getCoachVoiceMode && getCoachVoiceMode()) return;
+  try {
+    const hist = getCoachPromptHistory().map(x => x.id).filter(Boolean).slice(-8);
+    const j = await api('chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ intent: 'coach_prompts', recent_prompt_ids: hist })
+    });
+    if (j && Array.isArray(j.prompts) && j.prompts.length) {
+      renderCoachPromptPanel({ title: j.title || j.reply || "Ask coach about:", prompts: j.prompts });
+      setCoachPromptsShownNow();
+      // Also store the ids we just showed to reduce repetition next time.
+      const shownIds = j.prompts.map(p => p.id).filter(Boolean);
+      if (shownIds.length) {
+        const h = getCoachPromptHistory();
+        shownIds.forEach(id => h.push({ id, ts: Date.now() }));
+        setCoachPromptHistory(h);
+      }
+    }
+  } catch (e) {
+    // Non-blocking: ignore
+  }
+}
+
+
+// ===============================
+// COACH DAILY NUDGE (v15)
+// Shows a small "cute incentive" bubble near the Coach FAB once per day.
+// Uses AI-generated prompts when voice mode is OFF; shows a single "Talk" action when voice mode is ON.
+// ===============================
+function _coachTodayKey() {
+  try {
+    const d = new Date();
+    // local date key YYYY-MM-DD
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    return `${yyyy}-${mm}-${dd}`;
+  } catch {
+    return String(Date.now());
+  }
+}
+function shouldShowCoachDailyNudge() {
+  try {
+    const last = localStorage.getItem('coach_daily_nudge_date') || '';
+    return last !== _coachTodayKey();
+  } catch {
+    return true;
+  }
+}
+function setCoachDailyNudgeShown() {
+  try { localStorage.setItem('coach_daily_nudge_date', _coachTodayKey()); } catch {}
+  // Also update the prompt panel timer so we don't immediately show another set inside chat.
+  try { localStorage.setItem('coach_last_prompt_shown', String(Date.now())); } catch {}
+}
+function hideCoachNudgeBubble() {
+  const bubble = el('coachNudgeBubble');
+  if (bubble) {
+    bubble.classList.add('hidden');
+    bubble.classList.remove('busy');
+    bubble.classList.remove('speaking');
+  }
+}
+function renderCoachNudgeBubble(payload) {
+  const bubble = el('coachNudgeBubble');
+  const titleEl = el('coachNudgeTitle');
+  const chipsEl = el('coachNudgeChips');
+  if (!bubble || !titleEl || !chipsEl) return;
+
+  bubble.classList.remove('busy');
+  bubble.classList.remove('speaking');
+
+  const title = String(payload?.title || 'Quick idea…');
+  const prompts = Array.isArray(payload?.prompts) ? payload.prompts : [];
+
+  titleEl.textContent = title;
+  chipsEl.innerHTML = '';
+
+  // Render up to 2 chips.
+  prompts.slice(0,2).forEach(p => {
+    const btn = document.createElement('button');
+    btn.className = 'coachNudgeChip';
+    btn.type = 'button';
+    btn.textContent = String(p.label || 'Ask coach');
+    btn.dataset.q = String(p.query || '');
+    btn.onclick = async () => {
+      const q = btn.dataset.q || '';
+
+      // Voice Mode ON: keep the bubble visible (Thinking… → Speaking…) and speak the reply.
+      if (getCoachVoiceMode && getCoachVoiceMode()) {
+        try {
+          const b = el('coachNudgeBubble');
+          const t = el('coachNudgeTitle');
+          const c = el('coachNudgeChips');
+          if (b && t) {
+            b.classList.add('busy');
+            b.classList.remove('speaking');
+            t.textContent = 'Thinking…';
+            try { (c?.querySelectorAll('button') || []).forEach(x => x.disabled = true); } catch {}
+            b.classList.remove('hidden');
+          }
+        } catch {}
+
+        if (q) {
+          try { await sendChatMessageAndSpeak(q); } catch {}
+        }
+        return;
+      }
+      hideCoachNudgeBubble();
+
+      // Voice Mode OFF: open coach UI and send normally.
+      const card = el('coachChatCard');
+      const fab = el('coachFab');
+      if (card) card.classList.add('open');
+      if (fab) fab.setAttribute('aria-expanded', 'true');
+      try { updateCoachVoiceBtn(); } catch {}
+
+      if (q) {
+        try { await sendChatMessage(q, { openAfterReply: false, clearInput: true }); } catch {}
+      }
+    };
+    chipsEl.appendChild(btn);
+  });
+
+  bubble.classList.remove('hidden');
+}
+async function maybeShowCoachDailyNudge() {
+  if (!shouldShowCoachDailyNudge()) return;
+
+  // Don't show if user is not authenticated yet.
+  // (api('whoami') may be called elsewhere; we keep this lightweight and tolerate failure.)
+  try {
+    // Voice mode OFF: fetch AI-generated, data-aware prompts.
+    const hist = getCoachPromptHistory().map(x => x.id).filter(Boolean).slice(-8);
+    const j = await api('chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ intent: 'coach_prompts', recent_prompt_ids: hist })
+    });
+
+    if (j && Array.isArray(j.prompts) && j.prompts.length) {
+      renderCoachNudgeBubble({
+        title: j.title || j.reply || "Quick prompt for you:",
+        prompts: j.prompts
+      });
+
+      // Store prompt ids to reduce repetition next time.
+      try {
+        const shownIds = j.prompts.map(p => p.id).filter(Boolean);
+        if (shownIds.length) pushCoachPromptHistory(shownIds.map(id => ({ id })));
+      } catch {}
+
+      setCoachDailyNudgeShown();
+      setTimeout(hideCoachNudgeBubble, 6000);
+    } else {
+      // Fallback: still show something (non-repetitive via local rotation).
+      const fallback = [
+        { label: "📉 Weight trend", query: "How is my weight trend looking?" },
+        { label: "🍽 Meal ideas", query: "Give me 3 high-protein meal ideas." },
+        { label: "🏋 Workout plan", query: "Suggest a workout plan for this week." }
+      ];
+      const pick = fallback[Math.floor(Math.random()*fallback.length)];
+      renderCoachNudgeBubble({ title: "Quick prompt for you:", prompts: [pick] });
+      setCoachDailyNudgeShown();
+      setTimeout(hideCoachNudgeBubble, 6000);
+    }
+  } catch(e) {
+    // Silent fail (no nudge) to avoid breaking app start.
+  }
+}
+
+
+
+async function sendChat() {
+  const input = el('chatInput');
+  const msg = input ? input.value.trim() : '';
+  if (!msg) return;
+  await sendChatMessage(msg, { openAfterReply: false, clearInput: true });
+}
+
+
+function getCoachVoiceMode() {
+  try { return localStorage.getItem('coachVoiceMode') === '1'; } catch { return false; }
+}
+function setCoachVoiceMode(on) {
+  try { localStorage.setItem('coachVoiceMode', on ? '1' : '0'); } catch {}
+}
+function updateCoachVoiceUI() {
+  const toggle = el('coachVoiceModeToggle');
+  const btn = el('coachVoiceBtn');
+  const on = getCoachVoiceMode();
+  if (toggle) toggle.checked = on;
+  if (btn) btn.style.display = on ? 'inline-block' : 'none';
+  if (!on) stopCoachVoiceRecognition();
+  if (!on) setCoachListeningOverlay(false);
+  updateCoachVoiceBtn();
+}
+async function toggleCoachVoiceListening() {
+  const rec = ensureCoachVoiceRecognition();
+  if (!rec) {
+    // Fallback: record + server transcription (works on iOS Safari).
+    await startCoachVoiceMediaRecorderSilence();
+    return;
+  }
+  if (coachVoiceIsListening) {
+    stopCoachVoiceRecognition();
+    return;
+  }
+  const ok = await ensureMicPermission().catch(() => false);
+  if (!ok) return;
+  coachVoiceIsListening = true;
+  setCoachListeningOverlay(true);
+  updateCoachVoiceBtn();
+  setStatus('');
+  try { rec.start(); } catch (e) {
+    coachVoiceIsListening = false;
+    setCoachListeningOverlay(false);
+    updateCoachVoiceBtn();
+    setStatus('Could not start voice input.');
+  }
+}
+async function startCoachVoiceListening() {
+  if (!getCoachVoiceMode()) return;
+  if (coachVoiceIsListening) return;
+  await toggleCoachVoiceListening();
+}
+
+function initCoachVoiceMode() {
+  const toggle = el('coachVoiceModeToggle');
+  const btn = el('coachVoiceBtn');
+  if (toggle) toggle.onchange = () => { setCoachVoiceMode(!!toggle.checked); updateCoachVoiceUI(); };
+  if (btn) btn.onclick = () => toggleCoachVoiceListening();
+  updateCoachVoiceUI();
+}
 
 async function loadWeekly() {
   const j = await api('week-summary?days=7');
@@ -2290,6 +2922,7 @@ function bindUI() {
   el('saveWeightBtn').onclick = () => saveWeight().catch(e => setStatus(e.message));
   el('finishDayBtn').onclick = () => finishDay().catch(e => setStatus(e.message));
   el('sendChatBtn').onclick = () => sendChat().catch(e => setStatus(e.message));
+  initCoachVoiceMode();
   el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
 
   // Tabs
@@ -2490,7 +3123,7 @@ function bindUI() {
   bindClick('photoLabelBtn', () => { activePhotoMode = 'label'; const n = el('photoModeCameraInput'); if (n) n.click(); });
   bindClick('photoPlateBtn', () => { activePhotoMode = 'plate'; const n = el('photoModeCameraInput'); if (n) n.click(); });
 
-  window.__voiceToggleHandler = window.__voiceToggleHandler || (() => {
+  window.__voiceToggleHandler = window.__voiceToggleHandler || (async () => {
     unlockAudioOnce();
     const recognition = ensureVoiceRecognition();
     if (!recognition) {
@@ -2501,6 +3134,15 @@ function bindUI() {
       stopVoiceRecognition();
       return;
     }
+
+    const ok = await ensureMicPermission();
+    if (!ok) {
+      voiceIsListening = false;
+      voiceAutoSendPending = false;
+      updateVoiceToggleLabel();
+      return;
+    }
+
     voiceIsListening = true;
     voiceAutoSendPending = true;
     updateVoiceToggleLabel();
@@ -2547,9 +3189,19 @@ function bindUI() {
   // Floating coach button toggles the chat window.
   const coachFab = el('coachFab');
   if (coachFab) {
-    coachFab.onclick = () => {
+    coachFab.onclick = async () => {
       const card = el('coachChatCard');
       if (!card) return;
+
+      // Voice-first mode: the floating Coach button starts listening immediately and does NOT open the chat UI.
+      if (getCoachVoiceMode()) {
+        card.classList.remove('open');
+        coachFab.setAttribute('aria-expanded', 'false');
+        coachVoiceFabFlow = true;
+        try { await toggleCoachVoiceListening(); } catch {}
+        return;
+      }
+
       const isOpen = card.classList.contains('open');
       if (isOpen) {
         card.classList.remove('open');
@@ -2557,9 +3209,9 @@ function bindUI() {
       } else {
         card.classList.add('open');
         coachFab.setAttribute('aria-expanded', 'true');
-        // focus input for fast typing
         const input = el('chatInput');
         if (input) input.focus();
+        try { await maybeShowCoachAiPrompts(); } catch {}
       }
     };
   }
@@ -2871,18 +3523,138 @@ function getBaseDailyCalorieGoal() {
   return base;
 }
 
-function getEffectiveDailyCalorieGoal(date) {
+// ===============================
+// ROLLOVER CALORIES (v19)
+// ===============================
+function getRolloverCaloriesConfig() {
+  return {
+    enabled: localStorage.getItem('rollover_calories_enabled') === '1',
+    maxCarry: parseInt(localStorage.getItem('rollover_calories_max') || '500', 10) || 500,
+  };
+}
+
+function _rcYmdKey(d) {
+  const dt = (d instanceof Date) ? d : new Date(d);
+  const x = new Date(dt.getTime());
+  x.setHours(0, 0, 0, 0);
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, '0');
+  const day = String(x.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function _rcKeyToDate(key) {
+  return new Date(`${key}T00:00:00`);
+}
+
+function _rcPrevKey(key) {
+  const d = _rcKeyToDate(key);
+  const prev = new Date(d.getTime() - 86400000);
+  return _rcYmdKey(prev);
+}
+
+function _rcParseDateAny(v) {
+  try {
+    if (!v) return null;
+    if (v instanceof Date) return v;
+    const d = new Date(v);
+    if (!isNaN(d.getTime())) return d;
+  } catch (_) {}
+  return null;
+}
+
+function _rcLoadEntriesSafe() {
+  try { return JSON.parse(localStorage.getItem('entries') || '[]'); } catch (_) { return []; }
+}
+
+function _rcCaloriesAndCountForKey(key) {
+  const entries = _rcLoadEntriesSafe();
+  let total = 0;
+  let count = 0;
+  entries.forEach(e => {
+    const dt = _rcParseDateAny(e.date || e.ts || e.created_at || e.createdAt);
+    if (!dt) return;
+    const k = _rcYmdKey(dt);
+    if (k !== key) return;
+    const cals = (e.calories ?? e.kcal ?? e.cals ?? e.totalCalories);
+    const n = parseFloat(cals);
+    if (!isNaN(n)) total += n;
+    count += 1;
+  });
+  return { total, count };
+}
+
+function _clamp(n, lo, hi) {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function _cheatAdjustedGoalForDate(date) {
   const base = getBaseDailyCalorieGoal();
   const cfg = getCheatDayConfig();
   if (!base || !cfg.enabled || !cfg.extra) return base;
 
   const d = date ? new Date(date) : new Date();
-  const dow = d.getDay(); // 0=Sun..6=Sat
+  const dow = d.getDay();
   const deltaOther = Math.round(cfg.extra / 6);
 
   let adjusted = base;
   if (dow === cfg.dow) adjusted = base + cfg.extra;
   else adjusted = base - deltaOther;
+
+  const minFloor = 1200;
+  if (adjusted < minFloor) adjusted = minFloor;
+  return adjusted;
+}
+
+// Returns the rollover delta for the provided date (0 if disabled or insufficient data).
+// Rollover is a one-day carry that can chain day-to-day when prior days have data logged.
+function getRolloverDeltaForDate(date) {
+  const cfg = getRolloverCaloriesConfig();
+  const base = getBaseDailyCalorieGoal();
+  if (!cfg.enabled || !base) return 0;
+
+  const key = _rcYmdKey(date || new Date());
+  const memoDelta = {};
+  const memoPlanned = {};
+
+  function deltaForKey(k) {
+    if (memoDelta[k] != null) return memoDelta[k];
+    if (Object.keys(memoDelta).length > 35) { memoDelta[k] = 0; return 0; }
+
+    const prevK = _rcPrevKey(k);
+    const prev = _rcCaloriesAndCountForKey(prevK);
+    // If yesterday has no logged entries, do not rollover (prevents accidental/empty-day carry).
+    if (!prev.count) { memoDelta[k] = 0; return 0; }
+
+    const prevPlanned = plannedForKey(prevK);
+    const diff = prevPlanned - prev.total; // + = under yesterday => add today; - = over yesterday => subtract today
+    const capped = _clamp(Math.round(diff), -cfg.maxCarry, cfg.maxCarry);
+    memoDelta[k] = capped;
+    return capped;
+  }
+
+  function plannedForKey(k) {
+    if (memoPlanned[k] != null) return memoPlanned[k];
+    const cheat = _cheatAdjustedGoalForDate(_rcKeyToDate(k));
+    const v = cheat + deltaForKey(k);
+    memoPlanned[k] = v;
+    return v;
+  }
+
+  return deltaForKey(key) || 0;
+}
+
+function getEffectiveDailyCalorieGoal(date) {
+  const base = getBaseDailyCalorieGoal();
+  if (!base) return base;
+
+  const d = date ? new Date(date) : new Date();
+  let adjusted = _cheatAdjustedGoalForDate(d);
+
+  const cfg = getRolloverCaloriesConfig();
+  if (cfg.enabled) {
+    adjusted = adjusted + getRolloverDeltaForDate(d);
+  }
 
   const minFloor = 1200;
   if (adjusted < minFloor) adjusted = minFloor;
@@ -2904,6 +3676,79 @@ function getWeeklyCaloriePlanText() {
   const other = Math.max(0, base - Math.round(cfg.extra / 6));
   const cheat = base + cfg.extra;
   return `Cheat day: ${cheat} kcal • Other days: ${other} kcal`;
+}
+
+
+function wireRolloverCaloriesSettings() {
+  const toggle = document.getElementById('rolloverCaloriesToggle');
+  const status = document.getElementById('rolloverCaloriesStatus');
+  if (!toggle) return;
+
+  // Hydrate from server-truth settings when available.
+  (async () => {
+    try {
+      const s = await api('nutrition-settings-get');
+      if (s && typeof s.rollover_enabled !== 'undefined') {
+        toggle.checked = !!s.rollover_enabled;
+        try {
+          localStorage.setItem('rollover_calories_enabled', s.rollover_enabled ? '1' : '0');
+          if (s.rollover_cap != null) localStorage.setItem('rollover_calories_max', String(s.rollover_cap));
+        } catch(e) {}
+      }
+      refresh();
+    } catch(e) {
+      // If endpoint not deployed yet, fall back to local.
+      const cfg = getRolloverCaloriesConfig();
+      toggle.checked = !!cfg.enabled;
+      refresh();
+    }
+  })();
+
+  function refresh() {
+    if (!status) return;
+    const base = getBaseDailyCalorieGoal();
+    if (!base) {
+      status.textContent = 'Set a calorie goal first to use rollover.';
+      return;
+    }
+    const todayKey = (()=>{
+      const d = new Date();
+      return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+    })();
+
+    const cap = (getRolloverCaloriesConfig().maxCarry || 500);
+    const deltaToday = parseInt(localStorage.getItem('rollover_calories_delta_today') || '0', 10) || 0;
+    const effToday = parseInt(localStorage.getItem('rollover_effective_today') || '0', 10) || 0;
+    const effDate = localStorage.getItem('rollover_effective_today_date') || '';
+
+    const delta = (toggle.checked && effDate === todayKey) ? deltaToday : 0;
+    const sign = delta > 0 ? '+' : '';
+    const eff = (toggle.checked && effDate === todayKey && effToday) ? effToday : _cheatAdjustedGoalForDate(new Date());
+
+    status.textContent = toggle.checked
+      ? `Today’s target: ${eff} kcal (${sign}${delta} rollover). One-day carry, capped at ±${cap}.`
+      : 'Off. Your target is not affected by yesterday’s calories.';
+  }
+
+  toggle.addEventListener('change', async ()=>{
+    try { localStorage.setItem('rollover_calories_enabled', toggle.checked ? '1' : '0'); } catch(e) {}
+    // Persist server-truth.
+    try {
+      await api('nutrition-settings-set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rollover_enabled: !!toggle.checked })
+      });
+      // Re-fetch goal to update effective target.
+      try { await loadGoal(); } catch(e) {}
+    } catch(e) {
+      // If not migrated/deployed, keep local behavior but don't break UX.
+    }
+    refresh();
+    if (typeof renderAll === 'function') renderAll();
+  });
+
+  refresh();
 }
 
 function wireCheatDaySettings() {
@@ -2964,9 +3809,35 @@ function wireCheatDaySettings() {
   refreshStatus();
 }
 
-document.addEventListener('DOMContentLoaded', ()=>{ try { wireCheatDaySettings(); } catch(e) {} });
+// Daily coach nudge scheduler (handles date rollover without a hard refresh).
+document.addEventListener('DOMContentLoaded', ()=>{
+  try {
+    // initial nudge a couple seconds after load
+    setTimeout(()=>{ try { maybeShowCoachDailyNudge(); } catch(e){} }, 2500);
 
+    // if the user leaves the tab open across midnight, show the next day's nudge
+    let _coachLastDayKey = (typeof _coachTodayKey === 'function') ? _coachTodayKey() : String(Date.now());
+    setInterval(()=>{
+      try {
+        const k = (typeof _coachTodayKey === 'function') ? _coachTodayKey() : String(Date.now());
+        if (k !== _coachLastDayKey) {
+          _coachLastDayKey = k;
+          // wait a moment so the UI is settled
+          setTimeout(()=>{ try { maybeShowCoachDailyNudge(); } catch(e){} }, 2500);
+        }
+      } catch(e){}
+    }, 5 * 60 * 1000);
 
+    // also re-check when the user returns to the app
+    document.addEventListener('visibilitychange', ()=>{
+      try {
+        if (!document.hidden) {
+          setTimeout(()=>{ try { maybeShowCoachDailyNudge(); } catch(e){} }, 1200);
+        }
+      } catch(e){}
+    });
+  } catch(e) {}
+});
 // ===============================
 // CHEAT DAY MACROS (v36)
 // ===============================
@@ -3093,6 +3964,8 @@ function initSettingsTabs_v37() {
 document.addEventListener("DOMContentLoaded", ()=>{
   try { initSettingsTabs_v37(); } catch(e) {}
 });
+
+document.addEventListener('DOMContentLoaded', ()=>{ try { wireRolloverCaloriesSettings(); } catch(e) {} });
 
 
 // ===============================
@@ -3914,3 +4787,11 @@ function _apSyncFromApi(path, body) {
     // no-op
   }
 }
+
+// Coach daily nudge: show a few seconds after app loads (once per day).
+document.addEventListener('DOMContentLoaded', ()=>{
+  try {
+    setTimeout(()=>{ try { maybeShowCoachDailyNudge(); } catch(e){} }, 2500);
+  } catch(e) {}
+});
+

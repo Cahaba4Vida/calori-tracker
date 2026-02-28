@@ -1302,3 +1302,125 @@ body.invertedTheme .aiGlobalLoadingCard {
 .adminAlertBanner{display:none;padding:10px 12px;border-radius:12px;margin:10px 0;border:1px solid rgba(255,255,255,0.18);background:rgba(0,0,0,0.35)}
 .adminAlertBanner.urgent{display:block;border-color:rgba(255,80,80,0.55);background:rgba(80,0,0,0.35)}
 
+
+
+/* Coach voice listening overlay (Voice Mode) */
+.coachListeningOverlay {
+  position: fixed;
+  inset: 0;
+  z-index:  8500;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 16px;
+  background: rgba(0,0,0,0.10);
+  backdrop-filter: blur(5px);
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(5px);
+  pointer-events: none;
+}
+
+.coachListeningToast {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+
+.coachListeningIcon {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.15);
+}
+
+
+/* Coach rotating quick prompts */
+.coachPromptPanel{margin:10px 0; padding:10px; border-radius:14px; background:rgba(20,20,20,0.75); backdrop-filter: blur(10px);}
+.coachPromptPanel.hidden{display:none;}
+.coachPromptTitle{font-size:12px; opacity:0.9; margin-bottom:8px;}
+.coachPromptChips{display:flex; flex-wrap:wrap; gap:8px;}
+.coachPromptChip{background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.10); border-radius:999px; padding:8px 10px; font-size:12px; cursor:pointer;}
+.coachPromptChip:active{transform:scale(0.98);}
+@keyframes coachPromptFadeInUp{from{opacity:0; transform:translateY(6px);}to{opacity:1; transform:translateY(0);}}
+.coachPromptPanel{animation:coachPromptFadeInUp 0.22s ease;}
+
+
+/* Coach Daily Nudge Bubble */
+
+.coachNudgeBubble{
+  position:fixed;
+  right:16px;
+  bottom:92px;
+  max-width:260px;
+  background:rgba(20,20,20,0.88);
+  color:#fff;
+  border-radius:16px;
+  padding:10px 10px 10px 10px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+  z-index: 9999;
+  animation: coachNudgeIn 220ms ease-out;
+}
+.coachNudgeBubble::after{
+  content:"";
+  position:absolute;
+  right:20px;
+  bottom:-10px;
+  width:18px;height:18px;
+  background:rgba(20,20,20,0.88);
+  transform: rotate(45deg);
+  border-radius:4px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.coachNudgeTitle{
+  font-weight:600;
+  font-size:13px;
+  margin-bottom:8px;
+  opacity:0.95;
+}
+.coachNudgeChips{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.coachNudgeChip{
+  border: none;
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  background: rgba(255,255,255,0.10);
+  color: #fff;
+}
+.coachNudgeChip:active{ transform: translateY(1px); }
+
+.coachNudgeBubble.busy .coachNudgeChip,
+.coachNudgeBubble.speaking .coachNudgeChip{
+  opacity:0.55;
+  pointer-events:none;
+}
+
+.coachNudgeBubble.speaking .coachNudgeTitle{
+  animation: coachNudgePulse 900ms ease-in-out infinite;
+}
+
+@keyframes coachNudgePulse{
+  0%{ opacity:0.85; }
+  50%{ opacity:1; }
+  100%{ opacity:0.85; }
+}
+@keyframes coachNudgeIn{
+  from{ transform: translateY(8px); opacity:0; }
+  to{ transform: translateY(0); opacity:1; }
+}
