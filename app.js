@@ -1,4 +1,4 @@
-c
+(function(){
 function escapeHtml(str) {
   const s = String(str == null ? '' : str);
   return s.replace(/&/g, '&amp;')
@@ -8,7 +8,7 @@ function escapeHtml(str) {
           .replace(/'/g, '&#39;');
 }
 
-onsole.log("APP_VERSION v12");
+console.log("APP_VERSION v12");
 
 // --- iOS Safari audio unlock + playback helpers (prevents autoplay blocking) ---
 let __audioUnlocked = false;
@@ -3811,6 +3811,8 @@ function wireCheatDaySettings() {
 
 // Daily coach nudge scheduler (handles date rollover without a hard refresh).
 document.addEventListener('DOMContentLoaded', ()=>{
+  try { setCoachListeningOverlay(false); } catch(e) {}
+
   try {
     // initial nudge a couple seconds after load
     setTimeout(()=>{ try { maybeShowCoachDailyNudge(); } catch(e){} }, 2500);
@@ -4794,4 +4796,4 @@ document.addEventListener('DOMContentLoaded', ()=>{
     setTimeout(()=>{ try { maybeShowCoachDailyNudge(); } catch(e){} }, 2500);
   } catch(e) {}
 });
-
+})();

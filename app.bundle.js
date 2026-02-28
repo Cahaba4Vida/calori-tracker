@@ -1,4 +1,4 @@
-(
+(function(){
 function escapeHtml(str) {
   const s = String(str == null ? '' : str);
   return s.replace(/&/g, '&amp;')
@@ -4122,6 +4122,8 @@ function wireCheatDaySettings() {
 
 // Daily coach nudge scheduler (handles date rollover without a hard refresh).
 document.addEventListener('DOMContentLoaded', ()=>{
+  try { setCoachListeningOverlay(false); } catch(e) {}
+
   try {
     // initial nudge a couple seconds after load
     setTimeout(()=>{ try { maybeShowCoachDailyNudge(); } catch(e){} }, 2500);
@@ -5131,4 +5133,4 @@ document.addEventListener('DOMContentLoaded', ()=>{ try { captureReferralCodeFro
 document.addEventListener('DOMContentLoaded', ()=>{
   try { setTimeout(()=>{ try { maybeShowCoachDailyNudge(); } catch(e){} }, 2500); } catch(e) {}
 });
-
+})();
