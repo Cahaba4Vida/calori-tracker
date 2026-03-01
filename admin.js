@@ -1,426 +1,818 @@
-<!DOCTYPE html>
+const el = (id) => document.getElementById(id);
+    const ADMIN_TOKEN_KEY = 'adminDashToken';
+    let adminToken = localStorage.getItem(ADMIN_TOKEN_KEY) || '';
+    if (adminToken) el('adminTokenInput').value = adminToken;
+    const adminClient = window.AdminApi.createAdminApi({ getToken: () => adminToken });
 
-<html>
-<head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1" name="viewport"/>
-<title>Admin • Calorie &amp; Weight Tracker</title>
-<link href="styles.css?v=18" rel="stylesheet"/>
-</head>
-<body>
-<header class="row appHeader">
-<div class="headerLeft"></div>
-<div class="headerBrand">
-<img alt="Aethon Calorie &amp; Weight Intelligence" class="bannerLight" src="assets/header_banner_light.jpg"/>
-<img alt="Aethon Calorie &amp; Weight Intelligence" class="bannerDark" src="assets/header_banner_dark.jpg"/>
-</div>
-<a href="/">← Back to App</a>
-</header>
-<section class="card">
-<h2>Admin Access</h2>
-<label>Admin token (`ADMIN_DASH_TOKEN`)</label>
-<input id="adminTokenInput" placeholder="Paste token" type="password"/>
-<div class="row" style="margin-top:10px;">
-<button id="authorizeBtn">Authorize</button>
-<button id="clearTokenBtn">Clear Token</button>
-</div>
-<div class="muted" id="adminStatus"></div>
-</section>
-<div class="hidden" id="adminProtected">
-<div class="toast hidden" id="adminToast"></div>
-<div class="adminAlertBanner hidden" id="dbUrgentBanner"></div>
-<nav class="tabs">
-  <button class="tabBtn" data-tab="users">Users</button>
-  <button class="tabBtn" data-tab="dashboard">Dashboard</button>
-  <button class="tabBtn" data-tab="feedback">Feedback</button>
-</nav>
-<section class="tabPanel" id="tab_users">
-<section class="card">
-<h2>User Lookup</h2>
-<label>Email, user_id, or device_id</label>
-<div class="row">
-<input id="userLookupInput" placeholder="user@example.com"/>
-<button id="userLookupBtn">Lookup</button>
-</div>
-<div class="muted" id="userLookupStatus"></div>
-<div class="userCard hidden" id="userCard"></div>
-</section>
+    function setStatus(node, message) { node.innerText = message || ''; }
+    function setAuthorized(isAuthorized) { el('adminProtected').classList.toggle('hidden', !isAuthorized); }
+    function saveToken(value) {
+      adminToken = value.trim();
+      if (adminToken) localStorage.setItem(ADMIN_TOKEN_KEY, adminToken);
+      else localStorage.removeItem(ADMIN_TOKEN_KEY);
+    }
+    async function loadStats(options = {}) {
+      const { throwOnError = false } = options;
+      try {
+        setStatus(el('adminStatus'), 'Loading…');
+        const stats = await adminClient.adminApi('admin-stats');
+        window.AdminRender.renderGoalProgress(el, stats);
+        el('statsOut').innerText = JSON.stringify(stats, null, 2);
+        setStatus(el('adminStatus'), 'Stats loaded.');
+      } catch (e) {
+        setStatus(el('adminStatus'), e.message || String(e));
+        if (throwOnError) throw e;
+      }
+    }
 
-<section class="card">
-<h2>Signed-up Users (Email Accounts)</h2>
-<div class="row">
-<button class="secondaryBtn" id="loadUsersBtn">Load Users</button>
-<input id="usersFilter" placeholder="Filter by email…" style="max-width:320px;"/>
-</div>
-<div class="muted" id="usersStatus"></div>
-<div class="tableWrap">
-<table class="tbl" id="usersTable">
-<thead>
-<tr>
-<th>Email</th>
-<th>User ID</th>
-<th>Created</th>
-<th>Plan</th>
-<th>Premium Pass</th>
-<th>Goal</th>
-<th>Actions</th>
-</tr>
-</thead>
-<tbody></tbody>
-</table>
-</div>
-<div class="muted" style="margin-top:8px;">Edits apply to <code>user_profiles</code>. Deleting removes the user’s stored data (entries, weights, AI actions) from the database.</div>
-</section>
+    async function saveGoals() {
+      try {
+        setStatus(el('goalsStatus'), 'Saving goals…');
+        const weekly_active_goal = Number(el('wauGoalInput').value);
+        const paying_users_goal = Number(el('paidGoalInput').value);
+        const free_food_entries_per_day = Number(el('freeFoodLimitInput').value);
+        const free_ai_actions_per_day = Number(el('freeAiLimitInput').value);
+        const free_history_days = Number(el('freeHistoryDaysInput').value);
+        const monthly_price_usd = Number(el('monthlyPriceInput').value);
+        const yearly_price_usd = Number(el('yearlyPriceInput').value);
+        const monthly_upgrade_url = el('monthlyUpgradeUrlInput').value.trim() || null;
+        const yearly_upgrade_url = el('yearlyUpgradeUrlInput').value.trim() || null;
+        const manage_subscription_url = el('manageSubUrlInput').value.trim() || null;
+        await adminClient.adminApi('admin-goals-set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            weekly_active_goal,
+            paying_users_goal,
+            free_food_entries_per_day,
+            free_ai_actions_per_day,
+            free_history_days,
+            monthly_price_usd,
+            yearly_price_usd,
+            monthly_upgrade_url,
+            yearly_upgrade_url,
+            manage_subscription_url
+          })
+        });
+        setStatus(el('goalsStatus'), 'Goals saved.');
+        await loadStats();
+      } catch (e) {
+        setStatus(el('goalsStatus'), e.message || String(e));
+      }
+    }
 
-<section class="card">
-<h2>Access Overrides</h2>
-<div class="grid2">
-<div>
-<label>Duration</label>
-<select id="overrideDuration">
-<option value="7">7 days</option>
-<option value="30">30 days</option>
-<option value="90">90 days</option>
-<option value="unlimited">Unlimited</option>
-</select>
-</div>
-<div>
-<label>Note (required for Unlimited)</label>
-<input id="overrideNote" placeholder="Reason / campaign"/>
-</div>
-</div>
-<div class="row" style="margin-top:10px;">
-<button id="grantOverrideBtn">Grant Premium</button>
-<button class="secondaryBtn" id="grantTrialBtn">Grant Trial</button>
-</div>
-<div class="dangerZone" style="margin-top:14px;">
-<div class="row">
-<button class="dangerBtn" id="revokeOverrideBtn">Revoke Override</button>
-</div>
-<div class="muted" style="margin-top:6px;">Revoke affects admin pass overrides only. Active subscriptions remain premium.</div>
-</div>
-<div class="muted" id="overrideStatus"></div>
-</section>
+    async function setPass(mode) {
+      try {
+        setStatus(el('passStatus'), mode === 'grant' ? 'Granting pass…' : 'Revoking pass…');
+        const out = await adminClient.adminApi('admin-pass-grant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode,
+            identifier: el('passIdentifierInput').value.trim(),
+            expires_at: el('passExpiresInput').value.trim() || null,
+            note: el('passNoteInput').value.trim() || null
+          })
+        });
+        setStatus(el('passStatus'), `${mode === 'grant' ? 'Pass granted' : 'Pass revoked'} for ${out.email || out.user_id}.`);
+        await loadStats();
+      } catch (e) {
+        setStatus(el('passStatus'), e.message || String(e));
+      }
+    }
 
-<section class="card">
-<h2>Recent Admin Actions</h2>
-<div class="row">
-<button class="secondaryBtn" id="refreshAuditBtn">Refresh</button>
-<button class="secondaryBtn" id="filterAuditBtn">Filter to selected user</button>
-</div>
-<div class="muted" id="auditStatus"></div>
-<div class="auditList" id="auditList"></div>
-</section>
 
-<details class="adminDetails" style="margin-top:12px;">
-  <summary>Advanced: Ambassadors</summary>
-  <div style="margin-top:10px;">
-<section class="card">
-<h2>Ambassadors</h2>
-<div class="muted" style="margin-bottom:10px;">Create ambassador accounts that can share custom monthly/yearly Stripe subscription links. Premium access is enforced strictly by Stripe subscription status.</div>
-<div class="grid2">
-<div>
-<label>Ambassador email (Gmail)</label>
-<input id="ambEmail" placeholder="ambassador@gmail.com"/>
-</div>
-<div>
-<label>Display name (optional)</label>
-<input id="ambName" placeholder="Name"/>
-</div>
-</div>
-<div class="grid2" style="margin-top:10px;">
-<div>
-<label>Monthly price (USD)</label>
-<input id="ambMonthlyUsd" min="1" placeholder="15" step="1" type="number"/>
-</div>
-<div>
-<label>Yearly price (USD)</label>
-<input id="ambYearlyUsd" min="1" placeholder="150" step="1" type="number"/>
-</div>
-</div>
-<div style="margin-top:10px;">
-<label>Notes (optional)</label>
-<input id="ambNotes" placeholder="e.g., special promo"/>
-</div>
-<div class="row" style="margin-top:12px;">
-<button id="ambCreateBtn">Create / Update</button>
-<button class="secondaryBtn" id="ambRotateBtn">Rotate Token</button>
-<button class="secondaryBtn" id="ambRefreshBtn">Refresh</button>
-</div>
-<div class="muted" id="ambStatus"></div>
-<div class="muted" style="margin-top:10px;">Ambassador portal link: <code id="ambPortalLink">(select an ambassador)</code></div>
-<div class="muted" style="margin-top:6px;">Token is shown only when created/rotated. Save it somewhere safe.</div>
-</section>
 
-<section class="card">
-<h2>Existing Ambassadors</h2>
-<div class="row">
-<button class="secondaryBtn" id="ambLoadBtn">Load</button>
-</div>
-<div class="tableWrap">
-<table class="tbl" id="ambTable">
-<thead>
-<tr>
-<th>Email</th>
-<th>Name</th>
-<th>Monthly</th>
-<th>Yearly</th>
-<th>Total (first paid)</th><th>Active MRR</th><th>Created</th>
-<th>Actions</th>
-</tr>
-</thead>
-<tbody></tbody>
-</table>
-</div>
-</section>
+    async function grantTrial() {
+      try {
+        setStatus(el('passStatus'), 'Granting trial pass…');
+        const days = Number(el('trialDaysInput').value || '7');
+        const out = await adminClient.adminApi('admin-pass-trial', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: el('passIdentifierInput').value.trim(), days })
+        });
+        setStatus(el('passStatus'), `Trial granted for ${out.email || out.user_id} (${out.trial_days} days).`);
+        await loadStats();
+      } catch (e) {
+        setStatus(el('passStatus'), e.message || String(e));
+      }
+    }
 
-</div></details>
-</section>
-<section class="tabPanel hidden" id="tab_dashboard">
-<section class="card">
-  <h2>Dashboard</h2>
-  <div class="row" style="justify-content:space-between; align-items:center;">
-    <div class="muted" id="dashStatus">—</div>
-    <button class="btnMini" id="dashRefreshBtn">Refresh</button>
-  </div>
+    async function grantUnlimited() {
+      try {
+        setStatus(el('passStatus'), 'Granting unlimited premium…');
+        const out = await adminClient.adminApi('admin-pass-grant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: 'grant',
+            identifier: el('passIdentifierInput').value.trim(),
+            expires_at: null,
+            note: (el('passNoteInput').value.trim() || null) || 'unlimited_override'
+          })
+        });
+        setStatus(el('passStatus'), `Unlimited premium granted for ${out.email || out.user_id}.`);
+        await loadStats();
+      } catch (e) {
+        setStatus(el('passStatus'), e.message || String(e));
+      }
+    }
 
-  <div class="kpiGrid" style="margin-top:12px;">
-    <div class="kpiCard"><div class="kpiLabel">Total users</div><div class="kpiValue" id="kpiTotalUsers">—</div></div>
-    <div class="kpiCard"><div class="kpiLabel">New users (7d)</div><div class="kpiValue" id="kpiNewUsers7d">—</div></div>
-    <div class="kpiCard"><div class="kpiLabel">DAU (today)</div><div class="kpiValue" id="kpiDauToday">—</div></div>
-    <div class="kpiCard"><div class="kpiLabel">WAU</div><div class="kpiValue" id="kpiWau">—</div></div>
-    <div class="kpiCard"><div class="kpiLabel">Entries (today)</div><div class="kpiValue" id="kpiEntriesToday">—</div></div>
-    <div class="kpiCard"><div class="kpiLabel">AI actions (today)</div><div class="kpiValue" id="kpiAiToday">—</div></div>
-  </div>
 
-  <div style="margin-top:14px;">
-    <h3 style="margin:0 0 8px 0;">Trends (last 30 days) + next 30-day projection</h3>
 
-    <div class="chartBlock">
-      <div class="row" style="justify-content:space-between; align-items:baseline;">
-        <div><b>New signups</b></div>
-        <div class="muted" id="projSignupsText">—</div>
+
+    async function reconcileSubscriptions() {
+      try {
+        setStatus(el('reconcileStatus'), 'Reconciling subscriptions…');
+        const out = await adminClient.adminApi('admin-reconcile-subscriptions', { method: 'POST' });
+        setStatus(el('reconcileStatus'), `Done. Checked ${out.checked || 0}, updated ${out.updated || 0}.`);
+        await loadStats();
+      } catch (e) {
+        setStatus(el('reconcileStatus'), e.message || String(e));
+      }
+    }
+    async function authorize() {
+      const candidate = el('adminTokenInput').value.trim();
+      if (!candidate) {
+        setAuthorized(false);
+        setStatus(el('adminStatus'), 'Paste a valid admin token first.');
+        return;
+      }
+      try {
+        setStatus(el('adminStatus'), 'Authorizing…');
+        saveToken(candidate);
+        await loadStats({ throwOnError: true });
+        setAuthorized(true);
+        setStatus(el('adminStatus'), 'Authorized. You can now edit the admin page.');
+      } catch (e) {
+        saveToken('');
+        setAuthorized(false);
+        setStatus(el('adminStatus'), e.message || String(e));
+      }
+    }
+
+    function clearToken() {
+      saveToken('');
+      el('adminTokenInput').value = '';
+      setAuthorized(false);
+      setStatus(el('adminStatus'), 'Admin token cleared.');
+    }
+
+    async function getInsights() {
+      try {
+        setStatus(el('insightsStatus'), 'Generating insights…');
+        const out = await adminApi('admin-ai-insights', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: el('insightsQuestionInput').value.trim() }) });
+        el('insightsOut').innerText = out.insights || 'No insights generated.';
+        setStatus(el('insightsStatus'), 'Insights ready.');
+      } catch (e) { setStatus(el('insightsStatus'), e.message || String(e)); }
+    }
+
+    async function sendCampaign() {
+      try {
+        setStatus(el('campaignStatus'), 'Sending…');
+        const body = {
+          mode: 'activate',
+          title: el('campaignTitleInput').value.trim(),
+          question: el('campaignQuestionInput').value.trim(),
+          placeholder: el('campaignPlaceholderInput').value.trim(),
+          submit_label: el('campaignSubmitLabelInput').value.trim()
+        };
+        const out = await adminApi('admin-feedback-broadcast', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        setStatus(el('campaignStatus'), `Mandatory feedback form sent (campaign #${out?.campaign?.id || 'new'}).`);
+        await loadStats();
+      } catch (e) { setStatus(el('campaignStatus'), e.message || String(e)); }
+    }
+
+    async function disableCampaign() {
+      try {
+        setStatus(el('campaignStatus'), 'Turning off…');
+        await adminApi('admin-feedback-broadcast', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'deactivate' }) });
+        setStatus(el('campaignStatus'), 'Feedback lock disabled.');
+        await loadStats();
+      } catch (e) { setStatus(el('campaignStatus'), e.message || String(e)); }
+    }
+
+    el('authorizeBtn').onclick = () => authorize();
+    el('clearTokenBtn').onclick = () => clearToken();
+    el('saveGoalsBtn').onclick = () => saveGoals();
+    el('grantPassBtn').onclick = () => setPass('grant');
+    el('grantUnlimitedBtn').onclick = () => grantUnlimited();
+    el('grantTrialBtn').onclick = () => grantTrial();
+    el('revokePassBtn').onclick = () => setPass('revoke');
+    el('reconcileSubsBtn').onclick = () => reconcileSubscriptions();
+    el('getInsightsBtn').onclick = () => getInsights();
+    el('broadcastFeedbackBtn').onclick = () => sendCampaign();
+    el('disableFeedbackBtn').onclick = () => disableCampaign();
+    authorize();
+
+
+// --- Admin UX upgrades (tabs, user lookup, overrides, audit, safer actions) ---
+(function initAdminUxUpgrades() {
+  let selectedUser = null;
+
+  function showToast(message, type = 'success', timeoutMs = 3500) {
+    const t = el('adminToast');
+    if (!t) return;
+    t.className = 'toast ' + (type || '');
+    t.innerText = message || '';
+    t.classList.remove('hidden');
+    if (timeoutMs) {
+      window.clearTimeout(t._hideTimer);
+      t._hideTimer = window.setTimeout(() => t.classList.add('hidden'), timeoutMs);
+    }
+  }
+
+  function setActiveTab(tab) {
+    document.querySelectorAll('.tabBtn').forEach((b) => {
+      b.classList.toggle('active', b.getAttribute('data-tab') === tab);
+    });
+    ['users','billing','insights','ops'].forEach((k) => {
+      const p = el('tab_' + k);
+      if (p) p.classList.toggle('hidden', k !== tab);
+    });
+    try { location.hash = tab; } catch {}
+  }
+
+  function moveLegacyCards() {
+    const legacy = el('legacyAdminCards');
+    if (!legacy) return;
+    const cards = Array.from(legacy.querySelectorAll(':scope > section.card'));
+    const mapTab = (title) => {
+      const t = (title || '').toLowerCase();
+      if (t.includes('reconcile') || t.includes('billing') || t.includes('subscription')) return 'billing';
+      if (t.includes('ai insights') || t.includes('growth goals') || t.includes('stats') || t.includes('goal')) return 'insights';
+      if (t.includes('feedback') || t.includes('retention') || t.includes('broadcast') || t.includes('export')) return 'ops';
+      if (t.includes('premium pass') || t.includes('access')) return 'users';
+      return 'insights';
+    };
+    cards.forEach((card) => {
+      const title = card.querySelector('h2')?.innerText || '';
+      const tab = mapTab(title);
+      const panel = el('tab_' + tab);
+      if (panel) panel.appendChild(card);
+    });
+
+    // Put advanced tools behind a native accordion in Ops
+    const ops = el('tab_ops');
+    if (ops) {
+      const advanced = document.createElement('details');
+      advanced.className = 'card';
+      advanced.open = false;
+      const sum = document.createElement('summary');
+      sum.innerText = 'Advanced tools';
+      sum.style.fontWeight = '700';
+      advanced.appendChild(sum);
+
+      // Move remaining ops cards (except any that are already user-facing) into advanced.
+      const opsCards = Array.from(ops.querySelectorAll(':scope > section.card'));
+      opsCards.forEach((c) => advanced.appendChild(c));
+      ops.appendChild(advanced);
+    }
+  }
+
+  // Dashboard metrics (30d trends + linear projection)
+  function fmtInt(n) { return (n == null) ? '—' : String(Math.round(Number(n))); }
+
+  function drawLineChart(canvas, points, opts = {}) {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    const padL = 40, padR = 10, padT = 10, padB = 28;
+    const plotW = w - padL - padR;
+    const plotH = h - padT - padB;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // background
+    ctx.fillStyle = '#0b0b0b';
+    ctx.fillRect(0, 0, w, h);
+
+    const vals = (points || []).map(p => Number(p || 0));
+    const maxV = Math.max(1, ...vals);
+    const minV = Math.min(0, ...vals);
+
+    function x(i) { return padL + (i / Math.max(1, vals.length - 1)) * plotW; }
+    function y(v) { return padT + (1 - ((v - minV) / (maxV - minV))) * plotH; }
+
+    // axes
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, padT);
+    ctx.lineTo(padL, padT + plotH);
+    ctx.lineTo(padL + plotW, padT + plotH);
+    ctx.stroke();
+
+    // y labels
+    ctx.fillStyle = '#9a9a9a';
+    ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    ctx.fillText(String(Math.round(maxV)), 6, padT + 12);
+    ctx.fillText(String(Math.round(minV)), 6, padT + plotH);
+
+    // line
+    ctx.strokeStyle = '#d6b15f';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    vals.forEach((v, i) => {
+      const xx = x(i);
+      const yy = y(v);
+      if (i === 0) ctx.moveTo(xx, yy);
+      else ctx.lineTo(xx, yy);
+    });
+    ctx.stroke();
+
+    // points
+    ctx.fillStyle = '#d6b15f';
+    vals.forEach((v, i) => {
+      const xx = x(i);
+      const yy = y(v);
+      ctx.beginPath();
+      ctx.arc(xx, yy, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // x labels
+    if (opts.firstLabel && opts.lastLabel) {
+      ctx.fillStyle = '#9a9a9a';
+      ctx.fillText(opts.firstLabel, padL, h - 10);
+      const lastW = ctx.measureText(opts.lastLabel).width;
+      ctx.fillText(opts.lastLabel, w - padR - lastW, h - 10);
+    }
+  }
+
+  async function loadDashboardMetrics(options = {}) {
+    const { throwOnError = false } = options;
+    try {
+      setStatus(el('dashStatus'), 'Loading…');
+      const data = await adminClient.adminApi('admin-dashboard-metrics');
+
+      el('kpiTotalUsers').innerText = fmtInt(data?.totals?.total_users);
+      el('kpiNewUsers7d').innerText = fmtInt(data?.totals?.new_users_7d);
+      el('kpiDauToday').innerText = fmtInt(data?.totals?.dau_today);
+      el('kpiWau').innerText = fmtInt(data?.totals?.wau);
+      el('kpiEntriesToday').innerText = fmtInt(data?.totals?.entries_today);
+      el('kpiAiToday').innerText = fmtInt(data?.totals?.ai_actions_today);
+
+      const series = data?.series || [];
+      const firstDay = series[0]?.day || '';
+      const lastDay = series[series.length - 1]?.day || '';
+
+      drawLineChart(el('chartSignups'), series.map(x => Number(x.signups || 0)), { firstLabel: firstDay, lastLabel: lastDay });
+      drawLineChart(el('chartDau'), series.map(x => Number(x.dau || 0)), { firstLabel: firstDay, lastLabel: lastDay });
+      drawLineChart(el('chartEntries'), series.map(x => Number(x.entries || 0)), { firstLabel: firstDay, lastLabel: lastDay });
+
+      const pS = data?.projections?.signups;
+      const pD = data?.projections?.dau;
+      const pE = data?.projections?.entries;
+      el('projSignupsText').innerText = pS ? `Next 30d: ~${fmtInt(pS.next_30d_sum)} (slope ${pS.slope_per_day}/day)` : '—';
+      el('projDauText').innerText = pD ? `Next 30d avg/day: ~${pD.next_30d_avg_per_day} (slope ${pD.slope_per_day}/day)` : '—';
+      el('projEntriesText').innerText = pE ? `Next 30d: ~${fmtInt(pE.next_30d_sum)} (slope ${pE.slope_per_day}/day)` : '—';
+
+      setStatus(el('dashStatus'), 'Loaded.');
+    } catch (e) {
+      setStatus(el('dashStatus'), e.message || String(e));
+      if (throwOnError) throw e;
+    }
+  }
+
+  // Feedback inbox
+  let _feedbackLoaded = false;
+  async function ensureFeedbackLoaded() {
+    if (_feedbackLoaded) return;
+    _feedbackLoaded = true;
+    await loadFeedbackList();
+  }
+
+  async function loadFeedbackList(options = {}) {
+    const { throwOnError = false } = options;
+    try {
+      const days = Number(el('feedbackRangeSelect')?.value || 30);
+      setStatus(el('feedbackListStatus'), 'Loading…');
+      const data = await adminClient.adminApi(`admin-feedback-list?days=${encodeURIComponent(days)}`);
+      const rows = data?.responses || [];
+      const body = el('feedbackTableBody');
+      if (!body) return;
+
+      if (!rows.length) {
+        body.innerHTML = `<tr><td colspan="3" class="muted">No feedback in this range.</td></tr>`;
+      } else {
+        body.innerHTML = rows.map((r) => {
+          const ts = (r.submitted_at || '').slice(0, 19).replace('T', ' ');
+          const email = r.email || '(unknown)';
+          const txt = String(r.response_text || '').replace(/[<>&]/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+          return `<tr><td>${ts}</td><td>${email}</td><td>${txt}</td></tr>`;
+        }).join('');
+      }
+
+      setStatus(el('feedbackListStatus'), `Loaded ${rows.length} responses (last ${days} days).`);
+    } catch (e) {
+      setStatus(el('feedbackListStatus'), e.message || String(e));
+      if (throwOnError) throw e;
+    }
+  }
+
+  function renderSelectedUser() {
+    const box = el('userCard');
+    if (!box) return;
+    if (!selectedUser) {
+      box.classList.add('hidden');
+      box.innerHTML = '';
+      return;
+    }
+    const u = selectedUser.user || {};
+    const ent = selectedUser.entitlements || {};
+    const usage = selectedUser.usage_today || {};
+    const devices = selectedUser.devices || {};
+    const premium = ent.is_premium ? 'Premium' : 'Free';
+    const src = ent.premium_source || 'none';
+
+    box.classList.remove('hidden');
+    box.innerHTML = `
+      <div class="grid2">
+        <div><div class="k">Email</div><div class="v">${u.email || '<span class="muted">—</span>'}</div></div>
+        <div><div class="k">User ID</div><div class="v">${u.user_id}</div></div>
+        <div><div class="k">Entitlement</div><div class="v">${premium} <span class="muted">(${src})</span></div></div>
+        <div><div class="k">Pass expires</div><div class="v">${u.premium_pass_expires_at || (u.premium_pass ? 'Unlimited' : '—')}</div></div>
+        <div><div class="k">AI actions today</div><div class="v">${usage.ai_actions ?? 0}</div></div>
+        <div><div class="k">Food entries today</div><div class="v">${usage.food_entries ?? 0}</div></div>
+        <div><div class="k">Linked devices</div><div class="v">${devices.count ?? 0}</div></div>
+        <div><div class="k">Subscription</div><div class="v">${u.subscription_status || 'inactive'}</div></div>
       </div>
-      <canvas class="adminChart" id="chartSignups" width="900" height="220"></canvas>
-    </div>
-
-    <div class="chartBlock" style="margin-top:14px;">
-      <div class="row" style="justify-content:space-between; align-items:baseline;">
-        <div><b>Daily active users (DAU)</b></div>
-        <div class="muted" id="projDauText">—</div>
+      <div class="row" style="margin-top:10px;">
+        <button id="copyUserIdBtn" class="secondaryBtn">Copy user_id</button>
+        <button id="copyEmailBtn" class="secondaryBtn">Copy email</button>
       </div>
-      <canvas class="adminChart" id="chartDau" width="900" height="220"></canvas>
-    </div>
+    `;
+    const copy = async (v) => {
+      try { await navigator.clipboard.writeText(v || ''); showToast('Copied.', 'success', 1200); } catch { showToast('Copy failed.', 'error'); }
+    };
+    el('copyUserIdBtn')?.addEventListener('click', () => copy(u.user_id));
+    el('copyEmailBtn')?.addEventListener('click', () => copy(u.email || ''));
+  }
 
-    <div class="chartBlock" style="margin-top:14px;">
-      <div class="row" style="justify-content:space-between; align-items:baseline;">
-        <div><b>Food entries logged</b></div>
-        <div class="muted" id="projEntriesText">—</div>
-      </div>
-      <canvas class="adminChart" id="chartEntries" width="900" height="220"></canvas>
-    </div>
-  </div>
-</section>
-<section class="card">
-<h2>Growth Goals</h2>
-<div><strong>Weekly active users goal:</strong> <span id="wauGoalTarget">500</span></div>
-<div class="goalTrack"><div class="goalFill" id="wauGoalBar"></div></div>
-<div class="muted" id="wauGoalLabel">0 / 500 (0%)</div>
-<div style="margin-top:14px;"><strong>Paying users goal:</strong> <span id="paidGoalTarget">30</span></div>
-<div class="goalTrack"><div class="goalFill paid" id="paidGoalBar"></div></div>
-<div class="muted" id="paidGoalLabel">0 / 30 (0%)</div>
-<div class="grid2" style="margin-top:14px;">
-<div>
-<label>Set weekly active users goal</label>
-<input id="wauGoalInput" min="1" placeholder="500" step="1" type="number"/>
-</div>
-<div>
-<label>Set paying users goal</label>
-<input id="paidGoalInput" min="1" placeholder="30" step="1" type="number"/>
-</div>
-<div>
-<label>Free food entries/day</label>
-<input id="freeFoodLimitInput" min="1" placeholder="5" step="1" type="number"/>
-</div>
-<div>
-<label>Free AI actions/day</label>
-<input id="freeAiLimitInput" min="1" placeholder="3" step="1" type="number"/>
-</div>
-<div>
-<label>Free history days</label>
-<input id="freeHistoryDaysInput" min="1" placeholder="20" step="1" type="number"/>
-</div>
-<div>
-<label>Monthly price (USD)</label>
-<input id="monthlyPriceInput" min="1" placeholder="5" step="1" type="number"/>
-</div>
-<div>
-<label>Yearly price (USD)</label>
-<input id="yearlyPriceInput" min="1" placeholder="50" step="1" type="number"/>
-</div>
-<div>
-<label>Manage subscription URL (optional)</label>
-<input id="manageSubUrlInput" placeholder="https://..." type="text"/>
-</div>
-<div>
-<label>Monthly upgrade URL (optional override)</label>
-<input id="monthlyUpgradeUrlInput" placeholder="https://..." type="text"/>
-</div>
-<div>
-<label>Yearly upgrade URL (optional override)</label>
-<input id="yearlyUpgradeUrlInput" placeholder="https://..." type="text"/>
-</div>
-</div>
-<div class="row" style="margin-top:10px;"><button id="saveGoalsBtn">Save Goals + Pricing</button></div>
-<div class="muted" id="goalsStatus"></div>
-</section>
+  async function lookupUser() {
+    const q = el('userLookupInput')?.value?.trim();
+    if (!q) return showToast('Enter an email, user_id, or device_id.', 'warn');
+    try {
+      setStatus(el('userLookupStatus'), 'Looking up…');
+      const out = await adminClient.adminApi('admin-user-lookup', { method: 'GET' , headers: { }, });
+      // adminApi doesn't support query params directly; fallback:
+      // We'll call fetch manually so we can pass querystring.
+    } catch (e) {
+      // no-op
+    }
+  }
 
-<section class="card">
-<h2>Premium Pass Override</h2>
-<div class="muted">Grant or revoke premium access for a specific user without requiring payment.</div>
-<label>User email or user_id</label>
-<input id="passIdentifierInput" placeholder="user@example.com or netlify user id" type="text"/>
-<label>Expires at (optional, ISO datetime)</label>
-<div class="muted">Leave blank for <b>unlimited</b> premium access.</div>
-<input id="passExpiresInput" placeholder="2026-12-31T23:59:59Z" type="text"/>
-<label>Internal note (optional)</label>
-<input id="passNoteInput" placeholder="why this pass was granted" type="text"/>
-<label>Quick trial days</label>
-<input id="trialDaysInput" max="90" min="1" placeholder="7" step="1" type="number"/>
-<div class="row" style="margin-top:10px;">
-<button id="grantPassBtn">Grant Pass</button>
-<button id="grantUnlimitedBtn">Grant Unlimited Premium</button>
-<button id="grantTrialBtn">Grant Trial Pass</button>
-<button id="revokePassBtn">Revoke Pass</button>
-</div>
-<div class="muted" id="passStatus"></div>
-</section>
+  async function lookupUser2() {
+    const q = el('userLookupInput')?.value?.trim();
+    if (!q) return showToast('Enter an email, user_id, or device_id.', 'warn');
+    try {
+      setStatus(el('userLookupStatus'), 'Looking up…');
+      const token = adminToken;
+      const r = await fetch(`/api/admin-user-lookup?identifier=${encodeURIComponent(q)}`, {
+        method: 'GET',
+        headers: { 'x-admin-token': token }
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || 'Lookup failed');
+      selectedUser = data;
+      setStatus(el('userLookupStatus'), `Selected: ${data.user?.email || data.user?.user_id}`);
+      renderSelectedUser();
+      await refreshAudit(false);
+      showToast('User loaded.', 'success', 1500);
+    } catch (e) {
+      selectedUser = null;
+      renderSelectedUser();
+      setStatus(el('userLookupStatus'), e.message || String(e));
+      showToast(e.message || String(e), 'error');
+    }
+  }
 
-<section class="card">
-<h2>Billing Health</h2>
-<div class="muted" id="billingHealthSummary">No billing health loaded yet.</div>
-<div class="row" style="margin-top:10px;"><button id="reconcileSubsBtn">Reconcile Stripe Subscriptions</button></div>
-<div class="muted" id="reconcileStatus"></div>
-<pre class="pre" id="webhookEventsOut">No webhook events yet.</pre>
-</section>
+  function requireSelectedUser() {
+    if (!selectedUser?.user?.user_id) {
+      showToast('Lookup and select a user first.', 'warn');
+      throw new Error('No selected user');
+    }
+    return selectedUser.user;
+  }
 
+  async function grantOverride() {
+    const u = requireSelectedUser();
+    const dur = el('overrideDuration')?.value || '7';
+    const note = (el('overrideNote')?.value || '').trim();
+    if (dur === 'unlimited') {
+      if (!note) {
+        showToast('Note is required for Unlimited.', 'warn');
+        return;
+      }
+      const confirmTxt = prompt('Type UNLIMITED to confirm granting unlimited premium:');
+      if (confirmTxt !== 'UNLIMITED') return;
+    }
+    let expiresAt = null;
+    if (dur !== 'unlimited') {
+      const days = Number(dur || '7');
+      const d = new Date();
+      d.setDate(d.getDate() + days);
+      expiresAt = d.toISOString();
+    }
 
-<section class="card">
-<h2>Database Usage</h2>
-<div class="muted">Current database size (DB1). Urgent warning triggers at <b>0.40 GB</b>.</div>
-<div class="progressOuter" style="margin-top:10px;">
-  <div class="progressInner" id="dbUsageBar" style="width:0%;"></div>
-</div>
-<div class="row" style="justify-content:space-between; align-items:center; margin-top:8px;">
-  <div class="muted" id="dbUsageLabel">—</div>
-  <div class="muted" id="dbUsageStatus"></div>
-</div>
-<div class="muted" id="dbUsageEta" style="margin-top:6px;">—</div>
-</section>
+    try {
+      setStatus(el('overrideStatus'), 'Granting premium…');
+      const out = await adminClient.adminApi('admin-pass-grant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'grant',
+          identifier: u.user_id,
+          expires_at: expiresAt,
+          note: note || (dur === 'unlimited' ? 'unlimited_override' : null)
+        })
+      });
+      setStatus(el('overrideStatus'), `Granted premium to ${out.email || out.user_id}.`);
+      showToast('Premium granted.', 'success');
+      await lookupUser2();
+    } catch (e) {
+      setStatus(el('overrideStatus'), e.message || String(e));
+      showToast(e.message || String(e), 'error');
+    }
+  }
 
+  async function grantTrialFromCard() {
+    const u = requireSelectedUser();
+    const days = Number(prompt('Trial length in days:', '7') || '7');
+    if (!Number.isFinite(days) || days <= 0) return;
+    try {
+      setStatus(el('overrideStatus'), 'Granting trial…');
+      const out = await adminClient.adminApi('admin-pass-trial', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: u.user_id, days })
+      });
+      setStatus(el('overrideStatus'), `Trial granted for ${out.email || out.user_id} (${out.trial_days} days).`);
+      showToast('Trial granted.', 'success');
+      await lookupUser2();
+    } catch (e) {
+      setStatus(el('overrideStatus'), e.message || String(e));
+      showToast(e.message || String(e), 'error');
+    }
+  }
 
-<section class="card">
-<h2>App Statistics</h2>
-<pre class="pre" id="statsOut">Load stats to view data.</pre>
-</section>
+  async function revokeOverride() {
+    const u = requireSelectedUser();
+    const confirmTxt = prompt(`Type REVOKE to confirm removing admin override for ${u.email || u.user_id}:`);
+    if (confirmTxt !== 'REVOKE') return;
+    try {
+      setStatus(el('overrideStatus'), 'Revoking override…');
+      const out = await adminClient.adminApi('admin-pass-grant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'revoke', identifier: u.user_id })
+      });
+      setStatus(el('overrideStatus'), `Override revoked for ${out.email || out.user_id}.`);
+      showToast('Override revoked.', 'success');
+      await lookupUser2();
+    } catch (e) {
+      setStatus(el('overrideStatus'), e.message || String(e));
+      showToast(e.message || String(e), 'error');
+    }
+  }
 
-<section class="card">
-<h2>AI Insights</h2>
-<div class="muted">Ask product questions (usage patterns, improvement ideas) using current app metrics.</div>
-<label>Ask AI</label>
-<textarea id="insightsQuestionInput" placeholder="What are people using this app for mostly and what improvements should we prioritize?" rows="3"></textarea>
-<div class="row" style="margin-top:10px;"><button id="getInsightsBtn">Get AI Insights</button></div>
-<pre class="pre" id="insightsOut">No insights yet.</pre>
-<div class="muted" id="insightsStatus"></div>
-</section>
+  async function refreshAudit(filterToUser = null) {
+    try {
+      setStatus(el('auditStatus'), 'Loading…');
+      const token = adminToken;
+      let q = '';
+      if (filterToUser === true) {
+        if (selectedUser?.user?.user_id) q = `&q=${encodeURIComponent(selectedUser.user.user_id)}`;
+      } else if (filterToUser === false) {
+        // no filter
+      } else {
+        // default: if selected user exists, show filtered, else global
+        if (selectedUser?.user?.user_id) q = `&q=${encodeURIComponent(selectedUser.user.user_id)}`;
+      }
 
-</section>
-<section class="tabPanel hidden" id="tab_feedback">
-<section class="card">
-  <h2>Feedback Inbox</h2>
-  <div class="row" style="justify-content:space-between; align-items:center;">
-    <div class="row" style="gap:10px; align-items:center;">
-      <label class="muted" style="margin:0;">Range</label>
-      <select id="feedbackRangeSelect">
-        <option value="7">Last 7 days</option>
-        <option value="30" selected>Last 30 days</option>
-        <option value="90">Last 90 days</option>
-      </select>
-    </div>
-    <button class="btnMini" id="feedbackRefreshBtn">Refresh</button>
-  </div>
-  <div class="muted" id="feedbackListStatus" style="margin-top:8px;">—</div>
-  <div style="overflow:auto; margin-top:10px;">
-    <table class="adminTable" id="feedbackTable">
-      <thead>
-        <tr>
-          <th style="min-width:120px;">Submitted</th>
-          <th style="min-width:220px;">Email</th>
-          <th>Response</th>
+      const r = await fetch(`/api/admin-audit-list?limit=50${q}`, { headers: { 'x-admin-token': token } });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || 'Failed to load audit');
+      const items = data.items || [];
+      const list = el('auditList');
+      if (list) {
+        list.innerHTML = items.map((it) => {
+          const details = it.details ? JSON.stringify(it.details, null, 2) : '';
+          return `
+            <div class="auditItem">
+              <div class="meta">
+                <span><strong>${it.action}</strong></span>
+                <span>${new Date(it.created_at).toLocaleString()}</span>
+                <span class="muted">${it.target || ''}</span>
+              </div>
+              ${details ? `<pre>${details}</pre>` : ''}
+            </div>
+          `;
+        }).join('');
+      }
+      setStatus(el('auditStatus'), `${items.length} actions`);
+    } catch (e) {
+      setStatus(el('auditStatus'), e.message || String(e));
+    }
+  }
+
+  // =========================
+  // Signed-up users list
+  // =========================
+  let usersCache = [];
+
+  function fmtDate(v) {
+    if (!v) return '—';
+    try { return new Date(v).toLocaleDateString(); } catch { return String(v); }
+  }
+
+  function renderUsersTable() {
+    const tbody = el('usersTable')?.querySelector('tbody');
+    if (!tbody) return;
+    const filter = (el('usersFilter')?.value || '').trim().toLowerCase();
+    const rows = (usersCache || []).filter(u => !filter || (u.email || '').toLowerCase().includes(filter));
+    tbody.innerHTML = rows.map(u => {
+      const goal = u.goal_weight_lbs ? `${u.goal_weight_lbs} lbs${u.goal_date ? ` by ${fmtDate(u.goal_date)}` : ''}` : '—';
+      const pass = u.premium_pass ? (u.premium_pass_expires_at ? `Yes (to ${fmtDate(u.premium_pass_expires_at)})` : 'Yes (unlimited)') : 'No';
+      return `
+        <tr data-user-id="${u.user_id}">
+          <td>${u.email || '—'}</td>
+          <td><code>${u.user_id}</code></td>
+          <td>${fmtDate(u.created_at)}</td>
+          <td>${u.plan_tier || u.subscription_status || 'free'}</td>
+          <td>${pass}</td>
+          <td>${goal}</td>
+          <td>
+            <button class="btnMini" data-act="edit">Edit</button>
+            <button class="btnMini danger" data-act="delete">Delete</button>
+          </td>
         </tr>
-      </thead>
-      <tbody id="feedbackTableBody">
-        <tr><td colspan="3" class="muted">No data yet.</td></tr>
-      </tbody>
-    </table>
-  </div>
-</section>
-<section class="card">
-<h2>Feedback Form Broadcast (Mandatory)</h2>
-<div class="muted">When active, app users must submit this form before using the app.</div>
-<label>Form title</label>
-<input id="campaignTitleInput" placeholder="Quick feedback request" type="text"/>
-<label>Question</label>
-<input id="campaignQuestionInput" placeholder="What should we improve?" type="text"/>
-<label>Input placeholder</label>
-<input id="campaignPlaceholderInput" placeholder="Share your feedback" type="text"/>
-<label>Submit button label</label>
-<input id="campaignSubmitLabelInput" placeholder="Submit feedback" type="text"/>
-<div class="row" style="margin-top:10px;">
-<button id="broadcastFeedbackBtn">Send Mandatory Feedback Form</button>
-<button id="disableFeedbackBtn">Turn Off Feedback Lock</button>
-</div>
-<div class="muted" id="campaignStatus"></div>
-</section>
+        <tr class="hidden" data-edit-row="${u.user_id}">
+          <td colspan="7">
+            <div class="inlineEdit">
+              <div class="row">
+                <div>
+                  <label>Email</label>
+                  <input data-f="email" value="${(u.email || '').replace(/\"/g,'&quot;')}" />
+                </div>
+                <div>
+                  <label>Subscription status</label>
+                  <input data-f="subscription_status" value="${(u.subscription_status || '').replace(/\"/g,'&quot;')}" placeholder="active / inactive" />
+                </div>
+                <div>
+                  <label>Plan tier</label>
+                  <input data-f="plan_tier" value="${(u.plan_tier || '').replace(/\"/g,'&quot;')}" placeholder="free / pro" />
+                </div>
+                <div>
+                  <label>Premium pass</label>
+                  <select data-f="premium_pass">
+                    <option value="false" ${u.premium_pass ? '' : 'selected'}>No</option>
+                    <option value="true" ${u.premium_pass ? 'selected' : ''}>Yes</option>
+                  </select>
+                </div>
+                <div>
+                  <label>Pass expires (optional)</label>
+                  <input data-f="premium_pass_expires_at" value="${u.premium_pass_expires_at || ''}" placeholder="YYYY-MM-DD or ISO" />
+                </div>
+                <div>
+                  <label>Goal weight (lbs)</label>
+                  <input data-f="goal_weight_lbs" value="${u.goal_weight_lbs ?? ''}" />
+                </div>
+                <div>
+                  <label>Goal date</label>
+                  <input data-f="goal_date" value="${u.goal_date || ''}" placeholder="YYYY-MM-DD" />
+                </div>
+              </div>
+              <div class="row" style="margin-top:10px;">
+                <button class="secondaryBtn" data-act="save">Save</button>
+                <button class="secondaryBtn" data-act="cancel">Cancel</button>
+              </div>
+              <div class="muted" data-edit-status style="margin-top:8px;"></div>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
 
-<section class="card">
-<h2>Todo</h2>
-<div class="muted" style="margin-bottom:10px;">Private admin to-do list. Items are stored in the database and shared across admins using the same DB.</div>
-<hr style="margin:14px 0;"/>
-<h3 style="margin:0 0 6px 0;">Client update link</h3>
-<div class="muted" style="margin-bottom:10px;">Set a link + short description that clients can see as a “Try updated version &gt;” button.</div>
-<label>Updated version link</label>
-<input id="updateLinkInput" placeholder="https://..." type="url"/>
-<label style="margin-top:10px;">Update description</label>
-<textarea id="updateDescInput" placeholder="What changed? (keep it short)" rows="3"></textarea>
-<div class="row" style="margin-top:10px; gap:10px; align-items:center;">
-<button id="updateSaveBtn">Save update</button>
-<button class="btnMini" id="updateLoadBtn">Load current</button>
-<div class="muted" id="updateSavedHint"></div>
-</div>
-<hr style="margin:14px 0;"/>
-<label>New item</label>
-<input id="todoTextInput" placeholder="e.g., Fix onboarding copy" type="text"/>
-<div class="row" style="margin-top:10px; gap:10px; align-items:flex-end;">
-<div style="flex:0 0 140px;">
-<label>Priority</label>
-<input id="todoPriorityInput" min="1" step="1" type="number" value="1"/>
-<div class="muted" style="font-size:12px;">1 = highest</div>
-</div>
-<button id="todoAddBtn">Add</button>
-<button class="btnMini" id="todoRefreshBtn">Refresh</button>
-</div>
-<div style="margin-top:14px;">
-<div class="row" style="justify-content:space-between; align-items:center;">
-<h3 style="margin:0;">Items</h3>
-<div class="muted" id="todoCount"></div>
-</div>
-<div id="todoList" style="margin-top:10px;"></div>
-</div>
-</section>
+    tbody.querySelectorAll('button[data-act="edit"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tr = btn.closest('tr');
+        const uid = tr?.getAttribute('data-user-id');
+        const editRow = tbody.querySelector(`tr[data-edit-row="${uid}"]`);
+        editRow?.classList.toggle('hidden');
+      });
+    });
 
-</section>
-</div>
-<script src="admin.bundle.js?v=1"></script>
-</body>
-</html>
+    tbody.querySelectorAll('button[data-act="cancel"]').forEach(btn => {
+      btn.addEventListener('click', () => btn.closest('tr')?.classList.add('hidden'));
+    });
+
+    tbody.querySelectorAll('button[data-act="save"]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const editTr = btn.closest('tr');
+        const uid = editTr?.getAttribute('data-edit-row');
+        const box = editTr?.querySelector('.inlineEdit');
+        const status = editTr?.querySelector('[data-edit-status]');
+        if (!uid || !box) return;
+        const payload = { user_id: uid };
+        box.querySelectorAll('[data-f]').forEach(inp => {
+          const k = inp.getAttribute('data-f');
+          let v = inp.value;
+          if (k === 'premium_pass') v = inp.value === 'true';
+          if (k === 'goal_weight_lbs') v = v === '' ? null : Number(v);
+          payload[k] = v === '' ? null : v;
+        });
+        try {
+          setStatus(status, 'Saving…');
+          const out = await adminClient.adminApi('admin-user-update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          // Update cache
+          usersCache = usersCache.map(u => u.user_id === uid ? ({ ...u, ...out.user }) : u);
+          renderUsersTable();
+          showToast('User updated.', 'success', 1500);
+        } catch (e) {
+          setStatus(status, e.message || String(e));
+          showToast(e.message || String(e), 'error');
+        }
+      });
+    });
+
+    tbody.querySelectorAll('button[data-act="delete"]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const tr = btn.closest('tr');
+        const uid = tr?.getAttribute('data-user-id');
+        const email = tr?.children?.[0]?.innerText || '';
+        const confirmTxt = prompt(`Type DELETE to permanently delete ${email || uid} (including entries/weights):`);
+        if (confirmTxt !== 'DELETE') return;
+        try {
+          await adminClient.adminApi('admin-user-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: uid })
+          });
+          usersCache = usersCache.filter(u => u.user_id !== uid);
+          renderUsersTable();
+          showToast('User deleted.', 'success', 1500);
+        } catch (e) {
+          showToast(e.message || String(e), 'error');
+        }
+      });
+    });
+  }
+
+  async function loadUsers() {
+    if (!adminToken) return showToast('Authorize first.', 'warn');
+    try {
+      setStatus(el('usersStatus'), 'Loading users…');
+      const token = adminToken;
+      const r = await fetch(`/api/admin-users-list?limit=500`, { headers: { 'x-admin-token': token } });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || 'Failed to load users');
+      usersCache = data.users || [];
+      setStatus(el('usersStatus'), `${usersCache.length} users loaded`);
+      renderUsersTable();
+    } catch (e) {
+      setStatus(el('usersStatus'), e.message || String(e));
+      showToast(e.message || String(e), 'error');
+    }
+  }
+
+  // Hook up controls
+  document.querySelectorAll('.tabBtn').forEach((b) => b.addEventListener('click', () => setActiveTab(b.getAttribute('data-tab'))));
+  el('userLookupBtn')?.addEventListener('click', lookupUser2);
+  el('userLookupInput')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') lookupUser2(); });
+
+  el('grantOverrideBtn')?.addEventListener('click', grantOverride);
+  el('grantTrialBtn')?.addEventListener('click', grantTrialFromCard);
+  el('revokeOverrideBtn')?.addEventListener('click', revokeOverride);
+
+  el('refreshAuditBtn')?.addEventListener('click', () => refreshAudit(false));
+  el('filterAuditBtn')?.addEventListener('click', () => refreshAudit(true));
+
+  el('loadUsersBtn')?.addEventListener('click', loadUsers);
+  el('usersFilter')?.addEventListener('input', renderUsersTable);
+
+  // Initialize layout once authorized
+  const oldAuthorize = el('authorizeBtn')?.onclick;
+  el('authorizeBtn')?.addEventListener('click', () => {
+    // After existing authorize handler runs, redistribute.
+    window.setTimeout(() => {
+      moveLegacyCards();
+      const tabFromHash = (location.hash || '').replace('#','') || 'users';
+      setActiveTab(['users','dashboard','feedback'].includes(tabFromHash) ? tabFromHash : 'users');
+      showToast('Admin authorized.', 'success', 1500);
+    }, 50);
+  });
+
+  // Dashboard + Feedback UI handlers
+  el('dashRefreshBtn')?.addEventListener('click', () => loadDashboardMetrics());
+  el('feedbackRefreshBtn')?.addEventListener('click', () => loadFeedbackList());
+  el('feedbackRangeSelect')?.addEventListener('change', () => loadFeedbackList());
+
+})();

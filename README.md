@@ -1,133 +1,84 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Privacy Policy | Aethon Fuel</title>
-  <meta name="robots" content="index,follow" />
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; line-height: 1.6; margin: 0; padding: 0; color: #111; background: #fff; }
-    .wrap { max-width: 860px; margin: 0 auto; padding: 48px 20px; }
-    h1 { font-size: 32px; margin-bottom: 10px; }
-    h2 { font-size: 18px; margin-top: 28px; }
-    p, li { font-size: 15px; }
-    .meta { color: #444; font-size: 14px; margin-bottom: 28px; }
-    .box { background: #f6f6f6; border: 1px solid #e8e8e8; padding: 14px 16px; border-radius: 12px; margin: 20px 0; }
-  </style>
-</head>
-<body>
-  <main class="wrap">
-    <h1>Privacy Policy</h1>
-    <div class="meta">
-      <strong>Product:</strong> Aethon Fuel<br/>
-      <strong>Company:</strong> Zach Edwards LLC<br/>
-      <strong>Effective Date:</strong> February 22, 2026
-    </div>
+# Calorie & Weight Tracker (Mock Local App)
 
-    <p>
-      This Privacy Policy describes how Zach Edwards LLC ("we", "us", or "our") collects, uses, and protects information when you use Aethon Fuel (the "App") and related services.
-    </p>
+## What this is
 
-    <div class="box">
-      Contact: zach@zachedwardsllc.com<br/>
-      Mailing Address: 2705 Sundance Dr, Twin Falls, Idaho 83301, United States
-    </div>
+## Mock mode (no auth, local-only)
+This build runs entirely in **mock mode**:
+- No Netlify Identity login required.
+- No backend/database required for core app usage.
+- Data is cached in browser session storage (`caloriTrackerMockStateV1`) and resets when the tab/session ends (or via Reset Mock Session).
+- Includes a mock landing page before entering onboarding and the full app experience.
 
-    <h2>1. Information We Collect</h2>
-    <ul>
-      <li><strong>Device-based account identifier:</strong> When you first use the App, we may automatically create an account associated with your device ID to store usage data and preferences.</li>
-      <li><strong>Email address:</strong> If you sign up through Netlify Identity, we collect your email address for authentication.</li>
-      <li><strong>User content:</strong> Meal logs, text inputs, food images, and other content you submit.</li>
-      <li><strong>Voice input:</strong> If you use voice logging, audio may be processed for transcription and analysis.</li>
-      <li><strong>Subscription data:</strong> We receive confirmation of subscription status through Stripe.</li>
-      <li><strong>Technical data:</strong> Basic device information and usage diagnostics for service reliability.</li>
-    </ul>
+A static web app deployed on Netlify using:
+- Netlify Identity (email login)
+- Netlify Functions (API backend)
+- Neon Postgres (DATABASE_URL)
+- OpenAI API (OPENAI_API_KEY) for nutrition-label extraction + coaching
 
-    <h2>2. Camera and Microphone Use</h2>
-    <p>
-      The App may request permission to access your device’s camera and microphone solely to enable:
-    </p>
-    <ul>
-      <li>Food image capture for calorie analysis</li>
-      <li>Voice-to-text meal logging</li>
-    </ul>
-    <p>
-      These permissions are optional and can be disabled in your device settings.
-    </p>
+No other backend services.
 
-    <h2>3. AI Processing (OpenAI)</h2>
-    <p>
-      Aethon Fuel uses artificial intelligence services provided by OpenAI to analyze food images, generate calorie estimates, and provide coaching responses.
-      When you submit text, images, or voice input, that data may be securely transmitted to OpenAI’s API for processing.
-      OpenAI processes data in accordance with its own privacy and security policies.
-    </p>
+## Setup (Neon)
+1. Create a Neon Postgres database.
+2. Run the SQL migrations in order in Neon: `sql/001_init.sql`, `sql/002_user_profile_onboarding.sql`, `sql/003_capacity_optimizations.sql`, `sql/004_quick_fills.sql`, `sql/005_admin_feedback.sql`, `sql/006_billing_limits.sql`, `sql/007_admin_goals_and_passes.sql`, `sql/008_growth_billing_upgrades.sql`, `sql/009_reliability_growth.sql`, `sql/010_scheduled_reconcile_alerts.sql`.
+3. Copy the connection string into Netlify env var `DATABASE_URL` (use pooled connection if available).
 
-    <h2>4. Payments and Subscriptions</h2>
-    <p>
-      Payments are processed through Stripe. We do not store or process full payment card details.
-      Stripe handles payment information in accordance with its own privacy policy.
-    </p>
+## Setup (Netlify)
+1. Deploy this repo to Netlify.
+2. Enable **Identity** in Netlify UI (Project configuration → Identity).
+   - Enable email signups (and confirm emails if desired).
+3. Set env vars (Project configuration → Environment variables):
+   - `DATABASE_URL`
+   - `OPENAI_API_KEY`
+   - `PERSIST_DAILY_SUMMARIES` (`true` to store daily summaries, default is not persisted)
+   - `RETENTION_ADMIN_TOKEN` (required for running retention endpoint)
+   - `HOT_STORAGE_KEEP_DAYS` (optional, default `90`)
+   - `SUMMARY_KEEP_DAYS` (optional, default uses `HOT_STORAGE_KEEP_DAYS`)
+   - `MAX_DB_SIZE_GB` (optional, default `0.49`; auto-trims oldest archive/history when DB grows beyond this)
+   - `ADMIN_DASH_TOKEN` (required for `/admin.html` and admin functions)
+   - `STRIPE_MONTHLY_PAYMENT_LINK_URL` (optional override for monthly upgrade URL)
+   - `STRIPE_YEARLY_PAYMENT_LINK_URL` (optional override for yearly upgrade URL)
+   - `STRIPE_SECRET_KEY` (required for Stripe webhook sync and Stripe billing portal)
+   - `STRIPE_WEBHOOK_SECRET` (required for `/api/stripe-webhook` signature validation)
 
-    <h2>5. How We Use Information</h2>
-    <ul>
-      <li>Provide AI-based nutrition and fitness insights</li>
-      <li>Manage free and paid subscription features</li>
-      <li>Improve functionality and accuracy</li>
-      <li>Provide customer support</li>
-      <li>Prevent fraud and abuse</li>
-    </ul>
+## Local dev
+Netlify Identity context is not always present in local `netlify dev`. Test auth-dependent functions on a deployed preview/site.
 
-    <h2>6. Third-Party Services</h2>
-    <p>We use the following service providers:</p>
-    <ul>
-      <li>Netlify (hosting and serverless functions)</li>
-      <li>Neon (database hosting)</li>
-      <li>Stripe (payment processing)</li>
-      <li>OpenAI (AI processing)</li>
-      <li>Netlify Identity (authentication)</li>
-    </ul>
+## Notes
+- The server computes the “day” using America/Denver for consistency.
+- The app does not store images—photos are sent to the function for extraction and discarded.
+- `raw_extraction` is intentionally compact (`source`, `confidence`, `estimated`, short `notes`) to reduce storage overhead.
+- Retention/cold storage: run `/.netlify/functions/admin-retention-run` with header `x-admin-token: <RETENTION_ADMIN_TOKEN>` to archive + delete old rows from hot tables.
+- Auto-retention now runs hourly (Netlify Scheduled Function) and enforces a DB-size ceiling (default `0.49 GB`) by trimming oldest rows first from archive tables, then hot tables only if still needed.
+- Admin dashboard: open `/admin.html`, enter `ADMIN_DASH_TOKEN`, view user/app stats, and generate AI insights from current usage metrics.
+- Mandatory feedback broadcast: from `/admin.html` you can activate a feedback form; logged-in users must submit it before continuing to use the app.
 
-    <h2>7. Data Retention</h2>
-    <p>
-      We retain user data for as long as your account remains active or as needed to provide services and comply with legal obligations.
-    </p>
+## New in v1.1
+- Edit/delete food entries
+- Weekly charts (last 7 days) for calories (bars) and weight (line)
 
-    <h2>8. Data Deletion</h2>
-    <p>
-      You may request deletion of your account and associated data by contacting zach@zachedwardsllc.com.
-      We will delete or anonymize data where reasonably possible.
-    </p>
+## Free vs Premium
+- **Free tier**: up to 5 food entries/day, 3 AI actions/day, and last 20 days of history.
+- **Premium**: monthly ($5) or yearly ($50) Stripe upgrades; includes unlimited food entries, unlimited AI actions, unlimited history, and data export.
+- Use `/api/create-checkout-session` with `{ "interval": "monthly" | "yearly" }` for upgrade checkout links.
+- Use `/api/stripe-webhook` to automatically keep subscription access in sync while payments stay active.
 
-    <h2>9. Children’s Privacy</h2>
-    <p>
-      The App is not intended for children under 13 years of age.
-      We do not knowingly collect personal information from children under 13.
-    </p>
+## Billing / Growth Upgrades
+- Admin can now edit free-tier limits and monthly/yearly pricing URLs from `/admin.html`.
+- Admin can grant direct premium passes or quick trial passes to specific users.
+- Stripe webhooks are logged in `stripe_webhook_events` for observability and churn-risk monitoring.
+- Premium users can export JSON or CSV via `/api/export-data?format=json|csv&from=YYYY-MM-DD&to=YYYY-MM-DD`.
+- Users can manage billing through `/api/manage-subscription` (Stripe portal when configured).
 
-    <h2>10. Security</h2>
-    <p>
-      We implement reasonable technical and organizational safeguards to protect user information.
-      However, no system can guarantee absolute security.
-    </p>
 
-    <h2>11. Geographic Scope</h2>
-    <p>
-      Aethon Fuel is currently intended for users in the United States.
-    </p>
+## Reliability / Conversion instrumentation
+- `stripe_webhook_events` enforces unique Stripe event ids for idempotent processing.
+- `app_events` tracks in-app conversion events (`upgrade_click`, `manage_subscription_click`, `export_data_click`, `near_limit_warning_shown`).
+- Admin can run `/api/admin-reconcile-subscriptions` to repair Stripe subscription state drift.
+- Scheduled reconciliation runs hourly via `scheduled-reconcile-subscriptions` and logs runs to `subscription_reconcile_runs`.
+- Alert notifications are emitted to `RECON_ALERT_WEBHOOK_URL` (optional) and persisted in `alert_notifications`.
+- User-side tracking endpoint: `/api/track-event` (authenticated).
 
-    <h2>12. Updates to This Policy</h2>
-    <p>
-      We may update this Privacy Policy periodically. Continued use of the App indicates acceptance of any changes.
-    </p>
-
-    <h2>13. Contact Information</h2>
-    <p>
-      Zach Edwards LLC<br/>
-      2705 Sundance Dr<br/>
-      Twin Falls, Idaho 83301<br/>
-      United States<br/>
-      Email: zach@zachedwardsllc.com
-    </p>
-  </main>
-</body>
-</html>
+## Quality gates
+- `npm run lint:syntax` performs syntax checks across all JS files.
+- `npm run test:integration` runs billing integration tests for webhook duplicate handling, payment failure/cancellation transitions, and admin-pass entitlement override.
+- CI runs `npm run test` on pushes and pull requests.

@@ -8,7 +8,7 @@ function escapeHtml(str) {
           .replace(/'/g, '&#39;');
 }
 
-function initAppBilling(global) {
+console.log("APP_VERSION v12");
 
 // --- iOS Safari audio unlock + playback helpers (prevents autoplay blocking) ---
 let __audioUnlocked = false;
@@ -90,161 +90,6 @@ async function playAssistantAudioAndWait(j) {
   }
 }
 // --- end iOS helpers ---
-  function createBillingController(deps) {
-    const { api, authHeaders, el, setStatus, getCurrentUser } = deps;
-    let billingState = null;
-    let nearLimitEventSent = false;
-
-    function trackEvent(eventName, eventProps = {}) {
-      if (!getCurrentUser()) return;
-      fetch('/api/track-event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ event_name: eventName, event_props: eventProps })
-      }).catch(() => {});
-    }
-
-    function renderBillingStatus() {
-      const tier = billingState?.plan_tier === 'premium' ? 'Premium' : 'Free';
-      const limits = billingState?.limits;
-      const usage = billingState?.usage_today;
-
-      const tierEl = el('planTierValue');
-      const usageEl = el('planUsageValue');
-      const limitsEl = el('planLimitsValue');
-      const upgradeHint = el('upgradeHint');
-      const monthlyBtn = el('upgradeMonthlyBtn');
-      const yearlyBtn = el('upgradeYearlyBtn');
-      const exportBtn = el('exportDataBtn');
-      const manageBtn = el('manageSubscriptionBtn');
-
-      if (tierEl) tierEl.innerText = tier;
-      if (usageEl) usageEl.innerText = usage ? `Food entries today: ${usage.food_entries || 0} • AI actions today: ${usage.ai_actions || 0}` : '—';
-      if (limitsEl) limitsEl.innerText = limits ? `Food/day: ${limits.food_entries_per_day ?? 'Unlimited'} • AI/day: ${limits.ai_actions_per_day ?? 'Unlimited'} • History: ${limits.history_days ?? 'Unlimited'} days` : '—';
-      if (monthlyBtn && billingState?.monthly_price_usd) monthlyBtn.innerText = `Upgrade Monthly ($${billingState.monthly_price_usd})`;
-      if (yearlyBtn && billingState?.yearly_price_usd) yearlyBtn.innerText = `Upgrade Yearly ($${billingState.yearly_price_usd})`;
-
-      if (upgradeHint) {
-        upgradeHint.classList.toggle('hidden', !!billingState?.is_premium);
-        upgradeHint.innerText = billingState?.is_premium
-          ? ''
-          : 'Free plan includes 5 food entries/day, 5 AI actions/day, 20-day history, and no export. Upgrade for unlimited access.';
-      }
-
-      if (!billingState?.is_premium && usage) {
-        const foodLeft = Math.max(0, Number(limits?.food_entries_per_day || 0) - Number(usage.food_entries || 0));
-        const aiLeft = Math.max(0, Number(limits?.ai_actions_per_day || 0) - Number(usage.ai_actions || 0));
-        const near = (foodLeft <= 2) || (aiLeft <= 1);
-        if (near && upgradeHint) {
-          upgradeHint.classList.remove('hidden');
-          upgradeHint.innerText = `You're close to today's free limit (${foodLeft} food entries left, ${aiLeft} AI actions left). Upgrade for unlimited usage.`;
-          if (!nearLimitEventSent) {
-            nearLimitEventSent = true;
-            trackEvent('near_limit_warning_shown', { food_left: foodLeft, ai_left: aiLeft });
-          }
-        }
-      }
-
-      if (exportBtn) exportBtn.disabled = !billingState?.is_premium;
-      if (manageBtn) manageBtn.disabled = !billingState?.is_premium;
-    }
-
-    async function loadBillingStatus() {
-      try {
-        billingState = await api('billing-status');
-      } catch {
-        billingState = null;
-      }
-      renderBillingStatus();
-    }
-
-    async function startUpgradeCheckout(interval) {
-      try {
-        setStatus('Creating Stripe checkout link…');
-        trackEvent('upgrade_click', { interval });
-        const out = await api('create-checkout-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interval }) });
-        if (out?.url) {
-          window.location.href = out.url;
-          return;
-        }
-        setStatus('Upgrade link unavailable. Please try again.');
-      } catch (e) {
-        setStatus(e.message || 'Could not start checkout');
-      }
-    }
-
-    async function openManageSubscription() {
-      try {
-        trackEvent('manage_subscription_click');
-        const out = await api('manage-subscription', { method: 'POST' });
-        if (out?.url) {
-          window.location.href = out.url;
-          return;
-        }
-        setStatus('Manage subscription is not available right now.');
-      } catch (e) {
-        setStatus(e.message || 'Could not open subscription management');
-      }
-    }
-
-    async function exportMyData() {
-      try {
-        setStatus('Preparing export…');
-        trackEvent('export_data_click', { format: 'txt' });
-
-        const today = new Date().toISOString().slice(0, 10);
-        const data = await api(`export-data?format=csv`);
-
-        const downloadText = (filename, text, mime = 'text/plain') => {
-          const blob = new Blob([text || ''], { type: `${mime};charset=utf-8` });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          URL.revokeObjectURL(url);
-        };
-
-        // Single Notepad-friendly TXT file (no JSON).
-        const parts = [];
-        parts.push(`AETHON EXPORT  (${today})`);
-        parts.push('');
-        parts.push('=== PROFILE ===');
-        parts.push(data.profile_csv || '(none)');
-        parts.push('');
-        parts.push('=== GOALS ===');
-        parts.push(data.goals_csv || '(none)');
-        parts.push('');
-        parts.push('=== WEIGHTS ===');
-        parts.push(data.weights_csv || '(none)');
-        parts.push('');
-        parts.push('=== ENTRIES ===');
-        parts.push(data.entries_csv || '(none)');
-        parts.push('');
-
-        downloadText(`aethon-export-${today}.txt`, parts.join('\n'), 'text/plain');
-
-        setStatus('Export downloaded (TXT).');
-      } catch (e) {
-        setStatus(e.message || 'Could not export data');
-      }
-    }
-
-    return {
-      loadBillingStatus,
-      startUpgradeCheckout,
-      openManageSubscription,
-      exportMyData
-    };
-  }
-
-  global.AppBilling = { createBillingController };
-})(window);
-
-;
-console.log("APP_VERSION v12");
 let currentUser = null;
 let skipOnboardingAfterLogin = false;
 const QUERY = new URLSearchParams(window.location.search);
@@ -418,22 +263,6 @@ async function mockApi(path, opts = {}) {
     return { ok: true };
   }
   if (route === 'goal-get') return { daily_calories: mockState.daily_calories };
-
-  // Progress (admin todos) - mock
-  if (route === 'todos-public-list') return { todos: mockState.admin_todos || [] };
-  if (route === 'todos-suggest-add' && method === 'POST') {
-    const next = {
-      id: `t_${Date.now()}_${Math.floor(Math.random()*10000)}`,
-      text: String(payload.text || '').trim(),
-      priority: (mockState.admin_todos || []).length + 1,
-      done: false,
-      source: 'client'
-    };
-    mockState.admin_todos = [...(mockState.admin_todos || []), next];
-    persistMockState();
-    return { ok: true, todo: next };
-  }
-
   if (route === 'goal-set' && method === 'POST') {
     mockState.daily_calories = Number(payload.daily_calories) || 0;
     persistMockState();
@@ -600,93 +429,6 @@ let deviceAutoLoginEnabled = localStorage.getItem(DEVICE_AUTO_LOGIN_STORAGE_KEY)
 let viewSpanEnabled = localStorage.getItem(VIEW_SPAN_ENABLED_KEY) === 'true';
 let viewSpanPastDays = Math.max(0, Math.min(6, Number(localStorage.getItem(VIEW_SPAN_PAST_DAYS_KEY) || '3') || 3));
 let viewSpanFutureDays = Math.max(0, Math.min(7, Number(localStorage.getItem(VIEW_SPAN_FUTURE_DAYS_KEY) || '2') || 2));
-
-
-// Client-visible admin todos ("Progress")
-let publicTodos = [];
-let publicTodosLoadedAt = 0;
-let publicUpdate = null;
-let publicUpdateLoadedAt = 0;
-
-async function loadPublicTodos(force = false) {
-  try {
-    if (!force && publicTodosLoadedAt && (Date.now() - publicTodosLoadedAt) < 15000) return;
-    const j = await api('todos-public-list');
-    publicTodos = Array.isArray(j?.todos) ? j.todos : [];
-    publicTodosLoadedAt = Date.now();
-  } catch (e) {
-    // non-blocking
-  }
-}
-
-async function loadPublicUpdate(force = false) {
-  try {
-    if (!force && publicUpdateLoadedAt && (Date.now() - publicUpdateLoadedAt) < 30_000) return;
-    const r = await fetch('/api/update-public-get');
-    const j = await r.json();
-    publicUpdate = j && j.update ? j.update : null;
-    publicUpdateLoadedAt = Date.now();
-  } catch (e) {
-    // non-blocking
-  }
-}
-
-function renderProgressCard() {
-  const list = el('progressList');
-  const empty = el('progressEmpty');
-  if (!list || !empty) return;
-
-  list.innerHTML = '';
-  const items = Array.isArray(publicTodos) ? publicTodos : [];
-  if (!items.length) {
-    empty.classList.remove('hidden');
-    return;
-  }
-  empty.classList.add('hidden');
-
-  for (const t of items) {
-    const li = document.createElement('li');
-    li.className = t.done ? 'done' : '';
-    const prefix = t.done ? '✅ ' : '• ';
-    li.textContent = prefix + (t.text || '');
-    list.appendChild(li);
-  }
-
-  // Client update banner
-  const box = el('clientUpdateBox');
-  const descEl = el('clientUpdateDesc');
-  const linkEl = el('clientUpdateLink');
-  if (box && descEl && linkEl) {
-    const u = publicUpdate;
-    if (u && u.link) {
-      box.classList.remove('hidden');
-      descEl.textContent = u.description || '';
-      linkEl.href = u.link;
-    } else {
-      box.classList.add('hidden');
-      descEl.textContent = '';
-      linkEl.href = '#';
-    }
-  }
-}
-
-async function handleSuggestUpdate() {
-  try {
-    const raw = prompt('Suggest an update (bullet point):');
-    const text = (raw || '').trim();
-    if (!text) return;
-    await api('todos-suggest-add', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
-    });
-    await loadPublicTodos(true);
-    renderProgressCard();
-    if (typeof showQuickFillToast === 'function') showQuickFillToast('Suggested :)');
-  } catch (e) {
-    alert('Could not send suggestion. Please try again.');
-  }
-}
 let selectedDayOffset = 0;
 let linkedDevicesState = [];
 
@@ -747,7 +489,9 @@ async function ensureVoiceThreadId() {
       voiceThreadId = r.thread_id;
       return voiceThreadId;
     }
-  } catch (e) {}
+  } catch (e) {
+    // fall back to legacy stateless behavior
+  }
   return null;
 }
 
@@ -775,15 +519,30 @@ function denverISOWithOffset(offsetDays) {
   return target.toISOString().slice(0, 10);
 }
 
-function isoToday(){return denverISO(new Date());}
+function isoToday() {
+  return denverISO(new Date());
+}
 
-function dateWithOffset(offsetDays){return denverISOWithOffset(offsetDays);}
+function dateWithOffset(offsetDays) {
+  return denverISOWithOffset(offsetDays);
+}
 
 function activeEntryDateISO() {
   return viewSpanEnabled ? dateWithOffset(selectedDayOffset) : isoToday();
 }
 
-function formatDayLabel(offset){if(offset===0)return'Today';if(offset===-1)return'Yesterday';if(offset===1)return'Tomorrow';const iso=denverISOWithOffset(offset);const parts=iso.split('-').map(Number);const dt=new Date(Date.UTC(parts[0],parts[1]-1,parts[2],12));return dt.toLocaleDateString([], { timeZone: 'America/Denver', month: 'short', day: 'numeric' });}
+function formatDayLabel(offset) {
+  if (offset === 0) return 'Today';
+  if (offset === -1) return 'Yesterday';
+  if (offset === 1) return 'Tomorrow';
+
+  // Use Boise time for labels too.
+  const iso = denverISOWithOffset(offset);
+  const [y, m, d] = iso.split('-').map(Number);
+  // Use UTC noon to avoid timezone edge cases when formatting.
+  const dt = new Date(Date.UTC(y, m - 1, d, 12));
+  return dt.toLocaleDateString([], { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
+}
 
 function renderTodayDateNavigator() {
   const nav = el('todayDateNav');
@@ -864,21 +623,6 @@ function setStatus(msg) {
   if (s) s.innerText = m;
   const vs = el('voiceStatus');
   if (vs) vs.innerText = m;
-}
-
-let quickFillToastTimer = null;
-function showQuickFillToast(msg) {
-  const n = el('quickFillToast');
-  if (!n) return;
-  n.innerText = msg || '';
-  n.classList.toggle('hidden', !msg);
-  if (quickFillToastTimer) clearTimeout(quickFillToastTimer);
-  if (msg) {
-    quickFillToastTimer = setTimeout(() => {
-      n.classList.add('hidden');
-      n.innerText = '';
-    }, 1400);
-  }
 }
 
 function maybePromptUpgradeForAiLimit(message) {
@@ -2207,7 +1951,7 @@ async function startCoachVoiceMediaRecorderSilence() {
   source.connect(analyser);
   const data = new Uint8Array(analyser.fftSize);
 
-  const threshold = 0.018;
+  const threshold = 0.018; // tuned for speech RMS
   const pollMs = 200;
   const stopAfterSilenceMs = 1200;
   const maxMs = 15000;
@@ -2262,8 +2006,7 @@ coachVoiceRecognition.onend = () => {
     setCoachListeningOverlay(false);
     updateCoachVoiceBtn();
   };
-
-coachVoiceRecognition.onerror = (e) => {
+  coachVoiceRecognition.onerror = (e) => {
     coachVoiceIsListening = false;
     setCoachListeningOverlay(false);
     updateCoachVoiceBtn();
@@ -2474,11 +2217,6 @@ async function loadToday() {
   el('fatProgressBar').style.width = `${fatPercent ?? 0}%`;
 
   renderEntries(entries);
-
-  // Progress (admin todo list) for clients
-  await loadPublicTodos();
-  await loadPublicUpdate();
-  renderProgressCard();
 }
 
 function applyManualPreset(preset) {
@@ -2495,13 +2233,6 @@ function applyManualPreset(preset) {
 // QUICK FILL AUTO LOG (v42)
 // ===============================
 async function applyQuickFillAndLog(presetId) {
-  try {
-    if (typeof window !== 'undefined' && window.__suppressAutoLogUntil && Date.now() < window.__suppressAutoLogUntil) {
-      // If something programmatically triggers a quick fill during a settings re-render, ignore it.
-      if (typeof showQuickFillToast === 'function') showQuickFillToast('Saved :)');
-      return;
-    }
-  } catch(e) {}
   // Fill the manual inputs from the preset, then immediately save the entry.
   applyManualPreset(presetId);
   // Ensure notes defaults to the preset name if empty
@@ -2512,8 +2243,6 @@ async function applyQuickFillAndLog(presetId) {
   }
   try {
     await saveManualEntry();
-    // Lightweight visual confirmation near the quick fill buttons.
-    showQuickFillToast(`Added ${p?.name || 'item'} :)`);
   } catch (e) {
     // saveManualEntry already sets status; keep console for debugging
     console.error('Quick Fill save failed', e);
@@ -2538,10 +2267,7 @@ function renderQuickFillButtons() {
     btn.className = 'quickFillBtn';
     btn.dataset.preset = q.id;
     btn.innerText = q.name;
-    btn.addEventListener('click', (ev) => {
-      if (ev && ev.isTrusted === false) return;
-      applyQuickFillAndLog(q.id);
-    });
+    btn.onclick = () => applyQuickFillAndLog(q.id);
     row.appendChild(btn);
   }
 }
@@ -3210,10 +2936,6 @@ function bindUI() {
   const panelDash = el('panelDashboard');
   const panelSet = el('panelSettings');
 
-  const suggestBtn = el('suggestUpdateBtn');
-  if (suggestBtn) suggestBtn.addEventListener('click', handleSuggestUpdate);
-
-
   function activateTab(which) {
     const isDash = which === 'dashboard';
     panelDash.classList.toggle('hidden', !isDash);
@@ -3805,21 +3527,6 @@ function getBaseDailyCalorieGoal() {
   return base;
 }
 
-function _parseLocalDateInput(date) {
-  // Avoid timezone-induced off-by-one issues when parsing YYYY-MM-DD strings.
-  // - If a Date is provided, use it as-is.
-  // - If an ISO date string (YYYY-MM-DD) is provided, force local midnight.
-  // - Otherwise, fall back to Date parsing.
-  if (!date) return new Date();
-  if (date instanceof Date) return date;
-  if (typeof date === 'string') {
-    // If it's already a full ISO timestamp, Date() is fine.
-    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return new Date(date + 'T00:00:00');
-    return new Date(date);
-  }
-  return new Date(date);
-}
-
 // ===============================
 // ROLLOVER CALORIES (v19)
 // ===============================
@@ -3975,16 +3682,6 @@ function getWeeklyCaloriePlanText() {
   return `Cheat day: ${cheat} kcal • Other days: ${other} kcal`;
 }
 
-function showCheatDaySavedToast() {
-  const el = document.getElementById('cheatDaySavedToast');
-  if (!el) return;
-  el.classList.add('show');
-  clearTimeout(el.__hideTimer);
-  el.__hideTimer = setTimeout(() => {
-    el.classList.remove('show');
-  }, 1200);
-}
-
 
 function wireRolloverCaloriesSettings() {
   const toggle = document.getElementById('rolloverCaloriesToggle');
@@ -4031,6 +3728,7 @@ function wireRolloverCaloriesSettings() {
     const delta = (toggle.checked && effDate === todayKey) ? deltaToday : 0;
     const sign = delta > 0 ? '+' : '';
     const eff = (toggle.checked && effDate === todayKey && effToday) ? effToday : _cheatAdjustedGoalForDate(new Date());
+
     status.textContent = toggle.checked
       ? `Today’s target: ${eff} kcal (${sign}${delta} rollover). One-day carry, capped at ±${cap}.`
       : 'Off. Your target is not affected by yesterday’s calories.';
@@ -4081,8 +3779,6 @@ function wireCheatDaySettings() {
     localStorage.setItem('cheat_day_dow', String(parseInt(select.value, 10)));
     const v = Math.max(0, parseInt(extraInput.value || '0', 10) || 0);
     localStorage.setItem('cheat_day_extra', String(v));
-    // Guard: prevent any accidental auto-log triggers right after saving cheat-day settings.
-    try { window.__suppressAutoLogUntil = Date.now() + 1500; } catch(e) {}
     refreshStatus();
     if (typeof renderAll === 'function') renderAll();
   }
@@ -4091,23 +3787,18 @@ function wireCheatDaySettings() {
     saveBtn.addEventListener('click', (e) => {
       e.preventDefault();
       applyCheatDayNow();
-      showCheatDaySavedToast();
     });
   }
 
 
   toggle.addEventListener('change', () => {
     localStorage.setItem('cheat_day_enabled', toggle.checked ? '1' : '0');
-    // Guard: prevent accidental quick-fill auto-log triggers during cheat-day rerender
-    try { window.__suppressAutoLogUntil = Date.now() + 1500; } catch(e) {}
     refreshStatus();
     if (typeof renderAll === 'function') renderAll();
   });
 
   select.addEventListener('change', () => {
     localStorage.setItem('cheat_day_dow', String(parseInt(select.value, 10)));
-    // Guard: prevent accidental quick-fill auto-log triggers during cheat-day rerender
-    try { window.__suppressAutoLogUntil = Date.now() + 1500; } catch(e) {}
     refreshStatus();
     if (typeof renderAll === 'function') renderAll();
   });
@@ -4115,8 +3806,6 @@ function wireCheatDaySettings() {
   extraInput.addEventListener('change', () => {
     const v = Math.max(0, parseInt(extraInput.value || '0', 10) || 0);
     localStorage.setItem('cheat_day_extra', String(v));
-    // Guard: prevent accidental quick-fill auto-log triggers during cheat-day rerender
-    try { window.__suppressAutoLogUntil = Date.now() + 1500; } catch(e) {}
     refreshStatus();
     if (typeof renderAll === 'function') renderAll();
   });
@@ -4173,7 +3862,7 @@ function getTodaysMacroGoals() {
   const baseCals = getBaseDailyCalorieGoal();
     const _activeISO = (typeof activeEntryDateISO === 'function') ? activeEntryDateISO() : null;
   const todayCals = (typeof getEffectiveDailyCalorieGoal === 'function' && _activeISO)
-    ? getEffectiveDailyCalorieGoal(_activeISO)
+    ? getEffectiveDailyCalorieGoal(new Date(_activeISO))
     : getTodaysCalorieGoal();
   const base = getBaseMacroGoals();
   if (!base.protein_g && !base.carbs_g && !base.fat_g) return base;
@@ -4353,6 +4042,7 @@ function apGetSettings_v40(){
 function apSetEnabled_v40(on){
   localStorage.setItem('ap_enabled', on ? '1' : '0');
   try{ window.__apServerState = window.__apServerState || {}; window.__apServerState.enabled = !!on; }catch{}
+  // persist cross-device
   try{ api('autopilot-set', { method:'POST', body: JSON.stringify({ autopilot_enabled: !!on }) }); }catch{}
 }
 
@@ -4407,6 +4097,7 @@ async function apRefreshSuggestion_v42(){
   try{
     const r = await api('autopilot-weekly-suggest');
     window.__apLastSuggest = r;
+    // also sync server state fields if present
     if(r && typeof r.week_start === 'string'){
       window.__apServerState = window.__apServerState || {};
       window.__apServerState.weekStart = r.week_start;
@@ -4574,9 +4265,11 @@ function apCloseWeeklyModal_v40(){
 async function apAcceptSuggestion_v40(s){
   const err=document.getElementById('apWeeklyError');
   try{
+    // Apply on server (also marks reviewed for the week)
     const resp = await api('autopilot-weekly-apply', { method:'POST', body: JSON.stringify({ accept: true, suggested_daily_calories: s.suggestedGoal }) });
     const applied = (resp && resp.applied_daily_calories) ? resp.applied_daily_calories : s.suggestedGoal;
 
+    // overwrite goals locally for immediate UI
     localStorage.setItem('calorie_goal', String(applied));
     const gi=document.getElementById('goalInput');
     if(gi) gi.value = String(applied);
@@ -4597,6 +4290,7 @@ async function apAcceptSuggestion_v40(s){
 }
 
 function apDeclineSuggestion_v40(){
+  // Mark reviewed cross-device
   try{
     api('autopilot-weekly-apply', { method:'POST', body: JSON.stringify({ accept: false }) })
       .then(resp=>{
@@ -4621,13 +4315,16 @@ function apRenderHomeSuggestion_v40(){
   const due = settings.lastReviewedWeek !== weekKey;
   if(!due){ wrap.classList.add('hidden'); return; }
 
+  // Prefer server-authoritative suggestion if available.
   const cached = window.__apLastSuggest;
   if(!cached){
     wrap.classList.add('hidden');
+    // kick off fetch
     apRefreshSuggestion_v42().then(()=>{ try{ apRenderHomeSuggestion_v40(); }catch(e){} });
     return;
   }
   if(!cached.ok){
+    // Show a helpful message when Autopilot is on but not ready.
     const txt=document.getElementById('apHomeSuggestionText');
     if(txt){
       const msg = cached.reason === 'not_enough_food_days' || cached.reason === 'not_enough_weighins' || cached.reason === 'weighins_too_close'
@@ -4655,6 +4352,7 @@ function apRenderHomeSuggestion_v40(){
     btn.addEventListener('click',()=>{
       const s=window.__apLastSuggest;
       if(s && s.ok){
+        // Adapt server payload to modal shape
         apShowWeeklyModal_v40({
           baseGoal: s.current_daily_calories,
           suggestedGoal: s.suggested_daily_calories,
@@ -4679,6 +4377,7 @@ function apMaybeAutoPopup_v40(){
   if(settings.lastReviewedWeek === weekKey) return;
   const lastPopup = localStorage.getItem('ap_last_popup_week') || '';
   if(lastPopup === weekKey) return;
+
   const showIfReady = ()=>{
     const cached = window.__apLastSuggest;
     if(!cached || !cached.ok) return;
@@ -4709,6 +4408,7 @@ async function apLoadServerState_v42(){
     window.__apServerState.enabled = !!r.autopilot_enabled;
     window.__apServerState.mode = r.autopilot_mode || 'weight';
     window.__apServerState.lastReviewedWeek = r.autopilot_last_review_week || '';
+    // Keep local fallbacks in sync
     localStorage.setItem('ap_enabled', window.__apServerState.enabled ? '1' : '0');
     if(window.__apServerState.lastReviewedWeek){
       localStorage.setItem('ap_last_review_week', window.__apServerState.lastReviewedWeek);
@@ -4750,12 +4450,14 @@ function initAutopilotMode_v40(){
     const tw = lean / (1 - Math.min(80,Math.max(1,tbf))/100);
     out.textContent = `Implied target weight: ${tw.toFixed(1)} lbs (assumes lean mass stays constant)`;
   }
+
   const w=document.getElementById('apTargetWeightInput');
   if(t && !t.__apBound){
     t.__apBound=true;
     t.checked = apGetSettings_v40().enabled;
     t.addEventListener('change', ()=>{
       apSetEnabled_v40(t.checked);
+      // refresh suggestion from server
       try{ window.__apLastSuggest = null; apRefreshSuggestion_v42().then(()=>apRenderHomeSuggestion_v40()); }catch{}
       apRenderHomeSuggestion_v40();
       renderAutopilotReadiness_v38();
@@ -4785,6 +4487,7 @@ function initAutopilotMode_v40(){
   const tbf=document.getElementById('apTargetBodyFatInput');
   const bd=document.getElementById('apBodyFatGoalDateInput');
 
+  // Prefill current weight from latest weigh-in (user can override)
   try{
     const wts=apLoadUnifiedWeights_v40();
     let lastW=null;
@@ -4794,6 +4497,7 @@ function initAutopilotMode_v40(){
 
   if(cw && !cw.__apBound){
     cw.__apBound=true;
+    // Load persisted override
     try{ if(profileState && profileState.current_body_fat_weight_lbs!=null) cw.value = String(profileState.current_body_fat_weight_lbs); }catch{}
     cw.addEventListener('change', async ()=>{
       const v = cw.value===''? null : parseFloat(cw.value);
@@ -4837,6 +4541,7 @@ function initAutopilotMode_v40(){
       try{ window.__apLastSuggest = null; apRefreshSuggestion_v42().then(()=>apRenderHomeSuggestion_v40()); }catch{}
     });
   }
+  // update implied target weight label
   try{ apComputeImpliedTargetWeightUI_v42(); }catch{}
   if(w && !w.__apBound){
     w.__apBound=true;
@@ -4874,13 +4579,12 @@ function initAutopilotMode_v40(){
   if(acceptBtn && !acceptBtn.__apBound){
     acceptBtn.__apBound=true;
     acceptBtn.addEventListener('click', ()=>{
-      const ss=window.__apLastSuggest;
-      if(ss && ss.ok){
-        apAcceptSuggestion_v40({ suggestedGoal: ss.suggested_daily_calories });
-      }
+      const s=apComputeSuggestion_v40();
+      if(s.ok) apAcceptSuggestion_v40(s);
     });
   }
 
+  // home surface
   apLoadServerState_v42().then(()=>{
     try{ if(t) t.checked = apGetSettings_v40().enabled; }catch{}
     try{ apApplyModeUI_v42((window.__apServerState && window.__apServerState.mode) ? window.__apServerState.mode : (localStorage.getItem('ap_target_mode')||'weight')); }catch{}
@@ -4889,6 +4593,7 @@ function initAutopilotMode_v40(){
       try{ apMaybeAutoPopup_v40(); }catch(e){}
     });
   }).catch(()=>{
+    // fallback to local compute
     try{ apApplyModeUI_v42(localStorage.getItem('ap_target_mode')||'weight'); }catch{}
     apRenderHomeSuggestion_v40();
     try{ apMaybeAutoPopup_v40(); }catch(e){}
@@ -5089,52 +4794,13 @@ function _apSyncFromApi(path, body) {
   }
 }
 
-// ===============================
-// AMBASSADOR REFERRALS (v1)
-// Capture ?ref=CODE and claim it server-side for attribution (free + paid).
-function captureReferralCodeFromUrl() {
-  try {
-    const u = new URL(window.location.href);
-    const ref = (u.searchParams.get('ref') || u.searchParams.get('REF') || '').trim().toLowerCase();
-    if (ref && /^[a-z0-9]{6,32}$/.test(ref)) {
-      localStorage.setItem('amb_ref_code', ref);
-      localStorage.setItem('amb_ref_captured_at', String(Date.now()));
-    }
-  } catch (e) {}
-}
-
-let __ambReferralClaimInFlight = false;
-async function claimReferralIfPresent() {
-  try {
-    if (__ambReferralClaimInFlight) return;
-    const ref = (localStorage.getItem('amb_ref_code') || '').trim().toLowerCase();
-    if (!ref) return;
-    // Avoid spamming: only claim once per device unless code changes.
-    const claimed = (localStorage.getItem('amb_ref_claimed') || '').trim().toLowerCase();
-    if (claimed === ref) return;
-
-    __ambReferralClaimInFlight = true;
-    const r = await api('referral-claim', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ref_code: ref })
-    });
-    if (r && r.ok) {
-      localStorage.setItem('amb_ref_claimed', ref);
-    }
-  } catch (e) {
-    // If invalid/unknown code, don't loop.
-    try { localStorage.setItem('amb_ref_claimed', localStorage.getItem('amb_ref_code') || ''); } catch {}
-  } finally {
-    __ambReferralClaimInFlight = false;
-  }
-}
-
-document.addEventListener('DOMContentLoaded', ()=>{ try { captureReferralCodeFromUrl(); claimReferralIfPresent(); } catch(e){} });
-
-
-
+// Coach daily nudge: show a few seconds after app loads (once per day).
 document.addEventListener('DOMContentLoaded', ()=>{
-  try { setTimeout(()=>{ try { maybeShowCoachDailyNudge(); } catch(e){} }, 2500); } catch(e) {}
+  try {
+    // Safety: never start in a listening state.
+    try { coachVoiceIsListening = false; coachVoiceFabFlow = false; stopCoachVoiceRecognition(); } catch(e) {}
+    try { setCoachListeningOverlay(false); } catch(e) {}
+    setTimeout(()=>{ try { maybeShowCoachDailyNudge(); } catch(e){} }, 2500);
+  } catch(e) {}
 });
 })();

@@ -1,84 +1,1426 @@
-# Calorie & Weight Tracker (Mock Local App)
 
-## What this is
+/* Simple toast used for small confirmations (e.g., Cheat Day save) */
+.savedToast {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%) scale(0.96);
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 18px;
+  font-size: 14px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 9999;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
 
-## Mock mode (no auth, local-only)
-This build runs entirely in **mock mode**:
-- No Netlify Identity login required.
-- No backend/database required for core app usage.
-- Data is cached in browser session storage (`caloriTrackerMockStateV1`) and resets when the tab/session ends (or via Reset Mock Session).
-- Includes a mock landing page before entering onboarding and the full app experience.
+.savedToast.show {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+}
+:root { --border:#dde4f3; --muted:#586174; --bg:#f4f7ff; --ink:#0f172a; --accent:#2563eb; }
+* { box-sizing: border-box; }
+body {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  max-width: 860px;
+  margin: auto;
+  padding: 16px 16px 92px;
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 500px at 12% -12%, rgba(59,130,246,0.20), transparent 60%),
+    radial-gradient(900px 400px at 92% -18%, rgba(45,212,191,0.15), transparent 62%),
+    linear-gradient(180deg, #f8fbff 0%, var(--bg) 50%, #f2f6ff 100%);
+}
+h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+h2 { margin: 0; letter-spacing: -0.01em; }
+header.row {
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,0.85);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.72);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 20px rgba(32, 68, 136, 0.08);
+}
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.card {
+  background: rgba(255,255,255,0.94);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  margin: 12px 0;
+  box-shadow: 0 10px 24px rgba(25, 58, 122, 0.08);
+}
+button {
+  padding: 9px 12px;
+  border-radius: 11px;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.05);
+  cursor: pointer;
+  transition: transform .08s ease, background-color .15s ease, border-color .15s ease;
+}
+button:hover {
+  transform: translateY(-1px);
+  background: rgba(0,0,0,0.08);
+  border-color: rgba(0,0,0,0.10);
+  box-shadow: none;
+}
+input { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); min-width: 220px; }
+.muted { color: var(--muted); font-size: 13px; margin-top: 6px; }
+.hidden { display: none; }
 
-A static web app deployed on Netlify using:
-- Netlify Identity (email login)
-- Netlify Functions (API backend)
-- Neon Postgres (DATABASE_URL)
-- OpenAI API (OPENAI_API_KEY) for nutrition-label extraction + coaching
-
-No other backend services.
-
-## Setup (Neon)
-1. Create a Neon Postgres database.
-2. Run the SQL migrations in order in Neon: `sql/001_init.sql`, `sql/002_user_profile_onboarding.sql`, `sql/003_capacity_optimizations.sql`, `sql/004_quick_fills.sql`, `sql/005_admin_feedback.sql`, `sql/006_billing_limits.sql`, `sql/007_admin_goals_and_passes.sql`, `sql/008_growth_billing_upgrades.sql`, `sql/009_reliability_growth.sql`, `sql/010_scheduled_reconcile_alerts.sql`.
-3. Copy the connection string into Netlify env var `DATABASE_URL` (use pooled connection if available).
-
-## Setup (Netlify)
-1. Deploy this repo to Netlify.
-2. Enable **Identity** in Netlify UI (Project configuration → Identity).
-   - Enable email signups (and confirm emails if desired).
-3. Set env vars (Project configuration → Environment variables):
-   - `DATABASE_URL`
-   - `OPENAI_API_KEY`
-   - `PERSIST_DAILY_SUMMARIES` (`true` to store daily summaries, default is not persisted)
-   - `RETENTION_ADMIN_TOKEN` (required for running retention endpoint)
-   - `HOT_STORAGE_KEEP_DAYS` (optional, default `90`)
-   - `SUMMARY_KEEP_DAYS` (optional, default uses `HOT_STORAGE_KEEP_DAYS`)
-   - `MAX_DB_SIZE_GB` (optional, default `0.49`; auto-trims oldest archive/history when DB grows beyond this)
-   - `ADMIN_DASH_TOKEN` (required for `/admin.html` and admin functions)
-   - `STRIPE_MONTHLY_PAYMENT_LINK_URL` (optional override for monthly upgrade URL)
-   - `STRIPE_YEARLY_PAYMENT_LINK_URL` (optional override for yearly upgrade URL)
-   - `STRIPE_SECRET_KEY` (required for Stripe webhook sync and Stripe billing portal)
-   - `STRIPE_WEBHOOK_SECRET` (required for `/api/stripe-webhook` signature validation)
-
-## Local dev
-Netlify Identity context is not always present in local `netlify dev`. Test auth-dependent functions on a deployed preview/site.
-
-## Notes
-- The server computes the “day” using America/Denver for consistency.
-- The app does not store images—photos are sent to the function for extraction and discarded.
-- `raw_extraction` is intentionally compact (`source`, `confidence`, `estimated`, short `notes`) to reduce storage overhead.
-- Retention/cold storage: run `/.netlify/functions/admin-retention-run` with header `x-admin-token: <RETENTION_ADMIN_TOKEN>` to archive + delete old rows from hot tables.
-- Auto-retention now runs hourly (Netlify Scheduled Function) and enforces a DB-size ceiling (default `0.49 GB`) by trimming oldest rows first from archive tables, then hot tables only if still needed.
-- Admin dashboard: open `/admin.html`, enter `ADMIN_DASH_TOKEN`, view user/app stats, and generate AI insights from current usage metrics.
-- Mandatory feedback broadcast: from `/admin.html` you can activate a feedback form; logged-in users must submit it before continuing to use the app.
-
-## New in v1.1
-- Edit/delete food entries
-- Weekly charts (last 7 days) for calories (bars) and weight (line)
-
-## Free vs Premium
-- **Free tier**: up to 5 food entries/day, 3 AI actions/day, and last 20 days of history.
-- **Premium**: monthly ($5) or yearly ($50) Stripe upgrades; includes unlimited food entries, unlimited AI actions, unlimited history, and data export.
-- Use `/api/create-checkout-session` with `{ "interval": "monthly" | "yearly" }` for upgrade checkout links.
-- Use `/api/stripe-webhook` to automatically keep subscription access in sync while payments stay active.
-
-## Billing / Growth Upgrades
-- Admin can now edit free-tier limits and monthly/yearly pricing URLs from `/admin.html`.
-- Admin can grant direct premium passes or quick trial passes to specific users.
-- Stripe webhooks are logged in `stripe_webhook_events` for observability and churn-risk monitoring.
-- Premium users can export JSON or CSV via `/api/export-data?format=json|csv&from=YYYY-MM-DD&to=YYYY-MM-DD`.
-- Users can manage billing through `/api/manage-subscription` (Stripe portal when configured).
+body.invertedTheme {
+  /* Dark mode is implemented via an invert filter, but applying filter on <body>
+     breaks position:fixed in some browsers (it creates a containing block).
+     So we keep body unfiltered and invert only the scrollable UI layers. */
+  background: #111;
+}
 
 
-## Reliability / Conversion instrumentation
-- `stripe_webhook_events` enforces unique Stripe event ids for idempotent processing.
-- `app_events` tracks in-app conversion events (`upgrade_click`, `manage_subscription_click`, `export_data_click`, `near_limit_warning_shown`).
-- Admin can run `/api/admin-reconcile-subscriptions` to repair Stripe subscription state drift.
-- Scheduled reconciliation runs hourly via `scheduled-reconcile-subscriptions` and logs runs to `subscription_reconcile_runs`.
-- Alert notifications are emitted to `RECON_ALERT_WEBHOOK_URL` (optional) and persisted in `alert_notifications`.
-- User-side tracking endpoint: `/api/track-event` (authenticated).
+/* Inverted scope for dark mode (keeps fixed-position elements working) */
+body.invertedTheme header,
+body.invertedTheme main,
+body.invertedTheme #adminFooter,
+body.invertedTheme #coachChatCard,
+body.invertedTheme .addFoodOverlay,
+body.invertedTheme .addFoodPanel.modalActive,
+body.invertedTheme #onboardingOverlay {
+  filter: invert(1) hue-rotate(180deg);
+}
 
-## Quality gates
-- `npm run lint:syntax` performs syntax checks across all JS files.
-- `npm run test:integration` runs billing integration tests for webhook duplicate handling, payment failure/cancellation transitions, and admin-pass entitlement override.
-- CI runs `npm run test` on pushes and pull requests.
+body.invertedTheme header img,
+body.invertedTheme header video,
+body.invertedTheme main img,
+body.invertedTheme main video,
+body.invertedTheme #adminFooter img,
+body.invertedTheme #coachChatCard img,
+body.invertedTheme #adminFooter video,
+body.invertedTheme #coachChatCard video,
+body.invertedTheme .addFoodOverlay img,
+body.invertedTheme .addFoodOverlay video,
+body.invertedTheme .addFoodPanel.modalActive img,
+body.invertedTheme .addFoodPanel.modalActive video,
+body.invertedTheme #onboardingOverlay img,
+body.invertedTheme #onboardingOverlay video {
+  /* re-invert media so photos/icons don't look like negatives */
+  filter: invert(1) hue-rotate(180deg);
+}
+
+.pre { white-space: pre-wrap; background: #f6f6f6; padding: 10px; border-radius: 10px; border: 1px solid var(--border); }
+.progress { height: 10px; background: rgba(0,0,0,0.05); border-radius: 999px; overflow: hidden; margin: 10px 0; border: 1px solid rgba(0,0,0,0.08); box-shadow: none; }
+#progressBar { height: 100%; width: 0%; background: #111; }
+ul { margin: 8px 0 0 18px; }
+.auth button { min-width: 120px; }
+
+.statStrip { display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 8px; }
+.statTile { border: 1px solid var(--border); border-radius: 10px; padding: 8px; background: #fdfdfd; }
+.statLabel { font-size: 12px; color: var(--muted); }
+.statValue { font-size: 18px; font-weight: 700; margin-top: 2px; }
+
+.macroProgressList { margin-top: 4px; margin-bottom: 4px; }
+.macroProgressRow { display: grid; grid-template-columns: 1fr; gap: 6px; align-items: center; margin-top: 8px; }
+.microProgress { height: 7px; border-radius: 999px; background: rgba(0,0,0,0.05); overflow: hidden; border: 1px solid rgba(0,0,0,0.08); box-shadow: none; }
+.microProgress > div { height: 100%; width: 0%; background: linear-gradient(90deg, #2f6fff, #6aa0ff); }
+.macroLabelCell { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+
+
+.todayGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 14px;
+}
+@media (max-width: 640px) {
+  .todayGrid { grid-template-columns: 1fr; }
+  .statStrip { grid-template-columns: 1fr; }
+}
+
+.tabs { display: flex; gap: 8px; margin: 10px 0 14px; }
+.tabbtn { padding: 8px 10px; border-radius: 999px; border: 1px solid rgba(0,0,0,0.08); background: rgba(0,0,0,0.05); }
+.tabbtn.active { background: #111; color: white; border-color: #111; }
+
+.switch { position: relative; display: inline-block; width: 48px; height: 28px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #ddd; transition: .2s; border-radius: 999px; border: 1px solid var(--border); }
+.slider:before { position: absolute; content: ""; height: 22px; width: 22px; left: 3px; bottom: 2px;
+  background-color: white; transition: .2s; border-radius: 50%; border: 1px solid var(--border); }
+.switch input:checked + .slider { background-color: #111; border-color: #111; }
+.switch input:checked + .slider:before { transform: translateX(18px); }
+
+
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 1000;
+}
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  background: #fff;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  border: 1px solid var(--border);
+  z-index: 1001;
+  max-width: 820px;
+  margin: 0 auto;
+  box-shadow: 0 -8px 24px rgba(0,0,0,0.15);
+}
+.sheetHeader {
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 12px 12px 6px;
+}
+.sheetBody { padding: 8px 12px 14px; }
+.field { display:block; margin: 10px 0; }
+.label { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.computed { background:#f6f6f6; border:1px solid var(--border); border-radius: 12px; padding: 10px; margin-top: 10px; }
+.sheetActions { justify-content: flex-end; margin-top: 12px; }
+.ghost { border: none; background: transparent; font-size: 18px; padding: 6px 8px; }
+
+
+.pill { display:inline-block; padding: 4px 10px; border-radius: 999px; border:1px solid var(--border); background:#fff; font-size: 12px; color: #111; }
+.badge { display:inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; border:1px solid var(--border); font-size: 12px; text-transform: lowercase; }
+.badge.high { background:#eaffea; }
+.badge.medium { background:#fff7e6; }
+.badge.low { background:#ffecec; }
+
+
+
+.thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  color: #444;
+  font-size: 13px;
+}
+.thinking.hidden { display: none; }
+
+.thinkingDots {
+  display: inline-flex;
+  gap: 4px;
+}
+.thinkingDots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #666;
+  animation: thinkingBounce 0.9s infinite ease-in-out;
+}
+.thinkingDots span:nth-child(2) { animation-delay: 0.15s; }
+.thinkingDots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes thinkingBounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* Manual entry form */
+label {
+  display: block;
+  font-size: 12px;
+  color: #555;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.quickAdds { margin-top: 8px; }
+.quickFillBtn { font-size: 12px; padding: 6px 10px; border-radius: 999px; }
+
+/* Quick fill feedback */
+.quickFillToast {
+  font-size: 12px;
+  margin-top: 6px;
+  color: #1a7f37;
+}
+
+
+.addFoodModeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.addFoodModeBtn {
+  width: 100%;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 600;
+}
+
+.addFoodPanel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: #fff;
+}
+
+
+.addFoodOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 1300;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+}
+
+.addFoodPanel.modalActive {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(720px, calc(100vw - 20px));
+  max-height: calc(100dvh - 20px);
+  overflow-y: auto;
+  z-index: 1301;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.24);
+}
+
+@media (max-width: 900px), (max-height: 900px) {
+  .addFoodPanel.modalActive {
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    top: max(8px, env(safe-area-inset-top));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    width: auto;
+    max-height: none;
+    transform: none;
+    margin: auto;
+  }
+}
+
+.quickAdds.empty {
+  opacity: 0.7;
+}
+
+@media (max-width: 640px) {
+  .addFoodModeGrid {
+    grid-template-columns: 1fr;
+  }
+}
+.cardHeaderRow,
+.chatHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.sectionToggleBtn {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+}
+
+.collapsibleBody.hidden {
+  display: none;
+}
+
+.floatingChat {
+  /* Coach chat is an always-available floating window */
+  position: fixed;
+  right: 16px;
+  bottom: 86px; /* leaves room for the floating coach button */
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(520px, calc(100vh - 140px));
+  overflow: hidden;
+  margin: 0;
+  z-index: 1100;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.2);
+  display: none; /* toggled open/closed */
+}
+
+.floatingChat.open {
+  display: block;
+}
+
+/* Mobile overlay hardening: keep Coach Chat pinned to the viewport.
+   (Some mobile browsers can treat fixed elements as scrollable when nested.) */
+@media (max-width: 768px) {
+  #coachChatCard.floatingChat {
+    position: fixed !important;
+    right: max(16px, env(safe-area-inset-right)) !important;
+    bottom: calc(max(16px, env(safe-area-inset-bottom)) + 72px) !important;
+    left: max(16px, env(safe-area-inset-left)) !important;
+    width: auto !important;
+  }
+}
+
+/* Floating Coach Action Button */
+.coachFab {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 64px;
+  height: 64px;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  z-index: 1200;
+}
+
+.coachFab img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  background: transparent;
+  pointer-events: none;
+}
+
+.coachFab:active {
+  transform: translateY(1px);
+}
+
+@media (min-width: 1100px) {
+  body {
+    max-width: 1180px;
+  }
+
+  .dashboardGrid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+  }
+
+  .dashboardGrid > .card {
+    margin: 0;
+  }
+
+  #todayCard,
+  #addFoodCard,
+  #dailyGoalsCard {
+    grid-column: 1;
+  }
+
+  #weightCard,
+  #trendsCard,
+  #finishDayCard,
+  #coachChatCard {
+    grid-column: 2;
+  }
+
+  #todayCard { grid-row: 1; }
+  #weightCard { grid-row: 1; }
+  #addFoodCard { grid-row: 2; }
+  #trendsCard { grid-row: 2; }
+  #dailyGoalsCard { grid-row: 3; }
+  #finishDayCard { grid-row: 3; }
+  #coachChatCard { grid-row: 4; }
+
+  /* Coach chat is floating on all screen sizes; keep it out of the grid flow */
+  #coachChatCard {
+    grid-column: auto;
+    grid-row: auto;
+  }
+}
+
+#coachChatBody .row {
+  flex-wrap: nowrap;
+}
+
+#coachChatBody input {
+  min-width: 0;
+  flex: 1;
+}
+
+@media (max-width: 640px) {
+  /* Keep the coach chat floating even on small screens */
+
+  #coachChatBody .row {
+    flex-wrap: wrap;
+  }
+
+  #coachChatBody .row > button {
+    width: auto;
+  }
+}
+@media (max-width: 640px) {
+  .grid2 { grid-template-columns: 1fr; }
+}
+
+
+/* --- Plate estimate modal overlay (robust click handling) --- */
+.estimate-overlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.25);
+  z-index: 1000;
+}
+.estimate-overlay.hidden,
+.estimate-overlay[hidden]{
+  display: none;
+}
+
+.estimate-sheet{
+  background: #fff;
+  max-width: 720px;
+  margin: 40px auto;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.20);
+  padding: 18px 18px 14px;
+  position: relative;
+}
+.estimate-sheet .estimate-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.estimate-sheet .estimate-title{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-weight:700;
+}
+.estimate-pill{
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #ddd;
+  background: #f7f7f7;
+}
+.estimate-close{
+  border: none;
+  background: transparent;
+  font-size: 22px;
+  line-height: 22px;
+  cursor: pointer;
+}
+.estimate-grid{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+.estimate-grid label{
+  font-size: 12px;
+  color: #444;
+}
+.estimate-grid input{
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+}
+.estimate-assumptions{
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid #eee;
+  border-radius: 12px;
+  background: #fafafa;
+}
+.estimate-footer{
+  display:flex;
+  justify-content:flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+
+/* Plate estimate sheet layering: overlay blocks background, sheet stays clickable */
+#estimateOverlay {
+  z-index: 1000;
+  pointer-events: auto;
+}
+#plateEstimateSheet {
+  z-index: 1001;
+  max-height: calc(100vh - 24px);
+  display: flex;
+  flex-direction: column;
+}
+#plateEstimateSheet.hidden {
+  display: none;
+}
+
+#plateEstimateSheet .sheetBody {
+  overflow-y: auto;
+}
+
+select { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); min-width: 220px; }
+
+.onboardingOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index:  9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.onboardingModal {
+  position: relative;
+  width: min(760px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  padding: 18px;
+}
+
+.photoActions {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hiddenFileInput {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.onboardingOverlay.hidden { display: none; }
+
+
+.onboardingModal.welcomeMode {
+  width: min(420px, 100%);
+  max-height: min(560px, calc(100vh - 32px));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+
+.onboardingModal.welcomeMode #onboardingWelcomeScreen {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.onboardingModal.welcomeMode #onboardingContinueBtn {
+  width: min(280px, 100%);
+}
+
+@media (max-width: 640px) {
+  .onboardingOverlay {
+    padding: 10px;
+  }
+
+  .onboardingModal {
+    max-height: calc(100vh - 20px);
+    padding: 16px;
+  }
+
+  .onboardingModal.welcomeMode {
+    justify-content: center;
+    min-height: min(360px, calc(100vh - 20px));
+    overflow: hidden;
+  }
+
+  .onboardingModal.welcomeMode h2 {
+    margin: 4px 0 8px;
+  }
+
+  .onboardingModal.welcomeMode p {
+    margin: 0;
+  }
+}
+
+.onboardingStep {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.fieldError {
+  min-height: 16px;
+  font-size: 12px;
+  color: #b00020;
+}
+
+#aiGetPlanBtn[disabled] {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+
+/* Mobile friendliness improvements */
+canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+button {
+  min-height: 40px;
+}
+
+@media (max-width: 640px) {
+  input,
+  select,
+  button {
+    min-width: 0;
+  }
+
+  .row > input,
+  .row > select,
+  .row > button {
+    width: 100%;
+  }
+
+  body {
+    padding: 12px;
+  }
+}
+
+.adminLink {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-decoration: none;
+  color: #111;
+  background: #fff;
+  min-height: 40px;
+}
+
+textarea {
+  width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-family: inherit;
+}
+
+.goalTrack { height: 12px; background: #f1f1f1; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; margin-top: 8px; }
+.goalFill { height: 100%; width: 0%; background: linear-gradient(90deg, #3f7cff, #75a4ff); }
+.goalFill.paid { background: linear-gradient(90deg, #10a26a, #4bcf96); }
+textarea { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); min-width: 220px; width: 100%; }
+
+
+/* Mock landing polish */
+.mockHeroCard {
+  border: none;
+  background: linear-gradient(140deg, #0f172a 0%, #1d4ed8 45%, #2563eb 100%);
+  color: #fff;
+  box-shadow: 0 18px 40px rgba(16, 40, 95, 0.34);
+}
+
+.mockPillRow { display:flex; flex-wrap:wrap; gap:8px; margin-bottom: 10px; }
+.mockPill {
+  display:inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.16);
+  font-size: 12px;
+}
+.mockHeroTitle { font-size: clamp(24px, 4vw, 30px); line-height: 1.15; margin-bottom: 8px; }
+.mockLead { color: rgba(255,255,255,0.94); margin-top: 4px; margin-bottom: 14px; }
+.mockActionRow { display:flex; flex-wrap:wrap; gap:10px; margin-bottom: 14px; }
+.ctaPrimary {
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid rgba(255,255,255,0.65);
+  font-weight: 700;
+}
+.ctaSecondary {
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.38);
+}
+.mockFeatureGrid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:10px; }
+.mockFeatureCard {
+  border-radius: 12px;
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.12);
+}
+.mockFeatureCard h3 { margin: 0 0 4px; font-size: 14px; }
+.mockFeatureCard p { margin: 0; font-size: 13px; color: rgba(255,255,255,0.9); }
+.trustRow {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(255,255,255,0.9);
+}
+
+#todayCard { border-top: 3px solid #60a5fa; }
+#addFoodCard { border-top: 3px solid #34d399; }
+#coachChatCard { border-top: 3px solid #f59e0b; }
+
+@media (max-width: 760px) {
+  .mockFeatureGrid { grid-template-columns: 1fr; }
+}
+
+.linkMiniBtn {
+  margin-top: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--accent, #3a63ff);
+  font-size: 12px;
+  text-decoration: underline;
+  padding: 4px 6px;
+}
+
+.signupPromptCard {
+  margin-top: 18px;
+  border: 1px dashed var(--border, #d9dee8);
+}
+
+
+.todayDateNav {
+  margin-bottom: 10px;
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 10px;
+  padding: 8px;
+  background: rgba(0,0,0,0.02);
+}
+.todayDateNavTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.todayDateChips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-top: 8px;
+  padding-bottom: 2px;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+}
+.todayDateChips::-webkit-scrollbar { height: 6px; }
+.todayDateChips::-webkit-scrollbar-thumb { background: rgba(0,0,0,.18); border-radius: 999px; }
+.todayDateChips::-webkit-scrollbar-track { background: rgba(0,0,0,.06); border-radius: 999px; }
+
+.todayDateChip {
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.05);
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+
+/* --- View span date chips: prevent squished/overlapped labels on mobile --- */
+.todayDateChips button.todayDateChip{
+  padding: 6px 12px !important;
+  border-radius: 999px !important;
+  line-height: 1.2 !important;
+  flex: 0 0 auto;
+  min-width: 64px;
+  text-align: center;
+  scroll-snap-align: center;
+}
+.todayDateChips button.todayDateChip.active{
+  border-color: rgba(37,99,235,0.55);
+  background: rgba(37,99,235,0.12);
+}
+/* slightly larger tap targets on phones */
+@media (max-width: 480px){
+  .todayDateChips{
+    gap: 10px;
+    padding-top: 10px;
+  }
+  .todayDateChips button.todayDateChip{
+    min-width: 72px;
+    font-size: 13px;
+  }
+}
+
+.todayDateChip.active {
+  border-color: rgba(0,0,0,0.12);
+  background: rgba(0,0,0,0.08);
+  font-weight: 600;
+}
+@media (max-width: 520px) {
+  .todayDateChip {
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.05);
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+  .todayDateChips { gap: 6px; }
+}
+
+.todayDateChip {
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.05);
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.todayDateChip.active {
+  border-color: rgba(0,0,0,0.12);
+  background: rgba(0,0,0,0.08);
+  font-weight: 600;
+}
+
+.deviceList {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.deviceRow {
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  background: var(--card, #fff);
+}
+
+.deviceRowTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.deviceNameInput {
+  width: min(360px, 100%);
+}
+
+.deviceMeta {
+  font-size: 12px;
+}
+
+
+
+/* Ensure Netlify Identity modal is always clickable above onboarding overlay */
+.netlify-identity-overlay,
+.netlify-identity-modal,
+.netlify-identity-widget {
+  z-index: 20000 !important;
+}
+
+
+
+/* Ensure Netlify Identity modal is always clickable above onboarding overlay (covers multiple Netlify class/id variants) */
+#netlify-identity-widget,
+#netlify-identity-overlay,
+#netlify-identity-modal,
+.netlify-identity-widget,
+.netlify-identity-overlay,
+.netlify-identity-modal,
+[data-netlify-identity-widget] {
+  z-index: 99999 !important;
+}
+
+.dangerBtn {
+  border-color: #f3b8b8;
+  color: #b42318;
+}
+.dangerBtn:hover {
+  border-color: #f08a8a;
+}
+.dangerBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+
+/* === Aethon backgrounds (added) ===
+   These are safe, optional backdrops for key cards.
+   Light mode uses *_light.png by default.
+   NOTE: Current app "dark mode" is implemented as a full-page invert filter (body.invertedTheme),
+   which will also invert background images. If you later switch dark mode to a true theme,
+   swap these URLs to the *_dark.png variants. */
+#todayCard, #addFoodCard, #dailyGoalsCard, #trendsCard, #weightCard, #finishDayCard{
+  background-size: cover;
+  background-position: right center;
+  background-repeat: no-repeat;
+}
+#todayCard{ background-image: url("./assets/backgrounds/today_light.png"); }
+#addFoodCard{ background-image: url("./assets/backgrounds/addfood_light.png"); }
+#dailyGoalsCard{ background-image: url("./assets/backgrounds/dailygoals_light.png"); }
+#trendsCard{ background-image: url("./assets/backgrounds/trends_light.png"); }
+#weightCard{ background-image: url("./assets/backgrounds/weight_light.png"); }
+#finishDayCard{ background-image: url("./assets/backgrounds/finishday_light.png"); }
+/* === /Aethon backgrounds === */
+
+
+
+/* === Aethon Dark Mode Backgrounds (override invert filter) === */
+body.invertedTheme #todayCard,
+body.invertedTheme #addFoodCard,
+body.invertedTheme #dailyGoalsCard,
+body.invertedTheme #trendsCard,
+body.invertedTheme #weightCard,
+body.invertedTheme #finishDayCard{
+  position: relative;
+  overflow: hidden;
+  background-image: none !important;
+  background-color: transparent !important;
+}
+
+body.invertedTheme #todayCard > *,
+body.invertedTheme #addFoodCard > *,
+body.invertedTheme #dailyGoalsCard > *,
+body.invertedTheme #trendsCard > *,
+body.invertedTheme #weightCard > *,
+body.invertedTheme #finishDayCard > *{
+  position: relative;
+  z-index: 1;
+}
+
+body.invertedTheme #todayCard::before,
+body.invertedTheme #addFoodCard::before,
+body.invertedTheme #dailyGoalsCard::before,
+body.invertedTheme #trendsCard::before,
+body.invertedTheme #weightCard::before,
+body.invertedTheme #finishDayCard::before{
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: right center;
+  background-repeat: no-repeat;
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* Per-section dark assets */
+body.invertedTheme #todayCard::before{
+  background-image: url("./assets/backgrounds/today_dark.png");
+}
+body.invertedTheme #addFoodCard::before{
+  background-image: url("./assets/backgrounds/addfood_dark.png");
+}
+body.invertedTheme #dailyGoalsCard::before{
+  background-image: url("./assets/backgrounds/dailygoals_dark.png");
+}
+body.invertedTheme #trendsCard::before{
+  background-image: url("./assets/backgrounds/trends_dark.png");
+}
+body.invertedTheme #weightCard::before{
+  background-image: url("./assets/backgrounds/weight_dark.png");
+}
+body.invertedTheme #finishDayCard::before{
+  background-image: url("./assets/backgrounds/finishday_dark.png");
+}
+
+
+/* --- Aethon header banner --- */
+.appHeader{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:10px;
+}
+.headerBrand{
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.headerBrand img{
+  width:100%;
+  height:74px;
+  object-fit:cover;
+  border-radius:18px;
+  display:block;
+}
+.headerBrand .bannerDark{ display:none; }
+body.invertedTheme .headerBrand .bannerLight{ display:none; }
+body.invertedTheme .headerBrand .bannerDark{ display:block; }
+
+.appHeader .auth{align-self:flex-end; display:flex; gap:10px; align-items:center;}
+
+/* Admin button moved to bottom */
+.adminFooter{
+  /* Keep this in normal document flow so users must scroll to reach it */
+  position: static;
+  transform: none;
+  left: auto;
+  bottom: auto;
+  z-index: auto;
+
+  display: flex;
+  justify-content: center;
+  /* Extra bottom padding so the fixed coach button never covers this link */
+  padding: 24px 0 calc(120px + env(safe-area-inset-bottom));
+}
+
+
+/* Force Today tab to match ultra-subtle rail styling */
+.tabbtn {
+  background: rgba(0,0,0,0.05) !important;
+  border: 1px solid rgba(0,0,0,0.08) !important;
+}
+
+.tabbtn.active {
+  background: rgba(0,0,0,0.08) !important;
+  border: 1px solid rgba(0,0,0,0.10) !important;
+  color: inherit !important;
+}
+
+
+/* === FINAL OVERRIDES: make Today UI match ultra-subtle rail glass (light + inverted dark) === */
+.tabbtn {
+  background: rgba(0,0,0,0.05) !important;
+  border: 1px solid rgba(0,0,0,0.08) !important;
+  box-shadow: none !important;
+}
+.tabbtn.active {
+  background: rgba(0,0,0,0.08) !important;
+  border: 1px solid rgba(0,0,0,0.10) !important;
+  color: inherit !important;
+  box-shadow: none !important;
+}
+
+/* Date chips (Yesterday/Today/Tomorrow) */
+.todayDateChip {
+  background: rgba(0,0,0,0.05) !important;
+  border: 1px solid rgba(0,0,0,0.08) !important;
+  box-shadow: none !important;
+}
+.todayDateChip.active {
+  background: rgba(0,0,0,0.08) !important;
+  border-color: rgba(0,0,0,0.12) !important;
+}
+
+/* Today stats tiles (e.g., Remaining card) */
+.statTile,
+.statStrip .statTile,
+.todayGrid .statTile {
+  background: rgba(0,0,0,0.05) !important;
+  border: 1px solid rgba(0,0,0,0.08) !important;
+  box-shadow: none !important;
+}
+
+
+/* === Make Dashboard/Settings tabs visible in invertedTheme (tabs live outside inverted scope) === */
+body.invertedTheme #tabs .tabbtn {
+  background: rgba(255,255,255,0.08) !important;
+  border: 1px solid rgba(255,255,255,0.14) !important;
+  color: rgba(255,255,255,0.92) !important;
+}
+body.invertedTheme #tabs .tabbtn:hover {
+  background: rgba(255,255,255,0.12) !important;
+  border-color: rgba(255,255,255,0.18) !important;
+}
+body.invertedTheme #tabs .tabbtn.active {
+  background: rgba(255,255,255,0.16) !important;
+  border-color: rgba(255,255,255,0.22) !important;
+  color: rgba(255,255,255,0.98) !important;
+}
+
+
+/* Coach Chat background */
+#coachChatCard{position:relative;overflow:hidden;}
+#coachChatCard::before{content:"";position:absolute;inset:0;background-image:url("assets/backgrounds/coachchat_light.png");background-size:cover;background-position:center;opacity:0.22;pointer-events:none;}
+#coachChatCard > *{position:relative;z-index:1;}
+body.invertedTheme #coachChatCard::before{background-image:url("assets/backgrounds/coachchat_dark.png");filter:invert(1) hue-rotate(180deg);opacity:0.30;}
+.estimate-overlay.hidden{ display:none; }
+.estimate-overlay[hidden]{ display:none; }
+
+
+/* v24 Scroll Fix */
+.sheet {
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+
+/* v28 Strip Fix: ensure card background images fully cover without edge bands */
+#weightCard, #finishDayCard {
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+}
+
+/* Ensure pseudo-element background (dark mode uses ::before) fully covers and matches rounded corners */
+#weightCard, #finishDayCard {
+  position: relative;
+  overflow: hidden;
+}
+body.invertedTheme #weightCard::before,
+body.invertedTheme #finishDayCard::before {
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  inset: 0 !important;
+  border-radius: inherit !important;
+}
+
+
+
+/* v31: center background focal point for Weight + Finish Day (removes 'side strip' look) */
+#weightCard, #finishDayCard {
+  background-position: center !important;
+}
+body.invertedTheme #weightCard::before,
+body.invertedTheme #finishDayCard::before {
+  background-position: center !important;
+}
+
+
+/* v32: crop/zoom weight + finishday backgrounds to remove baked-in frame 'side strip' */
+
+/* v35 Cheat Day settings */
+#cheatDaySettings .goalAdjust { display: grid; grid-template-columns: 1fr; gap: 8px; }
+
+.settingsTabsBar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  background: rgba(255,255,255,0.05);
+  padding: 6px;
+  border-radius: 14px;
+}
+.settingsTab {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all .2s ease;
+}
+.settingsTab.active {
+  background: rgba(255,255,255,0.15);
+  backdrop-filter: blur(8px);
+}
+.settingsTabPane.hidden { display:none; }
+
+/* Autopilot Readiness (v38) */
+#autopilotReadinessSection .apReadinessRow{display:flex;gap:12px;align-items:center;margin-bottom:10px;}
+#autopilotReadinessSection .apScoreBadge{min-width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;background: rgba(255,255,255,0.10);border: 1px solid rgba(255,255,255,0.10);}
+#autopilotReadinessSection .apReadinessLabel{font-weight:700;}
+#autopilotReadinessSection .apReadinessSub{opacity:0.8;font-size:12px;margin-top:2px;}
+#autopilotReadinessSection .apBarWrap{width:100%;height:10px;border-radius:999px;background: rgba(255,255,255,0.08);overflow:hidden;border: 1px solid rgba(255,255,255,0.08);margin-bottom:14px;}
+#autopilotReadinessSection .apBarFill{height:100%;border-radius:999px;background: rgba(255,255,255,0.25);transition: width .25s ease;}
+#autopilotReadinessSection .apPlanHeader{display:flex;align-items:center;justify-content:space-between;gap:10px;margin: 6px 0 8px 0;}
+#autopilotReadinessSection .apPlanTitle{font-weight:800;}
+#autopilotReadinessSection .apPlanSub{opacity:0.8;font-size:12px;margin-top:2px;}
+#autopilotReadinessSection .apPlanRefresh{padding:8px 10px;border-radius:10px;border: 1px solid rgba(255,255,255,0.10);background: rgba(255,255,255,0.06);}
+#autopilotReadinessSection .apCanvasWrap{width:100%;border-radius:14px;border: 1px solid rgba(255,255,255,0.10);background: rgba(0,0,0,0.10);overflow:hidden;}
+#autopilotReadinessSection canvas{width:100%;display:block;}
+#autopilotReadinessSection .apLegend{display:flex;gap:14px;align-items:center;margin-top:8px;opacity:0.85;font-size:12px;}
+#autopilotReadinessSection .apLegendItem{display:flex;gap:6px;align-items:center;}
+#autopilotReadinessSection .apSwatch{width:12px;height:12px;border-radius:4px;display:inline-block;border:1px solid rgba(255,255,255,0.18);}
+#autopilotReadinessSection .apSwatchPlan{background: rgba(255,255,255,0.22);}
+#autopilotReadinessSection .apSwatchActual{background: rgba(255,255,255,0.00);border:2px solid rgba(255,255,255,0.32);}
+
+/* v39 Global AI loading overlay (reuses Coach Chat thinking dots) */
+.aiGlobalLoading.hidden { display: none; }
+.aiGlobalLoading {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.25);
+  backdrop-filter: blur(6px);
+}
+.aiGlobalLoadingCard {
+  border-radius: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.10);
+}
+body.invertedTheme .aiGlobalLoadingCard {
+  background: rgba(0,0,0,0.35);
+  border-color: rgba(255,255,255,0.10);
+}
+
+/* =========================
+   Admin helpers
+   ========================= */
+.tableWrap{overflow-x:auto; margin-top:10px;}
+.tbl{width:100%; border-collapse:collapse; font-size:14px;}
+.tbl th,.tbl td{border-bottom:1px solid rgba(0,0,0,0.08); padding:10px 8px; text-align:left; vertical-align:top;}
+.tbl th{font-weight:700; font-size:13px; opacity:0.85;}
+.tbl code{font-size:12px;}
+.btnMini{padding:6px 10px; border-radius:10px; border:1px solid rgba(0,0,0,0.15); background:rgba(255,255,255,0.65); cursor:pointer;}
+.btnMini.danger{border-color:rgba(180,0,0,0.35); color:#8a0000;}
+.inlineEdit{background:rgba(255,255,255,0.6); border:1px solid rgba(0,0,0,0.1); border-radius:14px; padding:10px; margin-top:8px;}
+.inlineEdit .row{gap:10px; flex-wrap:wrap;}
+.inlineEdit label{font-size:12px; opacity:0.8; display:block; margin-bottom:4px;}
+.inlineEdit input,.inlineEdit select{min-width:180px;}
+
+
+/* Cheat Day header row */
+.settingsHeaderRow{display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 8px 0;}
+
+
+/* Client progress list */
+.progressList{ margin:10px 0 0 18px; padding:0; }
+.progressList li{ margin:6px 0; }
+.progressList li.done{ opacity:0.6; text-decoration: line-through; }
+.muted.small{ font-size:12px; }
+
+
+/* Client update banner */
+.updateBox{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px;border:1px solid rgba(0,0,0,0.08);border-radius:12px;background:rgba(0,0,0,0.02)}
+.updateBox .btnMini{white-space:nowrap}
+
+
+/* --- iOS Safari: prevent input auto-zoom on focus --- */
+@media (max-width: 1024px) {
+  input, textarea, select, button { font-size: 16px !important; }
+  [contenteditable="true"] { font-size: 16px !important; }
+}
+
+/* --- Admin: DB usage progress + alert banner --- */
+.progressOuter{width:100%;height:10px;border-radius:999px;background:rgba(255,255,255,0.12);overflow:hidden}
+.progressInner{height:100%;width:0%;border-radius:999px;background:#c6a95f}
+.adminAlertBanner{display:none;padding:10px 12px;border-radius:12px;margin:10px 0;border:1px solid rgba(255,255,255,0.18);background:rgba(0,0,0,0.35)}
+.adminAlertBanner.urgent{display:block;border-color:rgba(255,80,80,0.55);background:rgba(80,0,0,0.35)}
+
+
+
+/* Coach voice listening overlay (Voice Mode) */
+.coachListeningOverlay {
+  position: fixed;
+  inset: 0;
+  z-index:  8500;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 16px;
+  background: rgba(0,0,0,0.10);
+  backdrop-filter: blur(5px);
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(5px);
+  pointer-events: none;
+}
+
+.coachListeningToast {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+
+.coachListeningIcon {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.15);
+}
+
+
+/* Coach rotating quick prompts */
+.coachPromptPanel{margin:10px 0; padding:10px; border-radius:14px; background:rgba(20,20,20,0.75); backdrop-filter: blur(10px);}
+.coachPromptPanel.hidden{display:none;}
+.coachPromptTitle{font-size:12px; opacity:0.9; margin-bottom:8px;}
+.coachPromptChips{display:flex; flex-wrap:wrap; gap:8px;}
+.coachPromptChip{background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.10); border-radius:999px; padding:8px 10px; font-size:12px; cursor:pointer;}
+.coachPromptChip:active{transform:scale(0.98);}
+@keyframes coachPromptFadeInUp{from{opacity:0; transform:translateY(6px);}to{opacity:1; transform:translateY(0);}}
+.coachPromptPanel{animation:coachPromptFadeInUp 0.22s ease;}
+
+
+/* Coach Daily Nudge Bubble */
+
+.coachNudgeBubble{
+  position:fixed;
+  right:16px;
+  bottom:92px;
+  max-width:260px;
+  background:rgba(20,20,20,0.88);
+  color:#fff;
+  border-radius:16px;
+  padding:10px 10px 10px 10px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+  z-index: 9999;
+  animation: coachNudgeIn 220ms ease-out;
+}
+.coachNudgeBubble::after{
+  content:"";
+  position:absolute;
+  right:20px;
+  bottom:-10px;
+  width:18px;height:18px;
+  background:rgba(20,20,20,0.88);
+  transform: rotate(45deg);
+  border-radius:4px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.coachNudgeTitle{
+  font-weight:600;
+  font-size:13px;
+  margin-bottom:8px;
+  opacity:0.95;
+}
+.coachNudgeChips{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.coachNudgeChip{
+  border: none;
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  background: rgba(255,255,255,0.10);
+  color: #fff;
+}
+.coachNudgeChip:active{ transform: translateY(1px); }
+
+.coachNudgeBubble.busy .coachNudgeChip,
+.coachNudgeBubble.speaking .coachNudgeChip{
+  opacity:0.55;
+  pointer-events:none;
+}
+
+.coachNudgeBubble.speaking .coachNudgeTitle{
+  animation: coachNudgePulse 900ms ease-in-out infinite;
+}
+
+@keyframes coachNudgePulse{
+  0%{ opacity:0.85; }
+  50%{ opacity:1; }
+  100%{ opacity:0.85; }
+}
+@keyframes coachNudgeIn{
+  from{ transform: translateY(8px); opacity:0; }
+  to{ transform: translateY(0); opacity:1; }
+}

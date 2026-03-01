@@ -5,12 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>Calorie &amp; Weight Tracker</title>
-<link href="styles.css?v=58" rel="stylesheet"/>
-
-<link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link href="styles.css?v=16" rel="stylesheet"/>
 </head>
 <body>
 <header class="row appHeader">
@@ -55,7 +50,6 @@
 <span>📱 Best experienced on mobile for live camera capture</span>
 </div>
 </section>
-
 <div class="tabs hidden" id="tabs">
 <button class="tabbtn" id="tabDashboardBtn">Dashboard</button>
 <button class="tabbtn" id="tabSettingsBtn">Settings</button>
@@ -64,16 +58,6 @@
 <div class="dashboardGrid" id="panelDashboard">
 <section class="card" id="todayCard">
 <h2 id="todayCardTitle">Today</h2>
-<div class="apHomeSuggestion hidden" id="apHomeSuggestion">
-  <div class="apHomeTop">
-    <div>
-      <div class="apHomeTitle">Autopilot</div>
-      <div class="apHomeSub" id="apHomeSuggestionText">Weekly adjustment ready.</div>
-    </div>
-    <button class="apHomeBtn" id="apHomeReviewBtn" type="button">Review</button>
-  </div>
-</div>
-
 <div class="todayDateNav hidden" id="todayDateNav">
 <div class="todayDateNavTop">
 <button class="ghost" id="todayPrevBtn" type="button">←</button>
@@ -127,19 +111,19 @@
 <div class="addFoodPanel hidden" id="addFoodPhotoPanel">
 <div class="row end"><button class="addFoodModalCloseBtn" type="button">Close</button></div>
 <div class="muted">Pick what kind of photo you're uploading.</div>
-<div class="row photoActions">
-  <button id="photoLabelBtn" type="button">Label</button>
-  <button id="photoPlateBtn" type="button">Plate</button>
+<div class="row photoModeRow">
+  <button aria-pressed="true" id="photoModeLabelBtn" type="button">Label</button>
+  <button aria-pressed="false" id="photoModePlateBtn" type="button">Plate</button>
 </div>
 </div>
-<input accept="image/*" class="hiddenFileInput" id="photoModeCameraInput" type="file"/>
+<input accept="image/*" class="hiddenFileInput" id="photoUnifiedInput" type="file"/>
+<input accept="image/*" capture="environment" class="hiddenFileInput" id="photoUnifiedCameraInput" type="file"/>
 <div class="addFoodPanel hidden" id="addFoodVoicePanel">
 <div class="row end"><button class="addFoodModalCloseBtn" type="button">Close</button></div>
 <div class="muted">Describe what you ate. The assistant will ask follow-up questions if needed.</div>
 <div class="row">
 <button id="voiceToggleBtn" type="button">🎤 Start Voice Input</button>
 </div>
-<div class="muted" id="voiceStatus" style="min-height:18px"></div>
 <label>Voice transcript</label>
 <input id="voiceFoodInput" placeholder="e.g. I had a turkey sandwich and chips" type="text"/>
 <pre class="pre" id="voiceFoodOutput" style="min-height:72px"></pre>
@@ -149,7 +133,6 @@
 <div class="quickAdds" id="quickAddsBlock">
 <div class="muted">Quick fills</div>
 <div class="row" id="quickFillsRow"></div>
-<div class="quickFillToast hidden" id="quickFillToast"></div>
 <div class="row" id="quickFillsCtaRow"><button id="addQuickFillsCtaBtn" type="button">Add quickfills</button></div>
 </div>
 </div>
@@ -239,55 +222,10 @@
 <pre class="pre" id="scoreOutput"></pre>
 </section>
 
-
-<section class="card" id="progressCard">
-  <div class="row spaceBetween alignCenter">
-    <h2 style="margin:0">Progress</h2>
-    <button class="btnMini" id="suggestUpdateBtn" type="button">🙂 Suggest an update</button>
-  </div>
-  <div class="muted small" style="margin-top:6px">Your team’s current priorities</div>
-  <ul class="progressList" id="progressList"></ul>
-  <div class="muted small hidden" id="progressEmpty">No items yet.</div>
-  <div id="clientUpdateBox" class="updateBox hidden" style="margin-top:12px;">
-    <div class="muted small" id="clientUpdateDesc"></div>
-    <a id="clientUpdateLink" class="btnMini" href="#" target="_blank" rel="noopener">Try updated version &gt;</a>
-  </div>
-</section>
-
-
 </div>
 <div class="hidden" id="panelSettings">
 <section class="card">
-          <h2>Settings</h2>
-
-          <!-- Settings Tabs (inside Settings panel) -->
-          <div id="settingsTabsBar" class="settingsTabsBar">
-            <button data-tab="profile" class="settingsTab active">Profile</button>
-            <button data-tab="nutrition" class="settingsTab">Nutrition</button>
-            <button data-tab="autopilot" class="settingsTab">Autopilot</button>
-            <button data-tab="system" class="settingsTab">System</button>
-          </div>
-
-          <div id="settingsTabContent">
-            <div data-tab-content="profile" class="settingsTabPane">
-  <div class="settingsSection" data-tab="profile">
-    <h3>Coach</h3>
-    <div class="row spaceBetween alignCenter">
-      <div>
-        <div style="font-weight:600;">Voice Mode</div>
-        <div class="muted" style="font-size:12px;">When enabled, the bottom-right Coach button starts voice input (no chat box).</div>
-      </div>
-      <label class="switch" title="Toggle voice dictation for Coach">
-        <input id="coachVoiceModeToggle" type="checkbox"/>
-        <span class="slider"></span>
-      </label>
-    </div>
-  </div>
-</div>
-            <div data-tab-content="nutrition" class="settingsTabPane hidden"></div>
-            <div data-tab-content="autopilot" class="settingsTabPane hidden"></div>
-            <div data-tab-content="system" class="settingsTabPane hidden"></div>
-          </div>
+<h2>Settings</h2>
 <div class="row">
 <label class="switch">
 <input id="unitToggle" type="checkbox"/>
@@ -360,11 +298,11 @@
 <button id="upgradeMonthlyBtn">Upgrade Monthly ($5)</button>
 <button id="upgradeYearlyBtn">Upgrade Yearly ($50)</button>
 <button id="manageSubscriptionBtn">Manage Subscription</button>
-          <button id="exportDataBtn">Export My Data (CSV)</button>
+<button id="exportDataBtn">Export My Data</button>
 </div>
 <div class="muted" id="planStatus"></div>
 </section>
-<div class="settingsSection" data-tab="nutrition"><div id="quickFillSettingsSection" style="margin-top:16px;">
+<div id="quickFillSettingsSection" style="margin-top:16px;">
 <h3>Custom Quick Fills</h3>
 <div class="muted">Create your own meals/snacks for one-tap manual entry.</div>
 <div class="grid2" style="margin-top:10px;">
@@ -401,135 +339,21 @@
 </div>
 <div class="muted" id="quickFillStatus"></div>
 <ul id="quickFillList"></ul>
-</div></div>
-<div class="settingsSection" data-tab="system"><section class="card" id="deviceManagementCard" style="margin-top:16px;">
+</div>
+<section class="card" id="deviceManagementCard" style="margin-top:16px;">
 <h3>Linked devices</h3>
 <p class="muted">Manage every device linked to this identity. Name each device and toggle access individually.</p>
 <div class="deviceList muted" id="deviceList">Loading devices…</div>
 <div class="muted" id="deviceSettingsStatus" style="margin-top:8px;"></div>
-</section></div>
-<div class="settingsSection" data-tab="nutrition" id="rolloverCaloriesSettings">
-  <div class="settingsHeaderRow"><h3 style="margin:0;">Rollover Calories</h3></div>
-  <div class="row spaceBetween alignCenter">
-    <div>
-      <div style="font-weight:600;">Enable rollover</div>
-      <div class="muted" style="font-size:12px;">If you eat under/over your target, the difference carries into tomorrow (one-day carry, capped).</div>
-    </div>
-    <label class="switch" title="Enable rollover calories">
-      <input id="rolloverCaloriesToggle" type="checkbox"/>
-      <span class="slider"></span>
-    </label>
-  </div>
-  <div class="muted" id="rolloverCaloriesStatus" style="margin-top:8px;"></div>
-</div>
-
-<!-- Cheat Day + Autopilot Readiness (tabbed settings sections) -->
-<div class="settingsSection" data-tab="autopilot" id="cheatDaySettings">
-  <div class="settingsHeaderRow"><h3 style="margin:0;">Cheat Day</h3><button id="cheatDaySaveBtn" class="btnMini">Save</button></div>
-  <label><input type="checkbox" id="cheatDayToggle"> Enable Cheat Day</label>
-  <div class="goalAdjust">
-    <label>Cheat Day</label>
-    <select id="cheatDaySelect">
-      <option value="0">Sunday</option>
-      <option value="1">Monday</option>
-      <option value="2">Tuesday</option>
-      <option value="3">Wednesday</option>
-      <option value="4">Thursday</option>
-      <option value="5">Friday</option>
-      <option value="6">Saturday</option>
-    </select>
-
-    <label>Extra Calories</label>
-    <input type="number" id="cheatDayExtraInput" placeholder="e.g., 500" min="0" step="10">
-  </div>
-  <div id="cheatDayStatus" class="mutedText"></div>
-</div>
-
-<div class="settingsSection" data-tab="autopilot" id="autopilotReadinessSection">
-  <h3>Autopilot Readiness</h3>
-  <div class="apControls">
-    <label class="apToggleRow">
-      <input id="apEnabledToggle" type="checkbox"/>
-      <span>Enable Autopilot (weekly calorie adjustments)</span>
-    </label>
-    <div class="apFieldRow">
-      <label>Target mode</label>
-      <div class="apModeToggle" id="apModeToggle">
-        <label class="apModeOption"><input type="radio" name="apTargetMode" id="apModeWeight" value="weight" checked/> Target weight</label>
-        <label class="apModeOption"><input type="radio" name="apTargetMode" id="apModeBodyfat" value="bodyfat"/> Target body fat %</label>
-      </div>
-    </div>
-
-    <div id="apModeWeightFields">
-      <div class="apFieldRow">
-        <label for="apTargetWeightInput">Target weight (lbs)</label>
-        <input id="apTargetWeightInput" type="number" min="50" step="0.1" placeholder="e.g. 180"/>
-      </div>
-      <div class="apFieldRow">
-        <label for="apGoalDateInput">Goal date</label>
-        <input id="apGoalDateInput" type="date"/>
-      </div>
-    </div>
-
-    <div id="apModeBodyfatFields" class="hidden">
-      <div class="apFieldRow">
-        <label for="apCurrentWeightOverrideInput">Current weight (lbs)</label>
-        <input id="apCurrentWeightOverrideInput" type="number" min="50" step="0.1" placeholder="auto-filled from latest weigh-in"/>
-      </div>
-      <div class="apFieldRow">
-        <label for="apCurrentBodyFatInput">Current body fat %</label>
-        <input id="apCurrentBodyFatInput" type="number" min="1" max="80" step="0.1" placeholder="e.g. 22"/>
-      </div>
-      <div class="apFieldRow">
-        <label for="apTargetBodyFatInput">Target body fat %</label>
-        <input id="apTargetBodyFatInput" type="number" min="1" max="80" step="0.1" placeholder="e.g. 15"/>
-      </div>
-      <div class="apFieldRow">
-        <label for="apBodyFatGoalDateInput">Goal date</label>
-        <input id="apBodyFatGoalDateInput" type="date"/>
-      </div>
-      <div class="muted" id="apImpliedTargetWeight">Implied target weight: —</div>
-    </div>
-    <div class="muted" id="apSettingsHint">Autopilot will suggest weekly calorie changes based on your recent logs and weigh‑ins.</div>
-  </div>
-
-  <div class="apReadinessRow">
-    <div class="apScoreBadge" id="apReadinessScore">--</div>
-    <div class="apReadinessMeta">
-      <div class="apReadinessLabel" id="apReadinessLabel">Checking…</div>
-      <div class="apReadinessSub" id="apReadinessSub"></div>
-    </div>
-  </div>
-  <div class="apBarWrap" aria-label="Autopilot readiness">
-    <div class="apBarFill" id="apReadinessFill" style="width:0%"></div>
-  </div>
-
-  <div class="apPlanHeader">
-    <div>
-      <div class="apPlanTitle">7‑Day Calorie Plan Preview</div>
-      <div class="apPlanSub" id="apPlanSub">Planned vs. logged (last 7 days)</div>
-    </div>
-    <button class="apPlanRefresh" id="apPlanRefreshBtn" type="button">Refresh</button>
-  </div>
-
-  <div class="apCanvasWrap">
-    <canvas id="apPlanCanvas" height="180"></canvas>
-  </div>
-  <div class="apLegend">
-    <span class="apLegendItem"><span class="apSwatch apSwatchPlan"></span>Planned</span>
-    <span class="apLegendItem"><span class="apSwatch apSwatchActual"></span>Logged</span>
-  </div>
-</div>
-
-
-<div class="settingsSection" data-tab="system"><section class="card signupPromptCard" id="multiDeviceSignupCard">
+</section>
+<section class="card signupPromptCard" id="multiDeviceSignupCard">
 <h3>Use Aethon across devices</h3>
 <p class="muted">Sign up to sync your data across multiple devices and restore paid access anywhere.</p>
 <div class="row">
 <button id="settingsSignUpBtn" type="button">Sign up to use across multiple devices</button>
 <button class="ghost" id="settingsSignInBtn" type="button">Sign in</button>
 </div>
-</section></div>
+</section>
 </section>
 </div>
 </main>
@@ -537,15 +361,11 @@
 <section class="card floatingChat" id="coachChatCard">
 <div class="chatHeaderRow">
 <h2>Coach Chat</h2>
-<div class="row" style="gap:10px; align-items:center;">
-  
-  <button aria-controls="coachChatBody" aria-expanded="true" class="sectionToggleBtn" id="chatToggleBtn" type="button">Hide</button>
-</div>
+<button aria-controls="coachChatBody" aria-expanded="true" class="sectionToggleBtn" id="chatToggleBtn" type="button">Hide</button>
 </div>
 <div id="coachChatBody">
-<div class="row" id="coachChatInputRow">
+<div class="row">
 <input id="chatInput" placeholder="Ask about today's log…"/>
-<button class="ghost" id="coachVoiceBtn" style="display:none" title="Speak to Coach">🎤</button>
 <button id="sendChatBtn">Send</button>
 </div>
 <div aria-live="polite" class="thinking hidden" id="aiThinking">
@@ -554,8 +374,6 @@
 </span>
 <span>AI is thinking…</span>
 </div>
-<div id="coachPromptPanel" class="coachPromptPanel hidden"></div>
-
 <pre class="pre" id="chatOutput"></pre>
 </div>
 </section><div class="adminFooter" id="adminFooter">
@@ -565,21 +383,6 @@
 <button aria-controls="coachChatCard" aria-expanded="false" aria-label="Open coach chat" class="coachFab" id="coachFab" type="button">
 <img alt="Coach" src="assets/coach_icon.png">
 </img></button>
-
-<!-- Coach Daily Nudge Bubble (appears near Coach button) -->
-<div id="coachNudgeBubble" class="coachNudgeBubble hidden" aria-live="polite">
-  <div class="coachNudgeTitle" id="coachNudgeTitle">Quick idea…</div>
-  <div class="coachNudgeChips" id="coachNudgeChips"></div>
-</div>
-
-<!-- Coach Voice Listening Overlay -->
-<div class="coachListeningOverlay hidden" id="coachListeningOverlay" aria-hidden="true">
-  <div class="coachListeningToast" role="status" aria-live="polite">
-    <span class="coachListeningIcon">🎤</span>
-    <span>Listening…</span>
-  </div>
-</div>
-
 <div class="onboardingOverlay hidden" id="onboardingOverlay">
 <div class="onboardingModal">
 <div class="onboardingStep">Step <span id="onboardingStepNum">1</span> of 3</div>
@@ -730,41 +533,7 @@
 </div>
 </div>
 <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
-<script src="app.bundle.js?v=1"></script>
-
-<div id="aiGlobalLoading" class="aiGlobalLoading hidden" role="status" aria-live="polite" aria-label="AI is working">
-  <div class="aiGlobalLoadingCard">
-    <div class="thinking" style="margin:0;">
-      <span aria-hidden="true" class="thinkingDots"><span></span><span></span><span></span></span>
-      <span id="aiGlobalLoadingText">AI is working…</span>
-    </div>
-  </div>
-</div>
-<!-- Toasts -->
-<div id="cheatDaySavedToast" class="savedToast" aria-live="polite">Saved :)</div>
-
-
-<!-- Autopilot weekly review modal -->
-<div class="overlay hidden" id="apWeeklyOverlay"></div>
-<div aria-label="Autopilot weekly review" aria-modal="true" class="sheet hidden" id="apWeeklySheet" role="dialog">
-  <div class="sheetHeader">
-    <div><strong>Autopilot weekly adjustment</strong></div>
-    <button class="ghost" id="apWeeklyCloseBtn">✕</button>
-  </div>
-  <div class="sheetBody">
-    <div class="muted" id="apWeeklyExplainer"></div>
-    <div class="apWeeklyNumbers">
-      <div><div class="muted">Current goal</div><div class="apWeeklyKcal" id="apWeeklyCurrentKcal">—</div></div>
-      <div><div class="muted">Suggested goal</div><div class="apWeeklyKcal" id="apWeeklySuggestedKcal">—</div></div>
-    </div>
-    <div class="muted" id="apWeeklyProjection"></div>
-    <div class="row end" style="margin-top:12px; gap:10px;">
-      <button class="ghost" id="apWeeklyDeclineBtn" type="button">Decline</button>
-      <button id="apWeeklyAcceptBtn" type="button">Accept</button>
-    </div>
-    <div class="muted" id="apWeeklyError" style="color:#b00020; margin-top:10px;"></div>
-  </div>
-</div>
-
+<script src="app-billing.js?v=1"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>
