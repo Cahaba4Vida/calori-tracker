@@ -1,65 +1,49 @@
 const { json } = require("./_util");
 const { requireUser } = require("./_auth");
-const { ensureUserProfile } = require("./_db");
 
-const TRANSCRIBE_URL = "https://api.openai.com/v1/audio/transcriptions";
-
-async function transcribeWithModel(key, buf, mime, filename, model) {
-  const form = new FormData();
-  const blob = new Blob([buf], { type: mime || "audio/webm" });
-  form.append("file", blob, filename || "audio.webm");
-  form.append("model", model);
-  // Many models accept json; keep default (json).
-
-  const r = await fetch(TRANSCRIBE_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`
-    },
-    body: form
-  });
-  const text = await r.text();
-  let body;
-  try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text }; }
-  if (!r.ok) {
-    const err = new Error(body?.error?.message || body?.message || `Transcribe error ${r.status}`);
-    err.statusCode = 502;
-    err.details = body;
-    throw err;
-  }
-  return String(body.text || body.transcript || "").trim();
+function mustGetKey() {
+  const k = process.env.OPENAI_API_KEY;
+  if (!k) throw new Error("Missing OPENAI_API_KEY env var");
+  return k;
 }
 
 exports.handler = async (event, context) => {
   const auth = await requireUser(event, context);
   if (!auth.ok) return auth.response;
-  const { userId, email } = auth.user;
-  await ensureUserProfile(userId, email);
-
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) return json(500, { error: "Missing OPENAI_API_KEY" });
 
   let body;
   try { body = JSON.parse(event.body || "{}"); } catch { body = {}; }
 
-  const audioBase64 = String(body.audio_base64 || "");
-  const mime = String(body.mime_type || "audio/webm");
-  const filename = String(body.filename || "audio.webm");
-  if (!audioBase64) return json(400, { error: "audio_base64 is required" });
-
-  let buf;
-  try { buf = Buffer.from(audioBase64, "base64"); } catch {
-    return json(400, { error: "Invalid base64" });
+  const audio_base64 = body.audio_base64;
+  const mime = body.mime || "audio/webm";
+  if (!audio_base64 || typeof audio_base64 !== "string") {
+    return json(400, { error: "audio_base64 is required" });
   }
 
-  // Prefer newer lightweight transcribe model; fall back to whisper-1 if unavailable.
-  let transcript = "";
-  try {
-    transcript = await transcribeWithModel(key, buf, mime, filename, "gpt-4o-mini-transcribe");
-  } catch (e) {
-    // Fallback for older accounts / regions.
-    transcript = await transcribeWithModel(key, buf, mime, filename, "whisper-1");
+  const key = mustGetKey();
+  const buf = Buffer.from(audio_base64, "base64");
+
+  const form = new FormData();
+  // filename is required by OpenAI
+  const ext = mime.includes("wav") ? "wav" : (mime.includes("mp4") ? "mp4" : "webm");
+  const file = new Blob([buf], { type: mime });
+  form.append("file", file, `audio.${ext}`);
+  form.append("model", "gpt-4o-mini-transcribe");
+
+  const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${key}` },
+    body: form
+  });
+
+  const text = await r.text();
+  let data;
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+
+  if (!r.ok) {
+    return json(502, { error: data?.error?.message || "Transcription failed", details: data });
   }
 
-  return json(200, { transcript });
+  // Expected response: { text: "..." }
+  return json(200, { text: data.text || "" });
 };
