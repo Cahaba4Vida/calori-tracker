@@ -2506,6 +2506,18 @@ async function finishDay() {
   setStatus('');
 }
 
+async function ensureCoachThread() {
+  let tid = localStorage.getItem('coachThreadId') || '';
+  tid = String(tid).trim();
+  if (tid) return tid;
+  const j = await api('coach-thread-start');
+  if (j && j.thread_id) {
+    localStorage.setItem('coachThreadId', j.thread_id);
+    return j.thread_id;
+  }
+  return '';
+}
+
 async function sendChat() {
   const msg = el('chatInput').value.trim();
   if (!msg) return;
@@ -2513,17 +2525,26 @@ async function sendChat() {
   try {
     setThinking(true);
     setStatus('Thinking…');
-    const j = await api('chat', {
+
+    const thread_id = await ensureCoachThread();
+    const j = await api('coach-thread-send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msg })
+      body: JSON.stringify({ thread_id, message: msg, want_audio: true })
     });
+
     el('chatOutput').innerText = j.reply;
+
+    // If voice mode is enabled OR audio is returned, play it.
+    if (j.audio_base64 && typeof playAssistantAudio === 'function') {
+      playAssistantAudio(j.audio_base64, j.audio_mime_type || 'audio/mp3');
+    }
   } finally {
     setThinking(false);
     setStatus('');
   }
 }
+
 
 
 async function loadWeekly() {
