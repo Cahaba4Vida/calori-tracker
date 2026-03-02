@@ -2071,10 +2071,7 @@ async function sendVoiceFoodMessage() {
 
       if (!voiceThreadId) voiceThreadId = await ensureVoiceThreadId();
 
-      const j = await withThinking(async () => api('voice-thread-send', {
-      thread_id: voiceThreadId,
-      message
-    }));
+      const j = await withThinking(async () => api('voice-thread-send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ thread_id: voiceThreadId, message }) }));
 
       if (j && j.thread_id) voiceThreadId = j.thread_id;
 
