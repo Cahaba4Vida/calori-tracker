@@ -2243,6 +2243,9 @@ async function sendChat() {
   const msg = el('chatInput').value.trim();
   if (!msg) return;
 
+  // Ensure audio playback is unlocked by a user gesture (autoplay policy).
+  try { if (typeof unlockAudioOnce === 'function') unlockAudioOnce(); } catch (e) {}
+
   try {
     setThinking(true);
     setStatus('Thinking…');
