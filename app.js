@@ -3901,6 +3901,16 @@ function entryFriendlyName(e) {
       if (a.length) return a.join(' + ');
     }
 
+
+    // 3b) Raw extraction notes (voice/photo) – use a short, descriptive label
+    if (rx && rx.notes && String(rx.notes).trim()) {
+      const s = String(rx.notes).trim()
+        .replace(/^logged\s+/i,'')
+        .replace(/^estimate\s*:\s*/i,'')
+        .replace(/\s+/g,' ');
+      if (s) return (s.length > 44 ? s.slice(0, 44).trim() + '…' : s);
+    }
+
     if (rx && (rx.source === 'plate_photo' || rx.estimated === true)) return 'Plate estimate';
 
     // 4) Manual quick add
