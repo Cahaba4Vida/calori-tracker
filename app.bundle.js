@@ -2029,10 +2029,23 @@ function ensureVoiceRecognition() {
   voiceRecognition.onnomatch = () => { setStatus('Didn\'t catch that. Try speaking louder/closer to the mic.'); };
 
   voiceRecognition.onresult = (event) => {
-    const text = Array.from(event.results || []).map((r) => r[0]?.transcript || '').join(' ').trim();
-    if (!text) return;
+    // Use ONLY final SpeechRecognition results and lightly de-dupe stuttery repeats.
+    const results = event.results || [];
+    let appended = false;
+    for (let i = event.resultIndex || 0; i < results.length; i++) {
+      const r = results[i];
+      if (!r || !r.isFinal) continue;
+      const chunkRaw = (r[0]?.transcript || '').trim();
+      const chunk = cleanTranscript(chunkRaw);
+      if (!chunk) continue;
+      if (chunk === voiceLastFinalChunk) continue; // prevent duplicate finals
+      voiceLastFinalChunk = chunk;
+      voiceFinalText = [voiceFinalText, chunk].filter(Boolean).join(' ').trim();
+      appended = true;
+    }
+    if (!appended) return;
     const field = el('voiceFoodInput');
-    field.value = [field.value, text].filter(Boolean).join(' ').trim();
+    if (field) field.value = voiceFinalText;
   };
   voiceRecognition.onend = () => {
     voiceIsListening = false;
