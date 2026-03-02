@@ -443,6 +443,9 @@ let voiceSendQueue = Promise.resolve();
 let voiceSendInFlight = 0;
 let voiceRecognition = null;
 let voiceFollowUpCount = 0;
+let voiceFinalText = '';
+let voiceLastFinalChunk = '';
+
 let voiceIsListening = false;
 let voiceAutoSendPending = false;
 
