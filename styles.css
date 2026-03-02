@@ -71,7 +71,7 @@ button:hover {
 }
 input { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); min-width: 220px; }
 .muted { color: var(--muted); font-size: 13px; margin-top: 6px; }
-.hidden { display: none !important; }
+.hidden { display: none; }
 
 body.invertedTheme {
   /* Dark mode is implemented via an invert filter, but applying filter on <body>

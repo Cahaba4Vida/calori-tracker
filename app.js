@@ -22,6 +22,11 @@ function unlockAudioOnce() {
   } catch (e) {}
 }
 
+// Expose helper globally so other bundles/closures can call it.
+// (The voice UI code lives in a different closure and otherwise throws
+//  ReferenceError: unlockAudioOnce is not defined.)
+global.unlockAudioOnce = unlockAudioOnce;
+
 function base64ToBlobUrl(b64, mime) {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
