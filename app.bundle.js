@@ -2784,39 +2784,46 @@ function bindUI() {
   bindClick('photoPlateBtn', () => { activePhotoMode = 'plate'; const n = el('photoModeCameraInput'); if (n) n.click(); });
 
   window.__voiceToggleHandler = window.__voiceToggleHandler || (async () => {
+    // Guard against duplicate invocations (e.g., multiple click delegates / rapid double-click)
+    if (window.__voiceToggleInFlight) return;
+    window.__voiceToggleInFlight = true;
     unlockAudioOnce();
-    // Prime mic permission (some browsers show SpeechRecognition 'listening' but never deliver results without an explicit getUserMedia grant)
     try {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((t) => t.stop());
+      // Prime mic permission (some browsers show SpeechRecognition 'listening' but never deliver results without an explicit getUserMedia grant)
+      try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach((t) => t.stop());
+        }
+      } catch (e) {
+        // We'll still try SpeechRecognition; if it fails, onerror will surface details.
       }
-    } catch (e) {
-      // We'll still try SpeechRecognition; if it fails, onerror will surface details.
-    }
-    const recognition = ensureVoiceRecognition();
-    if (!recognition) {
-      setStatus('Voice recognition is not available on this browser. Type your meal details instead.');
-      return;
-    }
-    if (voiceIsListening) {
-      stopVoiceRecognition();
-      return;
-    }
-    voiceIsListening = true;
-    voiceAutoSendPending = true;
-    updateVoiceToggleLabel();
-    setStatus('Listening…');
-    try {
-      recognition.start();
-      // Provide immediate visual feedback even if permission prompt is suppressed
-      const out = el('voiceFoodOutput');
-      if (out && !out.innerText.trim()) out.innerText = 'Listening…';
-    } catch (e) {
-      voiceIsListening = false;
-      voiceAutoSendPending = false;
+      const recognition = ensureVoiceRecognition();
+      if (!recognition) {
+        setStatus('Voice recognition is not available on this browser. Type your meal details instead.');
+        return;
+      }
+      if (voiceIsListening) {
+        stopVoiceRecognition();
+        return;
+      }
+      voiceIsListening = true;
+      voiceAutoSendPending = true;
       updateVoiceToggleLabel();
-      setStatus(`Unable to start voice input: ${e && e.message ? e.message : e}`);
+      setStatus('Listening…');
+      try {
+        recognition.start();
+        // Provide immediate visual feedback even if permission prompt is suppressed
+        const out = el('voiceFoodOutput');
+        if (out && !out.innerText.trim()) out.innerText = 'Listening…';
+      } catch (e) {
+        voiceIsListening = false;
+        voiceAutoSendPending = false;
+        updateVoiceToggleLabel();
+        setStatus(`Unable to start voice input: ${e && e.message ? e.message : e}`);
+      }
+    } finally {
+      window.__voiceToggleInFlight = false;
     }
   });
   bindClick('voiceToggleBtn', window.__voiceToggleHandler);
@@ -2825,7 +2832,10 @@ function bindUI() {
     document.addEventListener('click', (ev) => {
       const t = ev && ev.target;
       if (t && t.id === 'voiceToggleBtn') {
+        // Prevent duplicate handler execution: the direct onclick binding will fire at target/bubble.
         ev.preventDefault();
+        ev.stopImmediatePropagation();
+        ev.stopPropagation();
         try { window.__voiceToggleHandler && window.__voiceToggleHandler(); } catch (_) {}
       }
     }, true);
