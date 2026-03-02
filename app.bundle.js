@@ -22,11 +22,6 @@ function unlockAudioOnce() {
   } catch (e) {}
 }
 
-// Expose helper globally so other bundles/closures can call it.
-// (The voice UI code lives in a different closure and otherwise throws
-//  ReferenceError: unlockAudioOnce is not defined.)
-global.unlockAudioOnce = unlockAudioOnce;
-
 function base64ToBlobUrl(b64, mime) {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
@@ -56,6 +51,13 @@ async function playAssistantAudio(j) {
   }
 }
 // --- end iOS helpers ---
+
+// Expose helpers globally.
+// app.bundle.js is assembled from multiple IIFEs; later sections run outside
+// this wrapper and call unlockAudioOnce() (e.g. voice input toggle). Without
+// exporting to window, those calls throw "ReferenceError: unlockAudioOnce is not defined".
+global.unlockAudioOnce = unlockAudioOnce;
+global.playAssistantAudio = playAssistantAudio;
   function createBillingController(deps) {
     const { api, authHeaders, el, setStatus, getCurrentUser } = deps;
     let billingState = null;
@@ -2020,8 +2022,12 @@ function ensureVoiceRecognition() {
   if (voiceRecognition) return voiceRecognition;
   voiceRecognition = new SR();
   voiceRecognition.continuous = false;
-  voiceRecognition.interimResults = false;
+  voiceRecognition.interimResults = true;
   voiceRecognition.lang = 'en-US';
+  voiceRecognition.onstart = () => { setStatus('Listening… (mic active)'); };
+  voiceRecognition.onspeechstart = () => { setStatus('Hearing speech…'); };
+  voiceRecognition.onnomatch = () => { setStatus('Didn\'t catch that. Try speaking louder/closer to the mic.'); };
+
   voiceRecognition.onresult = (event) => {
     const text = Array.from(event.results || []).map((r) => r[0]?.transcript || '').join(' ').trim();
     if (!text) return;
@@ -2036,10 +2042,10 @@ function ensureVoiceRecognition() {
     if (voiceAutoSendPending && msg) sendVoiceFoodMessage().catch((e) => setStatus(e.message));
     voiceAutoSendPending = false;
   };
-  voiceRecognition.onerror = () => {
+  voiceRecognition.onerror = (event) => {
     voiceIsListening = false;
     updateVoiceToggleLabel();
-    setStatus('Voice input error. If prompted, allow microphone access. You can also type your meal details instead.');
+    setStatus(`Voice input error${event && event.error ? ` (${event.error})` : ''}. If prompted, allow microphone access. On Windows, ensure 'Online speech recognition' is enabled in Privacy settings. You can also type your meal details instead.`);
   };
   return voiceRecognition;
 }
@@ -2775,8 +2781,17 @@ function bindUI() {
   bindClick('photoLabelBtn', () => { activePhotoMode = 'label'; const n = el('photoModeCameraInput'); if (n) n.click(); });
   bindClick('photoPlateBtn', () => { activePhotoMode = 'plate'; const n = el('photoModeCameraInput'); if (n) n.click(); });
 
-  window.__voiceToggleHandler = window.__voiceToggleHandler || (() => {
+  window.__voiceToggleHandler = window.__voiceToggleHandler || (async () => {
     unlockAudioOnce();
+    // Prime mic permission (some browsers show SpeechRecognition 'listening' but never deliver results without an explicit getUserMedia grant)
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((t) => t.stop());
+      }
+    } catch (e) {
+      // We'll still try SpeechRecognition; if it fails, onerror will surface details.
+    }
     const recognition = ensureVoiceRecognition();
     if (!recognition) {
       setStatus('Voice recognition is not available on this browser. Type your meal details instead.');
