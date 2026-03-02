@@ -161,21 +161,19 @@ exports.handler = async (event, context) => {
   const history = await loadHistory(threadId, 18);
 
   // Build OpenAI input: system context + food log as a system message, then conversation history.
-// NOTE: Use simple {role, content: string} items (consistent with voice-thread-send) to avoid schema mismatches.
-const input = [];
-input.push({ role: "system", content: system });
+  const input = [];
+  input.push({ role: "system", content: system });
 input.push({ role: "system", content: ["DATA:", ...foodCtx.lines].join("
 ") });
-
 for (const m of history) {
-  const role = (m.role === "assistant" || m.role === "user") ? m.role : "user";
-  input.push({ role, content: String(m.content || "") });
+    const role = (m.role === "assistant" || m.role === "user") ? m.role : "user";
+    input.push({ role, content: String(m.content || "") });
 }
 
-const resp = await responsesCreate({
-  model: "gpt-4o-mini",
-  input
-});
+  const resp = await responsesCreate({
+    model: "gpt-4o-mini",
+    input
+  });
 
   const reply = (outputText(resp) || "").trim() || "I couldn't generate a reply.";
   await insertMessage(threadId, "assistant", reply);
