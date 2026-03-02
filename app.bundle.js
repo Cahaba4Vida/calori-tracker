@@ -697,6 +697,7 @@ let voiceSendQueue = Promise.resolve();
 let voiceSendInFlight = 0;
 let voiceRecognition = null;
 let voiceFollowUpCount = 0;
+let voiceFallbackInProgress = false;
 let voiceIsListening = false;
 let voiceAutoSendPending = false;
 
@@ -2031,12 +2032,47 @@ function ensureVoiceRecognition() {
     if (voiceAutoSendPending && msg) sendVoiceFoodMessage().catch((e) => setStatus(e.message));
     voiceAutoSendPending = false;
   };
-  voiceRecognition.onerror = () => {
+  voiceRecognition.onerror = async (ev) => {
     voiceIsListening = false;
     updateVoiceToggleLabel();
+    const err = (ev && ev.error) ? ev.error : '';
+    // If SpeechRecognition is unavailable or flaky (common on iOS), fall back to server transcription.
+    if (!voiceFallbackInProgress && err && err !== 'not-allowed' && err !== 'service-not-allowed') {
+      setStatus('Voice recognition failed — using fallback…');
+      try { await startVoiceFoodFallback(); return; } catch (_) {}
+    }
     setStatus('Voice input error. If prompted, allow microphone access. You can also type your meal details instead.');
   };
   return voiceRecognition;
+}
+
+async function startVoiceFoodFallback() {
+  if (voiceFallbackInProgress) return;
+  voiceFallbackInProgress = true;
+  try {
+    unlockAudioOnce();
+    setStatus('Listening…');
+    // Force fallback path (MediaRecorder + server transcription)
+    const t = await captureVoiceOnce({ preferSpeechRecognition: false });
+    const text = (t || '').trim();
+    if (!text) {
+      setStatus('No speech detected. Try again.');
+      return;
+    }
+    const field = el('voiceFoodInput');
+    if (field) field.value = [field.value, text].filter(Boolean).join(' ').trim();
+    // Auto-send into the existing voice thread flow
+    voiceAutoSendPending = true;
+    await sendVoiceFoodMessage();
+    setStatus('');
+  } catch (e) {
+    setStatus(`Voice input error. ${e && e.message ? e.message : ''}`.trim());
+  } finally {
+    voiceIsListening = false;
+    voiceAutoSendPending = false;
+    updateVoiceToggleLabel();
+    voiceFallbackInProgress = false;
+  }
 }
 
 async function sendVoiceFoodMessage() {
@@ -2774,7 +2810,8 @@ function bindUI() {
     unlockAudioOnce();
     const recognition = ensureVoiceRecognition();
     if (!recognition) {
-      setStatus('Voice recognition is not available on this browser. Type your meal details instead.');
+      // No SpeechRecognition: fallback to MediaRecorder + server transcription.
+      startVoiceFoodFallback();
       return;
     }
     if (voiceIsListening) {
@@ -2791,12 +2828,14 @@ function bindUI() {
       const out = el('voiceFoodOutput');
       if (out && !out.innerText.trim()) out.innerText = 'Listening…';
     } catch (e) {
+      // SpeechRecognition start failed: fallback (often happens on iOS / permission edge cases)
       voiceIsListening = false;
       voiceAutoSendPending = false;
       updateVoiceToggleLabel();
-      setStatus(`Unable to start voice input: ${e && e.message ? e.message : e}`);
+      startVoiceFoodFallback();
     }
   });
+});
   bindClick('voiceToggleBtn', window.__voiceToggleHandler);
   if (!window.__voiceDelegateInstalled) {
     window.__voiceDelegateInstalled = true;
@@ -2853,10 +2892,11 @@ function bindUI() {
     return (r && r.text ? String(r.text) : '').trim();
   }
 
-  async function captureVoiceOnce() {
+  async function captureVoiceOnce(opts = {}) {
     // Prefer built-in SpeechRecognition if available; fallback to MediaRecorder + server transcription.
+    const preferSpeechRecognition = opts.preferSpeechRecognition !== false;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) {
+    if (preferSpeechRecognition && SR) {
       return await new Promise((resolve, reject) => {
         try {
           const rec = new SR();
