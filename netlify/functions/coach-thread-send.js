@@ -163,12 +163,11 @@ exports.handler = async (event, context) => {
   // Build OpenAI input: system context + food log as a system message, then conversation history.
   const input = [];
   input.push({ role: "system", content: system });
-input.push({ role: "system", content: ["DATA:", ...foodCtx.lines].join("
-") });
-for (const m of history) {
+  input.push({ role: "system", content: ["DATA:", ...foodCtx.lines].join("\n") });
+  for (const m of history) {
     const role = (m.role === "assistant" || m.role === "user") ? m.role : "user";
     input.push({ role, content: String(m.content || "") });
-}
+  }
 
   const resp = await responsesCreate({
     model: "gpt-4o-mini",
