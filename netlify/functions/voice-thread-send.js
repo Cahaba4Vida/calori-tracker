@@ -107,6 +107,34 @@ async function loadRecentMessages(threadId, limit) {
   return r.rows.reverse().map(x => ({ role: x.role, text: x.content }));
 }
 
+async function getLastLoggedVoiceEntryToday(userId, entryDate) {
+  try {
+    const r = await query(
+      `select calories, protein_g, carbs_g, fat_g, raw_extraction
+       from food_entries
+       where user_id = $1 and entry_date = $2
+         and (raw_extraction->>'source') = 'voice'
+       order by taken_at desc
+       limit 1`,
+      [userId, entryDate]
+    );
+    if (!r.rows || !r.rows[0]) return null;
+    const row = r.rows[0];
+    const notes = row.raw_extraction && typeof row.raw_extraction === "object"
+      ? String(row.raw_extraction.notes || "").trim()
+      : "";
+    return {
+      calories: row.calories ?? null,
+      protein_g: row.protein_g ?? null,
+      carbs_g: row.carbs_g ?? null,
+      fat_g: row.fat_g ?? null,
+      notes: notes || null
+    };
+  } catch {
+    return null;
+  }
+}
+
 exports.handler = async (event, context) => {
   const auth = await requireUser(event, context);
   if (!auth.ok) return auth.response;
@@ -131,6 +159,12 @@ exports.handler = async (event, context) => {
 
   const history = await loadRecentMessages(threadId, 20);
 
+  // Help the model avoid re-logging prior items when the user restates them.
+  const lastLogged = await getLastLoggedVoiceEntryToday(userId, today);
+  const lastLoggedSummary = lastLogged
+    ? `Already logged today in this voice flow (most recent): ${JSON.stringify(lastLogged)}`
+    : "Already logged today in this voice flow (most recent): none";
+
   const prompt = `You help users log food from voice descriptions.
 Return ONLY JSON with this exact shape:
 {
@@ -145,9 +179,14 @@ Return ONLY JSON with this exact shape:
   }|null
 }
 
+Context:
+${lastLoggedSummary}
+
 Rules:
 - If user describes a meal, estimate calories/macros.
 - If user is unclear, ask ONE follow-up question and set needs_follow_up=true.
+- VERY IMPORTANT: Each new user message should be treated as an incremental update. If the user repeats foods that were already logged earlier in this conversation/today (often by restating the previous meal), DO NOT include those repeated foods again in suggested_entry. Only include NEW foods not already logged.
+- If the user message contains no new foods (only repeats what was already logged), set suggested_entry=null and reply that it was already logged.
 - Keep reply <= 2 sentences.
 - suggested_entry.description should be <= 60 chars.`;
 
