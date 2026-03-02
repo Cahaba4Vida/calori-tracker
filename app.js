@@ -1766,6 +1766,37 @@ function ensureVoiceRecognition() {
   voiceRecognition.onspeechstart = () => { setStatus('Hearing speech…'); };
   voiceRecognition.onnomatch = () => { setStatus('Didn\'t catch that. Try speaking louder/closer to the mic.'); };
 
+// Clean up stuttery SpeechRecognition output (e.g., "hey today i hey today i ...")
+function cleanTranscript(t) {
+  if (!t) return "";
+  // normalize whitespace
+  const words = String(t).trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return String(t).trim();
+
+  // Remove immediate repeated sequences of 1-4 words (common stutter pattern).
+  // Example: ["hey","today","i","hey","today","i"] -> ["hey","today","i"]
+  let i = 0;
+  while (i < words.length) {
+    let removed = false;
+    for (let k = 4; k >= 1; k--) {
+      if (i + 2 * k > words.length) continue;
+      let same = true;
+      for (let j = 0; j < k; j++) {
+        if (words[i + j].toLowerCase() !== words[i + k + j].toLowerCase()) { same = false; break; }
+      }
+      if (same) {
+        words.splice(i + k, k);
+        removed = true;
+        break;
+      }
+    }
+    if (!removed) i++;
+  }
+
+  return words.join(" ").trim();
+}
+
+
   voiceRecognition.onresult = (event) => {
     // Use ONLY final SpeechRecognition results and lightly de-dupe stuttery repeats.
     const results = event.results || [];
