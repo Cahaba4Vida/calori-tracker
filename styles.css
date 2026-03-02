@@ -1328,3 +1328,10 @@ body.invertedTheme .aiGlobalLoadingCard {
   box-shadow: 0 10px 30px rgba(0,0,0,0.25);
 }
 .coachListeningMic { font-size: 16px; }
+
+/* Ensure global .hidden always wins for coach overlay UI. These rules must come
+   AFTER the base coach styles to avoid display being re-enabled by later rules. */
+.coachListeningOverlay.hidden,
+.coachListeningPill.hidden {
+  display: none !important;
+}
