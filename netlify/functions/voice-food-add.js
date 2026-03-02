@@ -81,7 +81,8 @@ Rules:
           }
         ]
       }
-    ]
+    ],
+    text: { format: { type: "json_object" } }
   });
 
   const text = outputText(resp);

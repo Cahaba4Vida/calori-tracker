@@ -1,7 +1,7 @@
 const { json, getDenverDateISO } = require("./_util");
 const { requireUser } = require("./_auth");
 const { ensureUserProfile, query } = require("./_db");
-const { enforceAiActionLimit } = require("./_plan");
+const { enforceAiActionLimit, enforceFoodEntryLimit } = require("./_plan");
 const { responsesCreate, outputText } = require("./_openai");
 const crypto = require("crypto");
 
@@ -158,13 +158,57 @@ Rules:
 
   const resp = await responsesCreate({
     model: "gpt-4.1-mini",
-    input
+    input,
+    text: { format: { type: "json_object" } }
   });
 
   const raw = outputText(resp);
   let data;
-  try { data = JSON.parse(raw); } catch { data = { reply: raw?.slice(0, 240) || "", needs_follow_up: false, suggested_entry: null }; }
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return json(502, { error: "Model did not return valid JSON", raw });
+  }
 
+  let logged_entry = null;
+  const se = data && data.suggested_entry;
+
+  const shouldLog =
+    !data.needs_follow_up &&
+    se &&
+    Number.isFinite(Number(se.calories)) &&
+    Number(se.calories) > 0;
+
+  if (shouldLog) {
+    const entry_date = getDenverDateISO(new Date());
+
+    const limit = await enforceFoodEntryLimit(userId, entry_date);
+    if (!limit.ok) return limit.response;
+
+    const raw_extraction = {
+      source: "voice",
+      confidence: "low",
+      estimated: true,
+      notes: String(se.description || se.notes || "").slice(0, 180)
+    };
+
+    const ins = await query(
+      `insert into food_entries(user_id, taken_at, entry_date, calories, protein_g, carbs_g, fat_g, raw_extraction)
+       values ($1, now(), $2, $3, $4, $5, $6, $7)
+       returning id, taken_at, entry_date, calories, protein_g, carbs_g, fat_g, raw_extraction`,
+      [
+        userId,
+        entry_date,
+        Math.round(Number(se.calories)),
+        se.protein_g == null ? null : Math.round(Number(se.protein_g)),
+        se.carbs_g == null ? null : Math.round(Number(se.carbs_g)),
+        se.fat_g == null ? null : Math.round(Number(se.fat_g)),
+        raw_extraction
+      ]
+    );
+
+    logged_entry = ins.rows && ins.rows[0] ? ins.rows[0] : null;
+  }
   const reply = String(data.reply || "").trim();
   if (reply) await appendMessage(threadId, "assistant", reply);
 
@@ -178,6 +222,7 @@ Rules:
     reply,
     needs_follow_up: !!data.needs_follow_up,
     suggested_entry: data.suggested_entry || null,
+    logged_entry,
     audio_base64,
     audio_mime_type: audio_base64 ? "audio/mp3" : null
   });

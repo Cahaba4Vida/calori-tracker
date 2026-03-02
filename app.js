@@ -1829,6 +1829,11 @@ async function sendVoiceFoodMessage() {
         el('manualNotesInput').value = j.suggested_entry.notes ?? '';
       }
 
+      if (j && j.logged_entry) {
+        // Server logged the entry; refresh UI so it appears in Today list.
+        await refresh();
+      }
+
       // Fire-and-forget audio (do not block the queue on full playback)
       try { await playAssistantAudio(j); } catch (e) {}
 
