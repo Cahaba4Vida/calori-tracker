@@ -70,7 +70,7 @@ Rules:
 - If followups_used >= followups_limit, you MUST set needs_follow_up=false and provide suggested_entry.`;
 
   const resp = await responsesCreate({
-    model: "gpt-5.2",
+    model: "gpt-4o-mini",
     input: [
       {
         role: "user",
