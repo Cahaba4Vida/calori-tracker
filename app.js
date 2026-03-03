@@ -484,13 +484,22 @@ function denverISO(now = new Date()) {
   return fmt.format(now);
 }
 
-// Anchor a Denver calendar day as a UTC midnight date so YYYY-MM-DD stays stable.
+// Convert a Denver calendar date (YYYY-MM-DD) into a stable Date instance anchored at UTC noon.
+// (UTC noon avoids DST/offset edge cases that can shift the displayed Denver date.)
+function denverDateFromISO(iso) {
+  if (!iso || typeof iso !== 'string') return new Date();
+  const parts = String(iso).split('-').map(Number);
+  if (parts.length !== 3 || parts.some(n => !isFinite(n))) return new Date();
+  const [y, m, d] = parts;
+  return new Date(Date.UTC(y, m - 1, d, 12));
+}
+
+// Denver-safe YYYY-MM-DD with offset days. Uses Denver calendar math, not UTC/local.
 function denverISOWithOffset(offsetDays) {
   const todayISO = denverISO(new Date());
-  const [y, m, d] = todayISO.split('-').map(Number);
-  const anchorUTC = new Date(Date.UTC(y, m - 1, d)); // UTC midnight of Denver day
-  const target = new Date(anchorUTC.getTime() + Number(offsetDays || 0) * 86400000);
-  return target.toISOString().slice(0, 10);
+  const dt = denverDateFromISO(todayISO);
+  dt.setUTCDate(dt.getUTCDate() + Number(offsetDays || 0));
+  return denverISO(dt);
 }
 
 // Denver day-of-week for a given Date (0=Sun..6=Sat). Uses America/Denver to avoid UTC/local drift.
@@ -1396,7 +1405,7 @@ async function loadGoal() {
   const _baseDaily = j.daily_calories ?? null;
   const _activeDateISO = (typeof activeEntryDateISO === 'function') ? activeEntryDateISO() : null;
   const _effectiveDaily = (_baseDaily != null && _activeDateISO && typeof getEffectiveDailyCalorieGoal === 'function')
-    ? getEffectiveDailyCalorieGoal(new Date(_activeDateISO))
+    ? getEffectiveDailyCalorieGoal(_activeDateISO)
     : (_baseDaily ?? '—');
   el('todayGoal').innerText = _effectiveDaily;
 
@@ -3006,7 +3015,8 @@ function getEffectiveDailyCalorieGoal(date) {
   const cfg = getCheatDayConfig();
   if (!base || !cfg.enabled || !cfg.extra) return base;
 
-  const d = date ? new Date(date) : new Date();
+  // IMPORTANT: if a YYYY-MM-DD string is provided, anchor at UTC noon so Denver DOW is correct.
+  const d = (typeof date === 'string') ? denverDateFromISO(date) : (date instanceof Date ? date : new Date());
   const dow = denverDow(d); // 0=Sun..6=Sat (Denver time)
   const deltaOther = Math.round(cfg.extra / 6);
 
@@ -3115,7 +3125,7 @@ function getTodaysMacroGoals() {
   const baseCals = getBaseDailyCalorieGoal();
     const _activeISO = (typeof activeEntryDateISO === 'function') ? activeEntryDateISO() : null;
   const todayCals = (typeof getEffectiveDailyCalorieGoal === 'function' && _activeISO)
-    ? getEffectiveDailyCalorieGoal(new Date(_activeISO))
+    ? getEffectiveDailyCalorieGoal(_activeISO)
     : getTodaysCalorieGoal();
   const base = getBaseMacroGoals();
   if (!base.protein_g && !base.carbs_g && !base.fat_g) return base;
