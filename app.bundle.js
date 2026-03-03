@@ -3718,9 +3718,38 @@ document.addEventListener("DOMContentLoaded", ()=>{
 // AUTOPILOT READINESS + PLAN GRAPH (v38)
 // ===============================
 function _apParseDate(d){try{if(!d)return null;if(typeof d==='number')return new Date(d);if(typeof d==='string'){const dt=new Date(d);if(!isNaN(dt.getTime()))return dt;}if(typeof d==='object'&&d.ts)return new Date(d.ts);}catch(e){}return null;}
-function _apStartOfDay(dt){const d=new Date(dt.getTime());d.setHours(0,0,0,0);return d;}
-function _apIsoYmd(dt){const d=_apStartOfDay(dt);const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,'0');const day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`;}
-function _apGetLastNDaysKeys(n){const keys=[];const today=_apStartOfDay(new Date());for(let i=n-1;i>=0;i--){const d=new Date(today.getTime()-i*86400000);keys.push(_apIsoYmd(d));}return keys;}
+function _apDenverYmd(date){
+  // Stable YYYY-MM-DD in America/Denver (avoids UTC/local rollover bugs)
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+  } catch (e) {
+    // Fallback: use denverDow mapping + local date parts (best-effort)
+    const d = new Date(date.getTime());
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+}
+function _apStartOfDenverDay(date){
+  // Represent the Denver calendar day as a UTC-noon Date to keep day arithmetic stable across DST.
+  const ymd = _apDenverYmd(date);
+  const [y,m,d] = ymd.split('-').map(Number);
+  return new Date(Date.UTC(y, m-1, d, 12));
+}
+function _apIsoYmd(dt){
+  return _apDenverYmd(dt);
+}
+function _apGetLastNDaysKeys(n){
+  const keys=[];
+  const base = _apStartOfDenverDay(new Date()); // Denver "today"
+  for(let i=n-1;i>=0;i--){
+    const d = new Date(base.getTime() - i*86400000);
+    keys.push(_apDenverYmd(d));
+  }
+  return keys;
+}
+return keys;}
 function _apLoadEntries(){try{return JSON.parse(localStorage.getItem('entries')||'[]');}catch(e){return [];}} 
 function _apLoadWeights(){try{return JSON.parse(localStorage.getItem('weights')||'[]');}catch(e){return [];}} 
 function _apFoodDaysLast7(){const entries=_apLoadEntries();const keys=new Set(_apGetLastNDaysKeys(7));const days=new Set();entries.forEach(e=>{const dt=_apParseDate(e.date||e.ts||e.created_at||e.createdAt);if(!dt)return;const k=_apIsoYmd(dt);if(keys.has(k))days.add(k);});return days.size;}
