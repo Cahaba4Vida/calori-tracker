@@ -78,15 +78,17 @@ async function insertMessage(threadId, role, content) {
 }
 
 async function loadHistory(threadId, limit = 16) {
+  // Fetch most recent messages, then reverse to chronological order.
+  // Using ORDER BY ASC with LIMIT would keep only the oldest messages and drop the newest turn.
   const r = await query(
     `select role, content
      from coach_messages
      where thread_id=$1
-     order by created_at asc
+     order by created_at desc
      limit $2`,
     [threadId, limit]
   );
-  return r.rows || [];
+  return (r.rows || []).reverse();
 }
 
 async function buildFoodContext(userId, date) {
