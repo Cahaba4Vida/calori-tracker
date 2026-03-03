@@ -2519,10 +2519,12 @@ async function ensureCoachThread() {
   return '';
 }
 
-async function sendChat() {
+async function sendChat(opts) {
   const msg = el('chatInput').value.trim();
   if (!msg) return;
 
+
+  const from_voice = !!(opts && opts.from_voice);
   // Ensure audio playback is unlocked by a user gesture (autoplay policy).
   try { if (typeof unlockAudioOnce === 'function') unlockAudioOnce(); } catch (e) {}
 
@@ -2534,13 +2536,13 @@ async function sendChat() {
     const j = await api('coach-thread-send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ thread_id, message: msg, want_audio: true })
+      body: JSON.stringify({ thread_id, message: msg, want_audio: from_voice })
     });
 
     el('chatOutput').innerText = j.reply;
 
     // If voice mode is enabled OR audio is returned, play it.
-    if (j.audio_base64 && typeof playAssistantAudio === 'function') {
+    if (from_voice && j.audio_base64 && typeof playAssistantAudio === 'function') {
       playAssistantAudio({ audio_base64: j.audio_base64, audio_mime_type: (j.audio_mime_type || 'audio/mp3'), reply: j.reply });
     }
   } finally {
@@ -3051,7 +3053,7 @@ function bindUI() {
             if (card) { card.classList.add('open'); coachFab.setAttribute('aria-expanded','true'); }
             const input = el('chatInput');
             if (input) input.value = text;
-            await sendChat();
+            await sendChat({ from_voice: true });
           }
         } catch (e) {
           setCoachListeningOverlay(false);
