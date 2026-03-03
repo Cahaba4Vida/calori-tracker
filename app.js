@@ -21,6 +21,11 @@ function unlockAudioOnce() {
     }
   } catch (e) {}
 }
+// iOS Safari autoplay: unlock audio on first touch/pointer interaction
+try {
+  document.addEventListener('touchstart', () => { try { unlockAudioOnce(); } catch (e) {} }, { passive: true, once: true });
+  document.addEventListener('pointerdown', () => { try { unlockAudioOnce(); } catch (e) {} }, { passive: true, once: true });
+} catch (e) {}
 
 // Some event handlers are attached via window (e.g. voice toggle). Make the
 // unlock helper available globally.
@@ -39,6 +44,7 @@ async function playAssistantAudio(j) {
     try {
       const url = base64ToBlobUrl(j.audio_base64, j.audio_mime_type || 'audio/mpeg');
       const audio = new Audio(url);
+      try { audio.playsInline = true; audio.setAttribute('playsinline',''); audio.preload = 'auto'; } catch (e) {}
       audio.addEventListener('ended', () => URL.revokeObjectURL(url));
       audio.addEventListener('error', () => URL.revokeObjectURL(url));
       await audio.play();
