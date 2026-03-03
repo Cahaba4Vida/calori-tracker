@@ -2261,7 +2261,7 @@ async function sendChat() {
 
     // If voice mode is enabled OR audio is returned, play it.
     if (j.audio_base64 && typeof playAssistantAudio === 'function') {
-      playAssistantAudio(j.audio_base64, j.audio_mime_type || 'audio/mp3');
+      playAssistantAudio({ audio_base64: j.audio_base64, audio_mime_type: (j.audio_mime_type || 'audio/mp3'), reply: j.reply });
     }
   } finally {
     setThinking(false);
