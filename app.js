@@ -64,7 +64,7 @@ async function playAssistantAudio(j) {
 let currentUser = null;
 let skipOnboardingAfterLogin = false;
 const QUERY = new URLSearchParams(window.location.search);
-const MOCK_MODE = QUERY.get('mock') === '1';
+const MOCK_MODE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') && QUERY.get('mock') === '1';
 const USE_MOCK_API = QUERY.get('mockApi') === '1';
 const MOCK_STORAGE_KEY = 'caloriTrackerMockStateV1';
 const mockStorage = window.localStorage;
