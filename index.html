@@ -5,7 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>Calorie &amp; Weight Tracker</title>
-<link href="styles.css?v=1012" rel="stylesheet"/>
+<link href="styles.css?v=1013" rel="stylesheet"/>
 
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -439,7 +439,7 @@
 </div>
 
 <div class="settingsSection" data-tab="autopilot" id="autopilotReadinessSection">
-  <h3>Autopilot Readiness</h3>
+  <h3>Autopilot</h3>
   <div class="apControls">
     <label class="apToggleRow">
       <input id="apEnabledToggle" type="checkbox"/>
@@ -484,17 +484,6 @@
       <div class="muted" id="apImpliedTargetWeight">Implied target weight: —</div>
     </div>
     <div class="muted" id="apSettingsHint">Autopilot will suggest weekly calorie changes based on your recent logs and weigh‑ins.</div>
-  </div>
-
-  <div class="apReadinessRow">
-    <div class="apScoreBadge" id="apReadinessScore">--</div>
-    <div class="apReadinessMeta">
-      <div class="apReadinessLabel" id="apReadinessLabel">Checking…</div>
-      <div class="apReadinessSub" id="apReadinessSub"></div>
-    </div>
-  </div>
-  <div class="apBarWrap" aria-label="Autopilot readiness">
-    <div class="apBarFill" id="apReadinessFill" style="width:0%"></div>
   </div>
 
   <div class="apPlanHeader">
@@ -717,7 +706,7 @@
   window.addEventListener('pageshow', hide);
 })();
 </script>
-<script src="app.bundle.js?v=1012"></script>
+<script src="app.bundle.js?v=1013"></script>
 
 <div id="aiGlobalLoading" class="aiGlobalLoading hidden" role="status" aria-live="polite" aria-label="AI is working">
   <div class="aiGlobalLoadingCard">
