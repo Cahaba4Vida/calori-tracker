@@ -2246,7 +2246,7 @@ async function ensureCoachThread() {
 }
 
 async function sendChat(opts) {
-  const msg = el('chatInput').value.trim();
+  const msg = String((opts && opts.message != null) ? opts.message : el('chatInput').value).trim();
   if (!msg) return;
 
 
@@ -2271,6 +2271,8 @@ async function sendChat(opts) {
     if (from_voice && j.audio_base64 && typeof playAssistantAudio === 'function') {
       playAssistantAudio({ audio_base64: j.audio_base64, audio_mime_type: (j.audio_mime_type || 'audio/mp3'), reply: j.reply });
     }
+    // Clear typed input after send so we never re-send stale text.
+    try { const input = el('chatInput'); if (input) input.value = ''; } catch (e) {}
   } finally {
     setThinking(false);
     setStatus('');
