@@ -2380,8 +2380,13 @@ function bindUI() {
   });
   el('saveWeightBtn').onclick = () => saveWeight().catch(e => setStatus(e.message));
   el('finishDayBtn').onclick = () => finishDay().catch(e => setStatus(e.message));
-  el('sendChatBtn').onclick = () => sendChat().catch(e => setStatus(e.message));
-  el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
+  el('sendChatBtn').onclick = () => {
+    const input = el('chatInput');
+    const msg = input ? String(input.value || '') : '';
+    if (input) input.value = '';
+    return sendChat({ message: msg, from_voice: false }).catch(e => setStatus(e.message));
+  };
+el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
 
   // Tabs
   const tabs = el('tabs');
