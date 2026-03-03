@@ -3180,6 +3180,19 @@ function initSettingsTabs_v37() {
       tab.classList.add('active');
       const target = tab.getAttribute('data-tab');
       document.querySelector('[data-tab-content="'+target+'"]').classList.remove('hidden');
+      // Auto-refresh Autopilot tab contents when opened
+      try{
+        if(target === 'autopilot'){
+          const now = Date.now();
+          if(!window.__apLastTabRefreshAt || (now - window.__apLastTabRefreshAt) > 3000){
+            window.__apLastTabRefreshAt = now;
+            Promise.resolve((typeof apRefreshSuggestion_v42 === 'function') ? apRefreshSuggestion_v42() : null)
+              .then(()=>{ try{ if(typeof apRenderHomeSuggestion_v40 === 'function') apRenderHomeSuggestion_v40(); }catch(e){} })
+              .finally(()=>{ try{ if(typeof drawCaloriePlanGraph_v38 === 'function') drawCaloriePlanGraph_v38(); }catch(e){} });
+          }
+        }
+      }catch(e){}
+
     });
   });
 
