@@ -19,7 +19,9 @@ exports.handler = async (event, context) => {
               goal_weight_lbs, activity_level, goal_date, quick_fills,
               goal_body_fat_percent, goal_body_fat_date,
               current_body_fat_percent, current_body_fat_weight_lbs,
-              autopilot_enabled, autopilot_mode, autopilot_last_review_week
+              autopilot_enabled, autopilot_mode, autopilot_last_review_week,
+              goal_mode, age_years, height_in, current_weight_lbs, target_weight_lbs,
+              tracking_experience, heard_about, previous_app
        from user_profiles
        where user_id = $1`,
       [userId]
@@ -53,6 +55,15 @@ exports.handler = async (event, context) => {
     autopilot_enabled: row.autopilot_enabled == null ? false : !!row.autopilot_enabled,
     autopilot_mode: row.autopilot_mode ?? 'weight',
     autopilot_last_review_week: row.autopilot_last_review_week ? String(row.autopilot_last_review_week) : null,
-    quick_fills: Array.isArray(row.quick_fills) ? row.quick_fills : []
+    quick_fills: Array.isArray(row.quick_fills) ? row.quick_fills : [],
+
+    goal_mode: row.goal_mode ?? null,
+    age_years: row.age_years == null ? null : Number(row.age_years),
+    height_in: row.height_in == null ? null : Number(row.height_in),
+    current_weight_lbs: row.current_weight_lbs == null ? null : Number(row.current_weight_lbs),
+    target_weight_lbs: row.target_weight_lbs == null ? null : Number(row.target_weight_lbs),
+    tracking_experience: row.tracking_experience ?? null,
+    heard_about: row.heard_about ?? null,
+    previous_app: row.previous_app ?? null
   });
 };

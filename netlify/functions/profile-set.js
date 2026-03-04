@@ -16,6 +16,14 @@ function asNumberOrNull(v, field, { min = 0, max = 1e9 } = {}) {
   return n;
 }
 
+function asTextOrNull(v, field, { maxLen = 64 } = {}) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  if (s.length > maxLen) throw new Error(`${field} must be <= ${maxLen} chars`);
+  return s;
+}
+
 function normalizeQuickFills(raw) {
   if (!Array.isArray(raw)) throw new Error("quick_fills must be an array");
   if (raw.length > 30) throw new Error("quick_fills supports up to 30 items");
@@ -110,6 +118,59 @@ exports.handler = async (event, context) => {
       }
       values.push(body.goal_date ?? null);
       updates.push(`goal_date = $${values.length}`);
+    }
+
+    // Onboarding V2 fields
+    if (Object.prototype.hasOwnProperty.call(body, 'goal_mode')) {
+      const allowed = new Set(['lose','maintain','gain','improve']);
+      if (body.goal_mode != null && !allowed.has(String(body.goal_mode))) {
+        return json(400, { error: 'goal_mode must be one of lose|maintain|gain|improve' });
+      }
+      values.push(body.goal_mode ?? null);
+      updates.push(`goal_mode = $${values.length}`);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'age_years')) {
+      const n = asIntOrNull(body.age_years, 'age_years');
+      if (n != null && (n < 10 || n > 120)) return json(400, { error: 'age_years must be between 10 and 120' });
+      values.push(n);
+      updates.push(`age_years = $${values.length}`);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'height_in')) {
+      const n = asIntOrNull(body.height_in, 'height_in');
+      if (n != null && (n < 36 || n > 96)) return json(400, { error: 'height_in must be between 36 and 96' });
+      values.push(n);
+      updates.push(`height_in = $${values.length}`);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'current_weight_lbs')) {
+      values.push(asNumberOrNull(body.current_weight_lbs, 'current_weight_lbs', { min: 50, max: 1000 }));
+      updates.push(`current_weight_lbs = $${values.length}`);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'target_weight_lbs')) {
+      values.push(asNumberOrNull(body.target_weight_lbs, 'target_weight_lbs', { min: 50, max: 1000 }));
+      updates.push(`target_weight_lbs = $${values.length}`);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'tracking_experience')) {
+      const allowed = new Set(['experienced','tried','new']);
+      if (body.tracking_experience != null && !allowed.has(String(body.tracking_experience))) {
+        return json(400, { error: 'tracking_experience must be one of experienced|tried|new' });
+      }
+      values.push(body.tracking_experience ?? null);
+      updates.push(`tracking_experience = $${values.length}`);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'heard_about')) {
+      values.push(asTextOrNull(body.heard_about, 'heard_about', { maxLen: 40 }));
+      updates.push(`heard_about = $${values.length}`);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, 'previous_app')) {
+      values.push(asTextOrNull(body.previous_app, 'previous_app', { maxLen: 40 }));
+      updates.push(`previous_app = $${values.length}`);
     }
 
     // Body fat goals
