@@ -941,19 +941,31 @@ function _renderOnboardingV2() {
   if (onboardingV2Step === 1) {
     title.innerText = 'Meet your new nutrition sidekick 👋';
     subtitle.innerText = 'Tracking calories should feel simple, not stressful.';
-    const cards = document.createElement('div');
-    cards.className = 'onbCards';
-    [
-      { t: 'Fast logging', d: 'Voice, photo, or manual — your choice.' },
-      { t: 'Less stress', d: 'No macro spreadsheets required.' },
-      { t: 'Clear progress', d: 'Autopilot nudges calories based on results.' }
-    ].forEach((c) => {
-      const card = document.createElement('div');
-      card.className = 'onbCard';
-      card.innerHTML = `<div class="onbCardTitle">${c.t}</div><div class="onbCardDesc">${c.d}</div>`;
-      cards.appendChild(card);
-    });
-    body.appendChild(cards);
+
+    // Hero image (swap in your own photo/illustration at assets/onboarding/sidekick.jpg)
+    const hero = document.createElement('div');
+    hero.className = 'onbHero';
+    const img = document.createElement('img');
+    img.className = 'onbHeroImg';
+    img.alt = 'Nutrition sidekick';
+    img.src = 'assets/onboarding/sidekick.jpg';
+    img.onerror = () => {
+      // Fallback: simple gradient block if asset missing
+      img.remove();
+      const fallback = document.createElement('div');
+      fallback.className = 'onbHeroFallback';
+      fallback.innerText = 'Aethon Nutrition Sidekick';
+      hero.appendChild(fallback);
+    };
+    hero.appendChild(img);
+
+    const note = document.createElement('div');
+    note.className = 'onbHeroNote';
+    note.innerText = 'Voice, photo, or manual — your choice.';
+
+    body.appendChild(hero);
+    body.appendChild(note);
+
     actions.appendChild(_onbBtn('Get Started', { kind: 'primary', onClick: next }));
     fineprint.innerText = 'Takes less than a minute';
     return;

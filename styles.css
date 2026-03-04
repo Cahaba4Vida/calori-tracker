@@ -1420,3 +1420,9 @@ body.invertedTheme .aiGlobalLoadingCard {
 .onbPlanTitle{font-weight:900;margin-bottom:8px;}
 .onbPlan ul{margin:0;padding-left:18px;color:var(--muted);}
 .onbPlan.highlight{border-color:rgba(47,111,255,0.6);background:rgba(47,111,255,0.06);}
+
+/* Onboarding hero photo (Step 2/10 / nutrition sidekick) */
+.onbHero{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:rgba(0,0,0,0.02);}
+.onbHeroImg{width:100%;height:auto;display:block;aspect-ratio: 16 / 9;object-fit:cover;}
+.onbHeroFallback{width:100%;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;font-weight:800;color:rgba(0,0,0,0.7);background:linear-gradient(135deg, rgba(59,130,246,0.22), rgba(16,185,129,0.20));}
+.onbHeroNote{margin-top:12px;border:1px solid var(--border);border-radius:14px;padding:12px;background:rgba(0,0,0,0.02);font-weight:700;}
