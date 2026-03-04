@@ -1088,7 +1088,8 @@ function _renderOnboardingV2() {
     });
     body.appendChild(grid);
     actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
-    actions.appendChild(_onbBtn('Sounds Good', { kind: 'primary', onClick: next }));
+    // Page 2 of 10 (overall onboarding) should show an explicit "Next" button.
+    actions.appendChild(_onbBtn('Next', { kind: 'primary', onClick: next }));
     return;
   }
 
