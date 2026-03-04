@@ -168,6 +168,45 @@ ul { margin: 8px 0 0 18px; }
   margin: 0 auto;
   box-shadow: 0 -8px 24px rgba(0,0,0,0.15);
 }
+
+.limitChoiceGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.limitChoice {
+  width: 100%;
+  text-align: left;
+  padding: 14px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  cursor: pointer;
+}
+
+.limitChoice:hover {
+  background: rgba(255,255,255,0.10);
+}
+
+.limitChoiceTitle {
+  font-weight: 700;
+}
+
+.limitChoiceDesc {
+  margin-top: 6px;
+  opacity: 0.75;
+  font-size: 0.95rem;
+}
+
+.referralLinkRow input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+}
 .sheetHeader {
   display:flex; align-items:center; justify-content:space-between;
   padding: 12px 12px 6px;
@@ -1339,7 +1378,11 @@ body.invertedTheme .aiGlobalLoadingCard {
 /* =======================
    Onboarding V2 (extra pages after existing welcome)
    ======================= */
-#onboardingV2Screen{margin-top:6px;}
+#onboardingV2Screen{margin-top:6px;position:relative;}
+.onbV2Loading{position:absolute;inset:0;border-radius:18px;background:rgba(255,255,255,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:5;}
+.onbV2Loading .msg{font-weight:700;}
+.onbV2Loading .spinner{width:42px;height:42px;border-radius:50%;border:4px solid rgba(0,0,0,.15);border-top-color:rgba(0,0,0,.6);animation:onbSpin 1s linear infinite;}
+@keyframes onbSpin{to{transform:rotate(360deg);}}
 .onbV2Header{margin-bottom:14px;}
 .onbV2Kicker{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
 .onbV2Title{margin:0 0 8px 0;font-size:24px;line-height:1.15;}

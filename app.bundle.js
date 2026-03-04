@@ -1123,6 +1123,31 @@ function _onbChoice(label, emoji, isSelected, onClick) {
   return d;
 }
 
+function setOnbV2Loading(isLoading, message) {
+  const screen = el('onboardingV2Screen');
+  if (!screen) return;
+  let overlay = el('onbV2Loading');
+  if (isLoading) {
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'onbV2Loading';
+      overlay.className = 'onbV2Loading';
+      overlay.innerHTML = '<div class="spinner" aria-hidden="true"></div><div class="msg" id="onbV2LoadingMsg"></div>';
+      screen.appendChild(overlay);
+    }
+    const msgEl = el('onbV2LoadingMsg');
+    if (msgEl) msgEl.innerText = message || 'Working…';
+  } else {
+    if (overlay) overlay.remove();
+  }
+  const actions = el('onbV2Actions');
+  if (actions) {
+    actions.querySelectorAll('button').forEach((b) => {
+      b.disabled = !!isLoading;
+    });
+  }
+}
+
 function _renderOnboardingV2() {
   showOnboardingScreen('v2');
   _onbSetStepIndicator();
@@ -1300,6 +1325,7 @@ function _renderOnboardingV2() {
       dt.setDate(dt.getDate() + 56);
       const goalDate = dt.toISOString().slice(0,10);
 
+      setOnbV2Loading(true, 'Generating your plan…');
       setStatus('Creating your plan…');
       try {
         await api('profile-set', {
@@ -1348,9 +1374,11 @@ function _renderOnboardingV2() {
 
         await loadProfile();
         setStatus('');
+        setOnbV2Loading(false);
         next();
       } catch (e) {
         setStatus(e?.message || String(e));
+        setOnbV2Loading(false);
       }
     }
 
