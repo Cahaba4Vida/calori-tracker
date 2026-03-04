@@ -935,11 +935,23 @@ function bindAiLimitAndReferralUI() {
 
   const upgradeBtn = el('aiLimitUpgradeBtn');
   if (upgradeBtn) upgradeBtn.onclick = () => {
+    // If the user isn't signed in yet, open the signup/login flow first.
+    if (!currentUser) {
+      openIdentityModal('signup');
+      return;
+    }
     setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
     goToUpgradeFlow();
   };
   const inviteBtn = el('aiLimitInviteBtn');
-  if (inviteBtn) inviteBtn.onclick = () => openReferralShare();
+  if (inviteBtn) inviteBtn.onclick = () => {
+    // Referrals require an account, so prompt sign-in if needed.
+    if (!currentUser) {
+      openIdentityModal('signup');
+      return;
+    }
+    openReferralShare();
+  };
 
   const closeR = el('referralCloseBtn');
   if (closeR) closeR.onclick = () => setModalVisible('referralOverlay', 'referralSheet', false);
