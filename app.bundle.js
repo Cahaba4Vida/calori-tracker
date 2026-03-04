@@ -948,11 +948,457 @@ function showOnboardingScreen(which) {
   el('onboardingWelcomeScreen').classList.toggle('hidden', which !== 'welcome');
   el('onboardingInputScreen').classList.toggle('hidden', which !== 'inputs');
   el('onboardingSuggestScreen').classList.toggle('hidden', which !== 'suggestion');
+  const v2 = el('onboardingV2Screen');
+  if (v2) v2.classList.toggle('hidden', which !== 'v2');
   const onboardingModal = document.querySelector('#onboardingOverlay .onboardingModal');
   if (onboardingModal) onboardingModal.classList.toggle('welcomeMode', which === 'welcome');
-  const step = which === 'welcome' ? '1' : (which === 'inputs' ? '2' : '3');
+  const step = which === 'welcome' ? '1' : (which === 'inputs' ? '2' : (which === 'suggestion' ? '3' : el('onboardingStepNum')?.innerText || '2'));
   const stepEl = el('onboardingStepNum');
   if (stepEl) stepEl.innerText = step;
+}
+
+// ------------------------------
+// Onboarding V2 (9 pages after existing welcome)
+// ------------------------------
+const ONB_V2_TOTAL_STEPS = 10;
+let onboardingV2Step = 1; // 1..9 (maps to overall step 2..10)
+const onboardingV2State = {
+  goal_mode: null,
+  age_years: null,
+  height_in: null,
+  current_weight_lbs: null,
+  target_weight_lbs: null,
+  activity_level: 'moderate',
+  tracking_experience: null,
+  heard_about: null,
+  previous_app: null
+};
+
+function _onbSetStepIndicator() {
+  const overall = 1 + onboardingV2Step;
+  const node = el('onbV2Kicker');
+  if (node) node.innerText = `Step ${overall} of ${ONB_V2_TOTAL_STEPS}`;
+  const stepEl = el('onboardingStepNum');
+  if (stepEl) stepEl.innerText = String(overall);
+  const container = document.querySelector('#onboardingOverlay .onboardingStep');
+  if (container) container.innerHTML = `Step <span id="onboardingStepNum">${overall}</span> of ${ONB_V2_TOTAL_STEPS}`;
+}
+
+function _onbBtn(label, { kind = 'primary', id = '', onClick = null } = {}) {
+  const b = document.createElement('button');
+  b.className = kind === 'primary' ? 'primaryBtn' : (kind === 'secondary' ? 'secondaryBtn' : 'linkMiniBtn');
+  if (id) b.id = id;
+  b.type = 'button';
+  b.innerText = label;
+  if (onClick) b.onclick = onClick;
+  return b;
+}
+
+function _onbChoice(label, emoji, isSelected, onClick) {
+  const d = document.createElement('div');
+  d.className = 'onbChoice' + (isSelected ? ' selected' : '');
+  d.onclick = onClick;
+  const e = document.createElement('div');
+  e.className = 'emoji';
+  e.innerText = emoji;
+  const t = document.createElement('div');
+  t.className = 'label';
+  t.innerText = label;
+  d.appendChild(e);
+  d.appendChild(t);
+  return d;
+}
+
+function _renderOnboardingV2() {
+  showOnboardingScreen('v2');
+  _onbSetStepIndicator();
+
+  const title = el('onbV2Title');
+  const subtitle = el('onbV2Subtitle');
+  const body = el('onbV2Body');
+  const actions = el('onbV2Actions');
+  const fineprint = el('onbV2Fineprint');
+  if (!title || !subtitle || !body || !actions || !fineprint) return;
+
+  body.innerHTML = '';
+  actions.innerHTML = '';
+  fineprint.innerText = '';
+
+  const next = () => { onboardingV2Step = Math.min(9, onboardingV2Step + 1); _renderOnboardingV2(); };
+  const back = () => { onboardingV2Step = Math.max(1, onboardingV2Step - 1); _renderOnboardingV2(); };
+
+  if (onboardingV2Step === 1) {
+    title.innerText = 'Meet your new nutrition sidekick 👋';
+    subtitle.innerText = 'Tracking calories should feel simple, not stressful.';
+    const cards = document.createElement('div');
+    cards.className = 'onbCards';
+    [
+      { t: 'Fast logging', d: 'Voice, photo, or manual — your choice.' },
+      { t: 'Less stress', d: 'No macro spreadsheets required.' },
+      { t: 'Clear progress', d: 'Autopilot nudges calories based on results.' }
+    ].forEach((c) => {
+      const card = document.createElement('div');
+      card.className = 'onbCard';
+      card.innerHTML = `<div class="onbCardTitle">${c.t}</div><div class="onbCardDesc">${c.d}</div>`;
+      cards.appendChild(card);
+    });
+    body.appendChild(cards);
+    actions.appendChild(_onbBtn('Get Started', { kind: 'primary', onClick: next }));
+    fineprint.innerText = 'Takes less than a minute';
+    return;
+  }
+
+  if (onboardingV2Step === 2) {
+    title.innerText = 'Most calorie apps feel like homework.';
+    subtitle.innerText = 'You’re not alone — we built this to remove friction.';
+    const cards = document.createElement('div');
+    cards.className = 'onbCards';
+    [
+      { t: '📱 Too slow', d: 'Searching foods takes forever.' },
+      { t: '📊 Too complicated', d: 'Macros, charts, menus everywhere.' },
+      { t: '🧮 Too manual', d: 'You constantly guess your calorie targets.' }
+    ].forEach((c) => {
+      const card = document.createElement('div');
+      card.className = 'onbCard';
+      card.innerHTML = `<div class="onbCardTitle">${c.t}</div><div class="onbCardDesc">${c.d}</div>`;
+      cards.appendChild(card);
+    });
+    body.appendChild(cards);
+    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
+    actions.appendChild(_onbBtn('Show Me How This Is Better', { kind: 'primary', onClick: next }));
+    return;
+  }
+
+  if (onboardingV2Step === 3) {
+    title.innerText = 'We built the fastest way to track nutrition';
+    subtitle.innerText = 'A few taps (or words) and you’re done.';
+    const grid = document.createElement('div');
+    grid.className = 'onbChoiceGrid';
+    const feats = [
+      ['Voice Logging', '🎤', 'Say what you ate.'],
+      ['Photo Logging', '📸', 'Snap your meal.'],
+      ['AI Nutrition Assistant', '🤖', 'Automatic calorie estimates.'],
+      ['Autopilot Goals', '📈', 'Calories adjust based on progress.']
+    ];
+    feats.forEach(([t, em, d]) => {
+      const card = document.createElement('div');
+      card.className = 'onbCard';
+      card.innerHTML = `<div class="onbCardTitle">${em} ${t}</div><div class="onbCardDesc">${d}</div>`;
+      grid.appendChild(card);
+    });
+    body.appendChild(grid);
+    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
+    actions.appendChild(_onbBtn('Sounds Good', { kind: 'primary', onClick: next }));
+    return;
+  }
+
+  if (onboardingV2Step === 4) {
+    title.innerText = 'What’s your goal?';
+    subtitle.innerText = 'This helps us tailor your plan and coach tone.';
+    const grid = document.createElement('div');
+    grid.className = 'onbChoiceGrid';
+    const set = (v) => { onboardingV2State.goal_mode = v; _renderOnboardingV2(); };
+    grid.appendChild(_onbChoice('Lose Weight', '⬇️', onboardingV2State.goal_mode === 'lose', () => set('lose')));
+    grid.appendChild(_onbChoice('Maintain Weight', '🟰', onboardingV2State.goal_mode === 'maintain', () => set('maintain')));
+    grid.appendChild(_onbChoice('Gain Muscle', '💪', onboardingV2State.goal_mode === 'gain', () => set('gain')));
+    grid.appendChild(_onbChoice('Improve Nutrition', '🥗', onboardingV2State.goal_mode === 'improve', () => set('improve')));
+    body.appendChild(grid);
+    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
+    actions.appendChild(_onbBtn('Next', { kind: 'primary', onClick: () => {
+      if (!onboardingV2State.goal_mode) { setStatus('Pick a goal to continue.'); return; }
+      next();
+    }}));
+    return;
+  }
+
+  if (onboardingV2Step === 5) {
+    title.innerText = 'Let’s personalize your plan';
+    subtitle.innerText = 'You can change this anytime.';
+    const wrap = document.createElement('div');
+    wrap.className = 'onbInputs';
+
+    const field = (label, id, type = 'number', placeholder = '') => {
+      const f = document.createElement('div');
+      f.className = 'field';
+      const l = document.createElement('label');
+      l.innerText = label;
+      const i = document.createElement('input');
+      i.id = id;
+      i.type = type;
+      if (placeholder) i.placeholder = placeholder;
+      f.appendChild(l); f.appendChild(i);
+      return f;
+    };
+
+    wrap.appendChild(field('Age', 'onbAge', 'number', 'e.g., 28'));
+    wrap.appendChild(field('Height (inches)', 'onbHeight', 'number', 'e.g., 70'));
+    wrap.appendChild(field(`Current Weight (${unitSuffix()})`, 'onbCurW', 'number', 'e.g., 180'));
+    wrap.appendChild(field(`Target Weight (${unitSuffix()})`, 'onbGoalW', 'number', 'e.g., 165'));
+
+    const activityField = document.createElement('div');
+    activityField.className = 'field';
+    activityField.innerHTML = `<label>Activity Level</label>`;
+    const sel = document.createElement('select');
+    sel.id = 'onbActivity';
+    ['sedentary','light','moderate','very_active'].forEach((k) => {
+      const o = document.createElement('option');
+      o.value = k;
+      o.innerText = k.replace('_',' ');
+      if (k === onboardingV2State.activity_level) o.selected = true;
+      sel.appendChild(o);
+    });
+    activityField.appendChild(sel);
+    wrap.appendChild(activityField);
+
+    body.appendChild(wrap);
+
+    setTimeout(() => {
+      const a = el('onbAge'); if (a && onboardingV2State.age_years != null) a.value = String(onboardingV2State.age_years);
+      const h = el('onbHeight'); if (h && onboardingV2State.height_in != null) h.value = String(onboardingV2State.height_in);
+      const cw = el('onbCurW'); if (cw && onboardingV2State.current_weight_lbs != null) cw.value = weightUnit === 'kg' ? String(lbsToKg(onboardingV2State.current_weight_lbs).toFixed(1)) : String(onboardingV2State.current_weight_lbs);
+      const gw = el('onbGoalW'); if (gw && onboardingV2State.target_weight_lbs != null) gw.value = weightUnit === 'kg' ? String(lbsToKg(onboardingV2State.target_weight_lbs).toFixed(1)) : String(onboardingV2State.target_weight_lbs);
+      const al = el('onbActivity'); if (al) al.value = onboardingV2State.activity_level || 'moderate';
+    }, 0);
+
+    async function createPlan() {
+      const age = Number(el('onbAge')?.value);
+      const height = Number(el('onbHeight')?.value);
+      const cur = Number(el('onbCurW')?.value);
+      const goal = Number(el('onbGoalW')?.value);
+      const activity = String(el('onbActivity')?.value || 'moderate');
+
+      if (!Number.isFinite(age) || age < 10 || age > 120) { setStatus('Enter a valid age.'); return; }
+      if (!Number.isFinite(height) || height < 36 || height > 96) { setStatus('Enter height in inches (e.g., 70).'); return; }
+      if (!Number.isFinite(cur) || cur <= 0) { setStatus('Enter a valid current weight.'); return; }
+      if (!Number.isFinite(goal) || goal <= 0) { setStatus('Enter a valid target weight.'); return; }
+
+      const curLbs = weightUnit === 'kg' ? kgToLbs(cur) : cur;
+      const goalLbs = weightUnit === 'kg' ? kgToLbs(goal) : goal;
+
+      onboardingV2State.age_years = Math.round(age);
+      onboardingV2State.height_in = Math.round(height);
+      onboardingV2State.current_weight_lbs = curLbs;
+      onboardingV2State.target_weight_lbs = goalLbs;
+      onboardingV2State.activity_level = activity;
+
+      const dt = new Date();
+      dt.setDate(dt.getDate() + 56);
+      const goalDate = dt.toISOString().slice(0,10);
+
+      setStatus('Creating your plan…');
+      try {
+        await api('profile-set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            goal_mode: onboardingV2State.goal_mode,
+            age_years: onboardingV2State.age_years,
+            height_in: onboardingV2State.height_in,
+            current_weight_lbs: onboardingV2State.current_weight_lbs,
+            target_weight_lbs: onboardingV2State.target_weight_lbs,
+            activity_level: onboardingV2State.activity_level,
+            goal_weight_lbs: onboardingV2State.target_weight_lbs,
+            goal_date: goalDate
+          })
+        });
+
+        const suggestion = await api('ai-goals-suggest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            current_weight_lbs: onboardingV2State.current_weight_lbs,
+            goal_weight_lbs: onboardingV2State.target_weight_lbs,
+            activity_level: onboardingV2State.activity_level,
+            goal_date: goalDate
+          })
+        });
+
+        await api('goal-set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ daily_calories: suggestion.daily_calories })
+        });
+        await api('profile-set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            macro_protein_g: suggestion.protein_g,
+            macro_carbs_g: suggestion.carbs_g,
+            macro_fat_g: suggestion.fat_g,
+            goal_weight_lbs: suggestion.goal_weight_lbs,
+            activity_level: suggestion.activity_level,
+            goal_date: suggestion.goal_date
+          })
+        });
+
+        await loadProfile();
+        setStatus('');
+        next();
+      } catch (e) {
+        setStatus(e?.message || String(e));
+      }
+    }
+
+    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
+    actions.appendChild(_onbBtn('Create My Plan', { kind: 'primary', onClick: createPlan }));
+    return;
+  }
+
+  if (onboardingV2Step === 6) {
+    title.innerText = 'Have you tracked calories before?';
+    subtitle.innerText = 'This helps us tailor tips and coaching.';
+    const grid = document.createElement('div');
+    grid.className = 'onbChoiceGrid';
+    const set = (v) => { onboardingV2State.tracking_experience = v; _renderOnboardingV2(); };
+    grid.appendChild(_onbChoice("Yes, I'm experienced", '✔️', onboardingV2State.tracking_experience === 'experienced', () => set('experienced')));
+    grid.appendChild(_onbChoice("I've tried before", '🔁', onboardingV2State.tracking_experience === 'tried', () => set('tried')));
+    grid.appendChild(_onbChoice("No, I'm new", '🌱', onboardingV2State.tracking_experience === 'new', () => set('new')));
+    body.appendChild(grid);
+    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
+    actions.appendChild(_onbBtn('Next', { kind: 'primary', onClick: async () => {
+      if (!onboardingV2State.tracking_experience) { setStatus('Pick one to continue.'); return; }
+      try {
+        await api('profile-set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tracking_experience: onboardingV2State.tracking_experience })
+        });
+        await loadProfile();
+      } catch (_) {}
+      next();
+    }}));
+    return;
+  }
+
+  if (onboardingV2Step === 7) {
+    title.innerText = 'How did you hear about us?';
+    subtitle.innerText = 'This helps us invest in what’s working.';
+    const grid = document.createElement('div');
+    grid.className = 'onbChoiceGrid';
+    const sources = ['TikTok','Instagram','Friend','Reddit','App Store','YouTube','Other'];
+    sources.forEach((s) => {
+      grid.appendChild(_onbChoice(s, '📣', onboardingV2State.heard_about === s, () => { onboardingV2State.heard_about = s; _renderOnboardingV2(); }));
+    });
+    body.appendChild(grid);
+
+    const other = document.createElement('div');
+    other.style.marginTop = '12px';
+    other.innerHTML = `<div class="muted" style="margin-bottom:8px;">Are you currently using another calorie app? (optional)</div>`;
+    const sel = document.createElement('select');
+    sel.id = 'onbPrevApp';
+    ['','MyFitnessPal','LoseIt','Cronometer','None'].forEach((v) => {
+      const o = document.createElement('option');
+      o.value = v;
+      o.innerText = v ? v : 'Select…';
+      if (v === onboardingV2State.previous_app) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.onchange = () => { onboardingV2State.previous_app = sel.value || null; };
+    other.appendChild(sel);
+    body.appendChild(other);
+
+    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
+    actions.appendChild(_onbBtn('Continue', { kind: 'primary', onClick: async () => {
+      if (!onboardingV2State.heard_about) { setStatus('Pick one to continue.'); return; }
+      try {
+        await api('profile-set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ heard_about: onboardingV2State.heard_about, previous_app: onboardingV2State.previous_app })
+        });
+        await loadProfile();
+      } catch (_) {}
+      next();
+    }}));
+    return;
+  }
+
+  if (onboardingV2Step === 8) {
+    title.innerText = 'Save your progress';
+    subtitle.innerText = 'Create a free account to store your food log and progress.';
+    const box = document.createElement('div');
+    box.className = 'onbCard';
+    box.innerHTML = `<div class="onbCardTitle">🔒 Your data is private and secure.</div><div class="onbCardDesc">Sign up now or continue — you can always create an account later.</div>`;
+    body.appendChild(box);
+    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
+    if (currentUser) {
+      actions.appendChild(_onbBtn('Continue', { kind: 'primary', onClick: next }));
+      fineprint.innerText = 'You’re already signed in.';
+    } else {
+      actions.appendChild(_onbBtn('Continue with Email', { kind: 'primary', onClick: () => openIdentityModal('signup') }));
+      actions.appendChild(_onbBtn('Continue Without Account', { kind: 'secondary', onClick: next }));
+      fineprint.innerText = 'Apple/Google sign-in can be added next — email works today.';
+    }
+    return;
+  }
+
+  if (onboardingV2Step === 9) {
+    title.innerText = 'Unlock your AI Nutrition Coach';
+    subtitle.innerText = 'Unlimited AI features + smarter adjustments.';
+    const pw = document.createElement('div');
+    pw.className = 'onbPaywall';
+    pw.innerHTML = `
+      <div class="onbPayCols">
+        <div class="onbPlan">
+          <div class="onbPlanTitle">Free Plan</div>
+          <ul>
+            <li>Food logging</li>
+            <li>Weight tracking</li>
+            <li>Basic progress charts</li>
+          </ul>
+        </div>
+        <div class="onbPlan highlight">
+          <div class="onbPlanTitle">Pro Plan</div>
+          <ul>
+            <li>Unlimited AI food analysis</li>
+            <li>Unlimited voice logging</li>
+            <li>Unlimited meal photo scanning</li>
+            <li>Advanced nutrition analytics</li>
+            <li>Smart Autopilot adjustments</li>
+            <li>Priority AI processing</li>
+          </ul>
+        </div>
+      </div>
+      <div style="margin-top:12px;font-weight:900;">$4.99 / month <span class="muted" style="font-weight:700;">or</span> $39 / year <span class="muted" style="font-weight:700;">(Save 35%)</span></div>
+    `;
+    body.appendChild(pw);
+
+    const finish = async () => {
+      try {
+        await api('profile-set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ onboarding_completed: true })
+        });
+        await loadProfile();
+      } catch (_) {}
+      setOnboardingVisible(false);
+      hideAllBlockingOverlays();
+      await refresh();
+    };
+
+    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
+    actions.appendChild(_onbBtn('Start 7-Day Free Trial', { kind: 'primary', onClick: () => {
+      try {
+        if (billingController) billingController.startUpgradeCheckout('monthly');
+        else finish();
+      } catch (_) { finish(); }
+    }}));
+    const free = document.createElement('button');
+    free.className = 'linkMiniBtn';
+    free.type = 'button';
+    free.innerText = 'Continue With Free Plan';
+    free.onclick = () => finish();
+    actions.appendChild(free);
+    fineprint.innerText = 'Most users lose 5–10 lbs in their first 8 weeks.';
+    return;
+  }
+}
+
+function startOnboardingV2() {
+  onboardingV2Step = 1;
+  setStatus('');
+  _renderOnboardingV2();
 }
 
 function setAiGoalLoading(isLoading) {
@@ -2819,7 +3265,13 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
     };
   }
 
-  el('onboardingContinueBtn').onclick = () => showOnboardingScreen('inputs');
+  el('onboardingContinueBtn').onclick = () => {
+    if (aiGoalFlowMode === 'onboarding') {
+      startOnboardingV2();
+    } else {
+      showOnboardingScreen('inputs');
+    }
+  };
   const onboardingSignInBtn = el('onboardingSignInBtn');
   if (onboardingSignInBtn) onboardingSignInBtn.onclick = () => {
     skipOnboardingAfterLogin = true;
