@@ -1335,3 +1335,45 @@ body.invertedTheme .aiGlobalLoadingCard {
 .coachListeningPill.hidden {
   display: none !important;
 }
+
+/* =======================
+   Onboarding V2 (extra pages after existing welcome)
+   ======================= */
+#onboardingV2Screen{margin-top:6px;}
+.onbV2Header{margin-bottom:14px;}
+.onbV2Kicker{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+.onbV2Title{margin:0 0 8px 0;font-size:24px;line-height:1.15;}
+.onbV2Subtitle{color:var(--muted);font-size:14px;line-height:1.45;}
+.onbV2Body{margin:14px 0 10px 0;}
+.onbV2Actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
+.onbV2Actions .primaryBtn{flex:1;min-width:200px;}
+.onbV2Actions .secondaryBtn{flex:1;min-width:200px;}
+.onbV2Fineprint{margin-top:10px;font-size:12px;}
+
+.onbCards{display:grid;grid-template-columns:repeat(1,1fr);gap:10px;}
+@media(min-width:560px){.onbCards{grid-template-columns:repeat(3,1fr);} }
+.onbCard{border:1px solid var(--border);border-radius:14px;padding:12px;background:rgba(0,0,0,0.02);}
+.onbCard .onbCardTitle{font-weight:800;margin-bottom:4px;}
+.onbCard .onbCardDesc{color:var(--muted);font-size:13px;line-height:1.35;}
+
+.onbChoiceGrid{display:grid;grid-template-columns:repeat(1,1fr);gap:10px;}
+@media(min-width:560px){.onbChoiceGrid{grid-template-columns:repeat(2,1fr);} }
+.onbChoice{border:1px solid var(--border);border-radius:14px;padding:12px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:10px;background:rgba(0,0,0,0.02);}
+.onbChoice:hover{background:rgba(0,0,0,0.04);} 
+.onbChoice.selected{border-color:rgba(47,111,255,0.65);box-shadow:0 0 0 3px rgba(47,111,255,0.12) inset;background:rgba(47,111,255,0.06);} 
+.onbChoice .emoji{font-size:18px;}
+.onbChoice .label{font-weight:800;}
+
+.onbInputs{display:grid;grid-template-columns:repeat(1,1fr);gap:10px;}
+@media(min-width:560px){.onbInputs{grid-template-columns:repeat(2,1fr);} }
+.onbInputs .field{display:flex;flex-direction:column;gap:6px;}
+.onbInputs label{font-size:12px;color:var(--muted);font-weight:700;}
+.onbInputs input,.onbInputs select{padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--text);}
+
+.onbPaywall{border:1px solid var(--border);border-radius:16px;padding:14px;background:rgba(0,0,0,0.02);}
+.onbPayCols{display:grid;grid-template-columns:repeat(1,1fr);gap:10px;margin-top:10px;}
+@media(min-width:560px){.onbPayCols{grid-template-columns:repeat(2,1fr);} }
+.onbPlan{border:1px solid var(--border);border-radius:14px;padding:12px;background:rgba(255,255,255,0.02);}
+.onbPlanTitle{font-weight:900;margin-bottom:8px;}
+.onbPlan ul{margin:0;padding-left:18px;color:var(--muted);}
+.onbPlan.highlight{border-color:rgba(47,111,255,0.6);background:rgba(47,111,255,0.06);}
