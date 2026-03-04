@@ -228,6 +228,25 @@ const VIEW_SPAN_ENABLED_KEY = 'caloriTrackerViewSpanEnabledV1';
 const VIEW_SPAN_PAST_DAYS_KEY = 'caloriTrackerViewSpanPastDaysV1';
 const VIEW_SPAN_FUTURE_DAYS_KEY = 'caloriTrackerViewSpanFutureDaysV1';
 
+const PENDING_REFERRAL_CODE_KEY = 'caloriPendingReferralCodeV1';
+
+function captureReferralCodeFromUrl() {
+  try {
+    const url = new URL(window.location.href);
+    let code = url.searchParams.get('ref');
+    if (!code) {
+      const m = String(window.location.pathname || '').match(/\/invite\/([A-Za-z0-9_-]{3,32})/);
+      if (m && m[1]) code = m[1];
+    }
+    if (!code) return;
+    const cleaned = String(code).trim().toUpperCase();
+    if (!cleaned) return;
+    localStorage.setItem(PENDING_REFERRAL_CODE_KEY, cleaned);
+  } catch {}
+}
+
+captureReferralCodeFromUrl();
+
 function generateDeviceId() {
   try {
     if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID().replace(/-/g, '');
@@ -864,12 +883,107 @@ function showQuickFillToast(msg) {
 function maybePromptUpgradeForAiLimit(message) {
   const m = String(message || '');
   if (!/AI actions per day/i.test(m)) return;
-  const goToUpgrade = window.confirm('You reached your 5 free AI uses for this day. Want to upgrade?');
-  if (!goToUpgrade) return;
+  showAiLimitModal();
+}
+
+function setModalVisible(overlayId, sheetId, visible) {
+  const overlay = el(overlayId);
+  const sheet = el(sheetId);
+  if (!overlay || !sheet) return;
+  overlay.classList.toggle('hidden', !visible);
+  sheet.classList.toggle('hidden', !visible);
+}
+
+function goToUpgradeFlow() {
   const settingsBtn = el('tabSettingsBtn');
   if (settingsBtn) settingsBtn.click();
   const planCard = el('planCard');
   if (planCard) planCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function fetchReferralLink() {
+  const r = await api('referral-get');
+  const code = String(r.referral_code || '').trim();
+  const base = (location && location.origin) ? location.origin : 'https://calori.app';
+  return `${base}/invite/${code}`;
+}
+
+async function openReferralShare() {
+  setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
+  setModalVisible('referralOverlay', 'referralSheet', true);
+  const status = el('referralStatus');
+  if (status) status.innerText = 'Loading your link…';
+  try {
+    const link = await fetchReferralLink();
+    const input = el('referralLinkInput');
+    if (input) input.value = link;
+    if (status) status.innerText = '';
+  } catch (e) {
+    if (status) status.innerText = e?.message || String(e);
+  }
+}
+
+function showAiLimitModal() {
+  setModalVisible('aiLimitOverlay', 'aiLimitSheet', true);
+}
+
+function bindAiLimitAndReferralUI() {
+  const closeA = el('aiLimitCloseBtn');
+  if (closeA) closeA.onclick = () => setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
+  const overlayA = el('aiLimitOverlay');
+  if (overlayA) overlayA.onclick = () => setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
+
+  const upgradeBtn = el('aiLimitUpgradeBtn');
+  if (upgradeBtn) upgradeBtn.onclick = () => {
+    setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
+    goToUpgradeFlow();
+  };
+  const inviteBtn = el('aiLimitInviteBtn');
+  if (inviteBtn) inviteBtn.onclick = () => openReferralShare();
+
+  const closeR = el('referralCloseBtn');
+  if (closeR) closeR.onclick = () => setModalVisible('referralOverlay', 'referralSheet', false);
+  const overlayR = el('referralOverlay');
+  if (overlayR) overlayR.onclick = () => setModalVisible('referralOverlay', 'referralSheet', false);
+
+  const copyBtn = el('referralCopyBtn');
+  if (copyBtn) copyBtn.onclick = async () => {
+    const input = el('referralLinkInput');
+    const link = input ? String(input.value || '') : '';
+    const status = el('referralStatus');
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        window.prompt('Copy your referral link:', link);
+      }
+      if (status) status.innerText = 'Copied!';
+      setTimeout(() => { if (status && status.innerText === 'Copied!') status.innerText = ''; }, 1500);
+    } catch (e) {
+      if (status) status.innerText = 'Could not copy. Please tap and hold to copy.';
+    }
+  };
+
+  const shareBtn = el('referralShareBtn');
+  if (shareBtn) shareBtn.onclick = async () => {
+    const input = el('referralLinkInput');
+    const link = input ? String(input.value || '') : '';
+    const status = el('referralStatus');
+    const msg = `I've been using this AI calorie tracker and it's the easiest one I've tried. Use my link and we both get 1 month of Premium free. ${link}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ text: msg, url: link });
+        if (status) status.innerText = '';
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(msg);
+        if (status) status.innerText = 'Copied share message!';
+      } else {
+        window.prompt('Share this message:', msg);
+      }
+    } catch (e) {
+      if (status) status.innerText = 'Share cancelled.';
+    }
+  };
 }
 
 
@@ -3672,6 +3786,23 @@ async function initAuthedSession(opts = {}) {
   await refresh();
 }
 
+async function claimPendingReferralIfSignedIn() {
+  try {
+    if (!currentUser) return;
+    const code = localStorage.getItem(PENDING_REFERRAL_CODE_KEY);
+    if (!code) return;
+    await api('referral-claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ referral_code: code })
+    });
+    localStorage.removeItem(PENDING_REFERRAL_CODE_KEY);
+    setStatus('Referral applied. Log a meal to unlock your free month.');
+  } catch (e) {
+    // Keep code for retry.
+  }
+}
+
 if (typeof netlifyIdentity !== 'undefined') {
   netlifyIdentity.on('init', user => {
     currentUser = user;
@@ -3681,7 +3812,9 @@ if (typeof netlifyIdentity !== 'undefined') {
       showApp(true);
       setOnboardingVisible(false);
       setFeedbackOverlay(false, null);
-      initAuthedSession({ skipOnboarding: true }).catch(e => setStatus(e.message));
+      initAuthedSession({ skipOnboarding: true })
+        .then(() => claimPendingReferralIfSignedIn())
+        .catch(e => setStatus(e.message));
       return;
     }
 
@@ -3700,7 +3833,9 @@ if (typeof netlifyIdentity !== 'undefined') {
   setFeedbackOverlay(false, null);
 
   // Skip onboarding after a paid user logs in.
-  initAuthedSession({ skipOnboarding: true }).catch(e => setStatus(e.message));
+  initAuthedSession({ skipOnboarding: true })
+    .then(() => claimPendingReferralIfSignedIn())
+    .catch(e => setStatus(e.message));
 
   try { netlifyIdentity.close(); } catch {}
   setStatus('Logged in.');
@@ -3735,6 +3870,7 @@ if (window.AppBilling && typeof window.AppBilling.createBillingController === 'f
 applyDarkModeUI();
 applyFontSizeUI();
 bindUI();
+bindAiLimitAndReferralUI();
 const mockModeBadge = el('mockModeBadge');
 if (mockModeBadge) {
   mockModeBadge.classList.toggle('hidden', !MOCK_MODE);

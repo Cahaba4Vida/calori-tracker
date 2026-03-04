@@ -3,6 +3,7 @@ const { requireUser } = require("./_auth");
 const { ensureUserProfile, query } = require("./_db");
 const { enforceAiActionLimit, enforceFoodEntryLimit } = require("./_plan");
 const { responsesCreate, outputText } = require("./_openai");
+const { maybeGrantReferralReward } = require('./_referrals');
 const crypto = require("crypto");
 
 const OPENAI_AUDIO_URL = "https://api.openai.com/v1/audio/speech";
@@ -247,6 +248,15 @@ Rules:
     );
 
     logged_entry = ins.rows && ins.rows[0] ? ins.rows[0] : null;
+
+    // Referral reward: only for signed-in users.
+    try {
+      if (auth.user?.identity_type === 'user') {
+        await maybeGrantReferralReward(userId);
+      }
+    } catch (e) {
+      // Non-blocking.
+    }
   }
   const reply = String(data.reply || "").trim();
   if (reply) await appendMessage(threadId, "assistant", reply);

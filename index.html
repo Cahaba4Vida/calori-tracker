@@ -731,6 +731,48 @@
 <!-- Toasts -->
 <div id="cheatDaySavedToast" class="savedToast" aria-live="polite">Saved :)</div>
 
+<!-- Daily AI limit modal -->
+<div class="overlay hidden" id="aiLimitOverlay"></div>
+<div aria-label="Daily AI limit" aria-modal="true" class="sheet hidden" id="aiLimitSheet" role="dialog">
+  <div class="sheetHeader">
+    <div><strong>You've reached today's AI limit</strong></div>
+    <button class="ghost" id="aiLimitCloseBtn">✕</button>
+  </div>
+  <div class="sheetBody">
+    <div class="muted" style="margin-bottom:12px;">You can keep going with Premium, or invite a friend to unlock a free month.</div>
+    <div class="limitChoiceGrid">
+      <button class="limitChoice" id="aiLimitUpgradeBtn" type="button">
+        <div class="limitChoiceTitle">Upgrade to Premium</div>
+        <div class="limitChoiceDesc">Unlimited AI + smarter adjustments.</div>
+      </button>
+      <button class="limitChoice" id="aiLimitInviteBtn" type="button">
+        <div class="limitChoiceTitle">Invite a Friend for 1 Month Free</div>
+        <div class="limitChoiceDesc">Give a friend Premium and unlock 1 month free.</div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Referral share modal -->
+<div class="overlay hidden" id="referralOverlay"></div>
+<div aria-label="Referral" aria-modal="true" class="sheet hidden" id="referralSheet" role="dialog">
+  <div class="sheetHeader">
+    <div><strong>Give 1 Month. Get 1 Month.</strong></div>
+    <button class="ghost" id="referralCloseBtn">✕</button>
+  </div>
+  <div class="sheetBody">
+    <div class="muted" style="margin-bottom:10px;">Share your link. When your friend signs up and logs their first meal, you both get 30 days of Premium.</div>
+    <div class="referralLinkRow">
+      <input id="referralLinkInput" readonly value="" />
+    </div>
+    <div class="row" style="gap:10px; margin-top:12px;">
+      <button class="ghost" id="referralCopyBtn" type="button">Copy Link</button>
+      <button id="referralShareBtn" type="button">Share Link</button>
+    </div>
+    <div class="muted" id="referralStatus" style="margin-top:10px;"></div>
+  </div>
+</div>
+
 
 <!-- Autopilot weekly review modal -->
 <div class="overlay hidden" id="apWeeklyOverlay"></div>

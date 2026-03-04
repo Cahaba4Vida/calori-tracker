@@ -3,6 +3,7 @@ const { requireUser } = require("./_auth");
 const { query, ensureUserProfile } = require("./_db");
 const { enforceFoodEntryLimit, enforceAiActionLimit } = require("./_plan");
 const { responsesCreate, outputText } = require("./_openai");
+const { maybeGrantReferralReward } = require('./_referrals');
 
 function safeNum(x) {
   if (x == null) return null;
@@ -174,6 +175,14 @@ IMPORTANT: If the image is NOT a Nutrition Facts panel (e.g., front-of-box marke
      returning id, taken_at, entry_date, calories, protein_g, carbs_g, fat_g`,
     [userId, entry_date, totalCalories, totalProtein, totalCarbs, totalFat, raw_extraction]
   );
+
+  try {
+    if (auth.user?.identity_type === 'user') {
+      await maybeGrantReferralReward(userId);
+    }
+  } catch (e) {
+    // Non-blocking.
+  }
 
   return json(200, { entry: ins.rows[0], extracted });
 };

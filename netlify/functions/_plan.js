@@ -53,13 +53,19 @@ function isPassPremium(row = {}) {
   return new Date(row.premium_pass_expires_at).getTime() > Date.now();
 }
 
+function isTimeboxedPremium(row = {}) {
+  if (!row.premium_expires_at) return false;
+  return new Date(row.premium_expires_at).getTime() > Date.now();
+}
+
 async function getUserEntitlements(userId) {
   const cfg = await getPlanConfig();
   const r = await query(
     `select coalesce(plan_tier, 'free') as plan_tier,
             coalesce(subscription_status, 'inactive') as subscription_status,
             coalesce(premium_pass, false) as premium_pass,
-            premium_pass_expires_at
+            premium_pass_expires_at,
+            premium_expires_at
      from user_profiles
      where user_id=$1`,
     [userId]
@@ -67,12 +73,13 @@ async function getUserEntitlements(userId) {
   const row = r.rows[0] || {};
   const hasSubscription = isSubscriptionPremium(row);
   const hasPass = isPassPremium(row);
-  const isPremium = hasSubscription || hasPass;
+  const hasTimeboxed = isTimeboxedPremium(row);
+  const isPremium = hasSubscription || hasPass || hasTimeboxed;
 
   return {
     plan_tier: isPremium ? 'premium' : 'free',
     is_premium: isPremium,
-    premium_source: hasSubscription ? 'subscription' : (hasPass ? 'admin_pass' : 'none'),
+    premium_source: hasSubscription ? 'subscription' : (hasPass ? 'admin_pass' : (hasTimeboxed ? 'referral_bonus' : 'none')),
     pricing: {
       monthly_price_usd: cfg.monthly_price_usd,
       yearly_price_usd: cfg.yearly_price_usd,
