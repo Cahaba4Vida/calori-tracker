@@ -1089,7 +1089,7 @@ function showOnboardingScreen(which) {
 // ------------------------------
 // Onboarding V2 (9 pages after existing welcome)
 // ------------------------------
-const ONB_V2_TOTAL_STEPS = 10;
+const ONB_V2_TOTAL_STEPS = 9;
 let onboardingV2Step = 1; // 1..9 (maps to overall step 2..10)
 const onboardingV2State = {
   goal_mode: null,
@@ -1219,7 +1219,7 @@ function _renderOnboardingV2() {
   actions.innerHTML = '';
   fineprint.innerText = '';
 
-  const next = () => { onboardingV2Step = Math.min(9, onboardingV2Step + 1); _renderOnboardingV2(); };
+  const next = () => { onboardingV2Step = Math.min(8, onboardingV2Step + 1); _renderOnboardingV2(); };
   const back = () => { onboardingV2Step = Math.max(1, onboardingV2Step - 1); _renderOnboardingV2(); };
 
   if (onboardingV2Step === 1) {
@@ -1602,8 +1602,9 @@ function _renderOnboardingV2() {
     };
 
     actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
-    actions.appendChild(_onbBtn('Start 7-Day Free Trial', { kind: 'primary', onClick: () => {
+    actions.appendChild(_onbBtn(currentUser ? 'Start 7-Day Free Trial' : 'Continue with Email & Start Trial', { kind: 'primary', onClick: () => {
       try {
+        if (!currentUser) { try { openIdentityModal('signup'); } catch (_) {} return; }
         if (billingController) billingController.startUpgradeCheckout('monthly');
         else finish();
       } catch (_) { finish(); }
