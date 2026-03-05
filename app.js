@@ -457,6 +457,7 @@ let aiGoalSuggestion = null;
 let aiGoalInputs = null;
 let aiGoalThread = [];
 let feedbackGateState = { required: false, campaign: null };
+let pendingCheckoutInterval = null;
 let billingController = null;
 let activeAddFoodPanel = null;
 let activePhotoMode = 'plate';
@@ -1035,344 +1036,53 @@ function _renderOnboardingV2() {
     });
     body.appendChild(cards);
     actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
-    actions.appendChild(_onbBtn('Show Me How This Is Better', { kind: 'primary', onClick: next }));
-    return;
-  }
 
-  if (onboardingV2Step === 3) {
-    title.innerText = 'We built the fastest way to track nutrition';
-    subtitle.innerText = 'A few taps (or words) and you’re done.';
-    const grid = document.createElement('div');
-    grid.className = 'onbChoiceGrid';
-    const feats = [
-      ['Voice Logging', 'Say what you ate.'],
-      ['Photo Logging', 'Snap your meal.'],
-      ['AI Nutrition Assistant', 'Automatic calorie estimates.'],
-      ['Autopilot Goals', 'Calories adjust based on progress.']
-    ];
-    feats.forEach(([t, d]) => {
-      const card = document.createElement('div');
-      card.className = 'onbCard';
-      card.innerHTML = `<div class="onbCardTitle">${t}</div><div class="onbCardDesc">${d}</div>`;
-      grid.appendChild(card);
-    });
-    body.appendChild(grid);
-    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
-    // Page 2 of 10 (overall onboarding) should show an explicit "Next" button.
-    actions.appendChild(_onbBtn('Next', { kind: 'primary', onClick: next }));
-    return;
-  }
+// If not signed in, keep this as a single-step flow: create account (Email/Google) then go straight to Stripe.
+if (!currentUser) {
+  const startTrialAfterAuth = (interval) => {
+    try { pendingCheckoutInterval = interval; } catch (_) {}
+  };
 
-  if (onboardingV2Step === 4) {
-    title.innerText = 'What’s your goal?';
-    subtitle.innerText = 'This helps us tailor your plan and coach tone.';
-    const grid = document.createElement('div');
-    grid.className = 'onbChoiceGrid';
-    const set = (v) => { onboardingV2State.goal_mode = v; _renderOnboardingV2(); };
-    grid.appendChild(_onbChoice('Lose Weight', '⬇️', onboardingV2State.goal_mode === 'lose', () => set('lose')));
-    grid.appendChild(_onbChoice('Maintain Weight', '🟰', onboardingV2State.goal_mode === 'maintain', () => set('maintain')));
-    grid.appendChild(_onbChoice('Gain Muscle', '💪', onboardingV2State.goal_mode === 'gain', () => set('gain')));
-    grid.appendChild(_onbChoice('Improve Nutrition', '🥗', onboardingV2State.goal_mode === 'improve', () => set('improve')));
-    body.appendChild(grid);
-    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
-    actions.appendChild(_onbBtn('Next', { kind: 'primary', onClick: () => {
-      if (!onboardingV2State.goal_mode) { setStatus('Pick a goal to continue.'); return; }
-      next();
-    }}));
-    return;
-  }
+  const googleBtn = _onbBtn('Continue with Google & Start Trial', { kind: 'primary', onClick: () => {
+    startTrialAfterAuth('monthly');
+    // Start Netlify Identity Google OAuth. Requires Netlify Identity + Google provider configured.
+    const returnTo = encodeURIComponent(window.location.href);
+    window.location.href = `/.netlify/identity/login/google?returnTo=${returnTo}`;
+  }});
+  actions.appendChild(googleBtn);
 
-  if (onboardingV2Step === 5) {
-    title.innerText = 'Let’s personalize your plan';
-    subtitle.innerText = 'You can change this anytime.';
-    const wrap = document.createElement('div');
-    wrap.className = 'onbInputs';
+  const emailBtn = _onbBtn('Continue with Email & Start Trial', { kind: 'secondary', onClick: () => {
+    startTrialAfterAuth('monthly');
+    openIdentityModal('signup');
+  }});
+  actions.appendChild(emailBtn);
 
-    const field = (label, id, type = 'number', placeholder = '') => {
-      const f = document.createElement('div');
-      f.className = 'field';
-      const l = document.createElement('label');
-      l.innerText = label;
-      const i = document.createElement('input');
-      i.id = id;
-      i.type = type;
-      if (placeholder) i.placeholder = placeholder;
-      f.appendChild(l); f.appendChild(i);
-      return f;
-    };
+  const free = document.createElement('button');
+  free.className = 'linkMiniBtn';
+  free.type = 'button';
+  free.innerText = 'Continue With Free Plan';
+  free.onclick = () => finish();
+  actions.appendChild(free);
 
-    wrap.appendChild(field('Age', 'onbAge', 'number', 'e.g., 28'));
-    wrap.appendChild(field('Height (inches)', 'onbHeight', 'number', 'e.g., 70'));
-    wrap.appendChild(field(`Current Weight (${unitSuffix()})`, 'onbCurW', 'number', 'e.g., 180'));
-    wrap.appendChild(field(`Target Weight (${unitSuffix()})`, 'onbGoalW', 'number', 'e.g., 165'));
+  fineprint.innerText = 'Start your free trial after creating an account. You can cancel anytime.';
+  return;
+}
 
-    const activityField = document.createElement('div');
-    activityField.className = 'field';
-    activityField.innerHTML = `<label>Activity Level</label>`;
-    const sel = document.createElement('select');
-    sel.id = 'onbActivity';
-    ['sedentary','light','moderate','very_active'].forEach((k) => {
-      const o = document.createElement('option');
-      o.value = k;
-      o.innerText = k.replace('_',' ');
-      if (k === onboardingV2State.activity_level) o.selected = true;
-      sel.appendChild(o);
-    });
-    activityField.appendChild(sel);
-    wrap.appendChild(activityField);
-
-    body.appendChild(wrap);
-
-    // Prefill from existing profile if present
-    setTimeout(() => {
-      const a = el('onbAge'); if (a && onboardingV2State.age_years != null) a.value = String(onboardingV2State.age_years);
-      const h = el('onbHeight'); if (h && onboardingV2State.height_in != null) h.value = String(onboardingV2State.height_in);
-      const cw = el('onbCurW'); if (cw && onboardingV2State.current_weight_lbs != null) cw.value = weightUnit === 'kg' ? String(lbsToKg(onboardingV2State.current_weight_lbs).toFixed(1)) : String(onboardingV2State.current_weight_lbs);
-      const gw = el('onbGoalW'); if (gw && onboardingV2State.target_weight_lbs != null) gw.value = weightUnit === 'kg' ? String(lbsToKg(onboardingV2State.target_weight_lbs).toFixed(1)) : String(onboardingV2State.target_weight_lbs);
-      const al = el('onbActivity'); if (al) al.value = onboardingV2State.activity_level || 'moderate';
-    }, 0);
-
-    async function createPlan() {
-      const age = Number(el('onbAge')?.value);
-      const height = Number(el('onbHeight')?.value);
-      const cur = Number(el('onbCurW')?.value);
-      const goal = Number(el('onbGoalW')?.value);
-      const activity = String(el('onbActivity')?.value || 'moderate');
-
-      if (!Number.isFinite(age) || age < 10 || age > 120) { setStatus('Enter a valid age.'); return; }
-      if (!Number.isFinite(height) || height < 36 || height > 96) { setStatus('Enter height in inches (e.g., 70).'); return; }
-      if (!Number.isFinite(cur) || cur <= 0) { setStatus('Enter a valid current weight.'); return; }
-      if (!Number.isFinite(goal) || goal <= 0) { setStatus('Enter a valid target weight.'); return; }
-
-      const curLbs = weightUnit === 'kg' ? kgToLbs(cur) : cur;
-      const goalLbs = weightUnit === 'kg' ? kgToLbs(goal) : goal;
-
-      onboardingV2State.age_years = Math.round(age);
-      onboardingV2State.height_in = Math.round(height);
-      onboardingV2State.current_weight_lbs = curLbs;
-      onboardingV2State.target_weight_lbs = goalLbs;
-      onboardingV2State.activity_level = activity;
-
-      // Default goal date: 8 weeks from today (keeps plan generation deterministic).
-      const dt = new Date();
-      dt.setDate(dt.getDate() + 56);
-      const goalDate = dt.toISOString().slice(0,10);
-
-      setOnbV2Loading(true, 'Generating your plan…');
-      setStatus('Creating your plan…');
-      try {
-        // Store onboarding profile fields early
-        await api('profile-set', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            goal_mode: onboardingV2State.goal_mode,
-            age_years: onboardingV2State.age_years,
-            height_in: onboardingV2State.height_in,
-            current_weight_lbs: onboardingV2State.current_weight_lbs,
-            target_weight_lbs: onboardingV2State.target_weight_lbs,
-            activity_level: onboardingV2State.activity_level,
-            goal_weight_lbs: onboardingV2State.target_weight_lbs,
-            goal_date: goalDate
-          })
-        });
-
-        // Generate AI plan
-        const suggestion = await api('ai-goals-suggest', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            current_weight_lbs: onboardingV2State.current_weight_lbs,
-            goal_weight_lbs: onboardingV2State.target_weight_lbs,
-            activity_level: onboardingV2State.activity_level,
-            goal_date: goalDate
-          })
-        });
-
-        // Apply plan
-        await api('goal-set', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ daily_calories: suggestion.daily_calories })
-        });
-        await api('profile-set', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            macro_protein_g: suggestion.protein_g,
-            macro_carbs_g: suggestion.carbs_g,
-            macro_fat_g: suggestion.fat_g,
-            goal_weight_lbs: suggestion.goal_weight_lbs,
-            activity_level: suggestion.activity_level,
-            goal_date: suggestion.goal_date
-          })
-        });
-
-        await loadProfile();
-        setStatus('');
-        setOnbV2Loading(false);
-        next();
-      } catch (e) {
-        setStatus(e?.message || String(e));
-        setOnbV2Loading(false);
-      }
-    }
-
-    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
-    actions.appendChild(_onbBtn('Create My Plan', { kind: 'primary', onClick: createPlan }));
-    return;
-  }
-
-  if (onboardingV2Step === 6) {
-    title.innerText = 'Have you tracked calories before?';
-    subtitle.innerText = 'This helps us tailor tips and coaching.';
-    const grid = document.createElement('div');
-    grid.className = 'onbChoiceGrid';
-    const set = (v) => { onboardingV2State.tracking_experience = v; _renderOnboardingV2(); };
-    grid.appendChild(_onbChoice("Yes, I'm experienced", '✔️', onboardingV2State.tracking_experience === 'experienced', () => set('experienced')));
-    grid.appendChild(_onbChoice("I've tried before", '🔁', onboardingV2State.tracking_experience === 'tried', () => set('tried')));
-    grid.appendChild(_onbChoice("No, I'm new", '🌱', onboardingV2State.tracking_experience === 'new', () => set('new')));
-    body.appendChild(grid);
-    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
-    actions.appendChild(_onbBtn('Next', { kind: 'primary', onClick: async () => {
-      if (!onboardingV2State.tracking_experience) { setStatus('Pick one to continue.'); return; }
-      try {
-        await api('profile-set', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tracking_experience: onboardingV2State.tracking_experience })
-        });
-        await loadProfile();
-      } catch (_) {}
-      next();
-    }}));
-    return;
-  }
-
-  if (onboardingV2Step === 7) {
-    title.innerText = 'How did you hear about us?';
-    subtitle.innerText = 'This helps us invest in what’s working.';
-    const grid = document.createElement('div');
-    grid.className = 'onbChoiceGrid';
-    const sources = ['TikTok','Instagram','Friend','Reddit','App Store','YouTube','Other'];
-    sources.forEach((s) => {
-      grid.appendChild(_onbChoice(s, '📣', onboardingV2State.heard_about === s, () => { onboardingV2State.heard_about = s; _renderOnboardingV2(); }));
-    });
-    body.appendChild(grid);
-
-    const other = document.createElement('div');
-    other.style.marginTop = '12px';
-    other.innerHTML = `<div class="muted" style="margin-bottom:8px;">Are you currently using another calorie app? (optional)</div>`;
-    const sel = document.createElement('select');
-    sel.id = 'onbPrevApp';
-    ['','MyFitnessPal','LoseIt','Cronometer','None'].forEach((v) => {
-      const o = document.createElement('option');
-      o.value = v;
-      o.innerText = v ? v : 'Select…';
-      if (v === onboardingV2State.previous_app) o.selected = true;
-      sel.appendChild(o);
-    });
-    sel.onchange = () => { onboardingV2State.previous_app = sel.value || null; };
-    other.appendChild(sel);
-    body.appendChild(other);
-
-    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
-    actions.appendChild(_onbBtn('Continue', { kind: 'primary', onClick: async () => {
-      if (!onboardingV2State.heard_about) { setStatus('Pick one to continue.'); return; }
-      try {
-        await api('profile-set', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ heard_about: onboardingV2State.heard_about, previous_app: onboardingV2State.previous_app })
-        });
-        await loadProfile();
-      } catch (_) {}
-      next();
-    }}));
-    return;
-  }
-
-  if (onboardingV2Step === 9) {
-    title.innerText = 'Save your progress';
-    subtitle.innerText = 'Create a free account to store your food log and progress.';
-    const box = document.createElement('div');
-    box.className = 'onbCard';
-    box.innerHTML = `<div class="onbCardTitle">🔒 Your data is private and secure.</div><div class="onbCardDesc">Sign up now or continue — you can always create an account later.</div>`;
-    body.appendChild(box);
-    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
-    if (currentUser) {
-      actions.appendChild(_onbBtn('Continue', { kind: 'primary', onClick: next }));
-      fineprint.innerText = 'You’re already signed in.';
-    } else {
-      actions.appendChild(_onbBtn('Continue with Email', { kind: 'primary', onClick: () => openIdentityModal('signup') }));
-      actions.appendChild(_onbBtn('Continue Without Account', { kind: 'secondary', onClick: next }));
-      fineprint.innerText = 'Apple/Google sign-in can be added next — email works today.';
-    }
-    return;
-  }
-
-  // Paywall
-  if (onboardingV2Step === 8) {
-    title.innerText = 'Unlock your AI Nutrition Coach';
-    subtitle.innerText = 'Unlimited AI features + smarter adjustments.';
-    const pw = document.createElement('div');
-    pw.className = 'onbPaywall';
-    pw.innerHTML = `
-      <div class="onbPayCols">
-        <div class="onbPlan">
-          <div class="onbPlanTitle">Free Plan</div>
-          <ul>
-            <li>Food logging</li>
-            <li>Weight tracking</li>
-            <li>Basic progress charts</li>
-          </ul>
-        </div>
-        <div class="onbPlan highlight">
-          <div class="onbPlanTitle">Pro Plan</div>
-          <ul>
-            <li>Unlimited AI food analysis</li>
-            <li>Unlimited voice logging</li>
-            <li>Unlimited meal photo scanning</li>
-            <li>Advanced nutrition analytics</li>
-            <li>Smart Autopilot adjustments</li>
-            <li>Priority AI processing</li>
-          </ul>
-        </div>
-      </div>
-      <div style="margin-top:12px;font-weight:900;">$5 / month <span class="muted" style="font-weight:700;">or</span> $49.99 / year <span class="muted" style="font-weight:700;">(Save 35%)</span></div>
-    `;
-    body.appendChild(pw);
-
-    const finish = async () => {
-      try {
-        await api('profile-set', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ onboarding_completed: true })
-        });
-        await loadProfile();
-      } catch (_) {}
-      setOnboardingVisible(false);
-      hideAllBlockingOverlays();
-      await refresh();
-    };
-
-    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
-    actions.appendChild(_onbBtn('Start 7-Day Free Trial', { kind: 'primary', onClick: () => {
-      // Use existing billing controller. If not configured, fall back to finishing onboarding.
-      try {
-        if (billingController) billingController.startUpgradeCheckout('monthly');
-        else finish();
-      } catch (_) { finish(); }
-    }}));
-    const free = document.createElement('button');
-    free.className = 'linkMiniBtn';
-    free.type = 'button';
-    free.innerText = 'Continue With Free Plan';
-    free.onclick = () => finish();
-    actions.appendChild(free);
-    fineprint.innerText = 'Most users lose 5–10 lbs in their first 8 weeks.';
-    return;
+// Signed in: allow direct checkout.
+actions.appendChild(_onbBtn('Start 7-Day Free Trial', { kind: 'primary', onClick: () => {
+  try {
+    if (billingController) billingController.startUpgradeCheckout('monthly');
+    else finish();
+  } catch (_) { finish(); }
+}}));
+const free = document.createElement('button');
+free.className = 'linkMiniBtn';
+free.type = 'button';
+free.innerText = 'Continue With Free Plan';
+free.onclick = () => finish();
+actions.appendChild(free);
+fineprint.innerText = 'Most users lose 5–10 lbs in their first 8 weeks.';
+return;
   }
 }
 
@@ -3531,7 +3241,14 @@ if (typeof netlifyIdentity !== 'undefined') {
       setOnboardingVisible(false);
       setFeedbackOverlay(false, null);
       initAuthedSession({ skipOnboarding: true })
-        .then(() => claimPendingReferralIfSignedIn())
+    .then(() => {
+      try {
+        const pending = pendingCheckoutInterval;
+        pendingCheckoutInterval = null;
+        if (pending && billingController) billingController.startUpgradeCheckout(pending);
+      } catch (_) {}
+    })
+    .then(() => claimPendingReferralIfSignedIn())
         .catch(e => setStatus(e.message));
       return;
     }
