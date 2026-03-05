@@ -827,7 +827,11 @@ function showOnboardingScreen(which) {
   const v2 = el('onboardingV2Screen');
   if (v2) v2.classList.toggle('hidden', which !== 'v2');
   const onboardingModal = document.querySelector('#onboardingOverlay .onboardingModal');
-  if (onboardingModal) onboardingModal.classList.toggle('welcomeMode', which === 'welcome');
+  if (onboardingModal) {
+    onboardingModal.classList.toggle('welcomeMode', which === 'welcome');
+    // Styling hook: V2 uses its own header/kicker; hide legacy title/step to avoid duplication.
+    onboardingModal.classList.toggle('v2Mode', which === 'v2');
+  }
   // Keep the original welcome page exactly the same; after that we switch to a 10-step flow.
   // Step mapping:
   //  - welcome = Step 1
@@ -855,10 +859,35 @@ const onboardingV2State = {
   previous_app: null
 };
 
+
+function _onbRenderDots(overallStep, total=10) {
+  const header = document.querySelector('#onboardingV2Screen .onbV2Header');
+  if (!header) return;
+  let dots = document.getElementById('onbV2Dots');
+  if (!dots) {
+    dots = document.createElement('div');
+    dots.id = 'onbV2Dots';
+    dots.className = 'onbV2Dots';
+    const kicker = document.getElementById('onbV2Kicker');
+    if (kicker && kicker.parentNode === header) {
+      kicker.insertAdjacentElement('afterend', dots);
+    } else {
+      header.appendChild(dots);
+    }
+  }
+  let html = '';
+  for (let i = 1; i <= 10; i++) {
+    html += `<span class="onbDot ${i <= overallStep ? 'active' : ''}"></span>`;
+  }
+  dots.innerHTML = html;
+}
+
 function _onbSetStepIndicator() {
   const overall = 1 + onboardingV2Step;
   const node = el('onbV2Kicker');
   if (node) node.innerText = `Step ${overall} of ${ONB_V2_TOTAL_STEPS}`;
+  
+  _onbRenderDots(overall, ONB_V2_TOTAL_STEPS);
   const stepEl = el('onboardingStepNum');
   if (stepEl) stepEl.innerText = String(overall);
   // Update the "of 3" label visually by rewriting the whole container text, but only after leaving welcome.
@@ -901,13 +930,22 @@ function setOnbV2Loading(isLoading, message) {
       overlay = document.createElement('div');
       overlay.id = 'onbV2Loading';
       overlay.className = 'onbV2Loading';
-      overlay.innerHTML = '<div class="spinner" aria-hidden="true"></div><div class="msg" id="onbV2LoadingMsg"></div>';
+      overlay.innerHTML = '<video class="onbV2LoadingVideo" autoplay muted loop playsinline><source src="assets/videos/plan-loading.mp4" type="video/mp4"></video><div class="spinner" aria-hidden="true"></div><div class="msg" id="onbV2LoadingMsg"></div>';
       screen.appendChild(overlay);
     }
     const msgEl = el('onbV2LoadingMsg');
     if (msgEl) msgEl.innerText = message || 'Working…';
+    // Show cinematic video only for plan generation steps
+    if (overlay) {
+      const m = (message||'').toLowerCase();
+      if (m.includes('plan')) overlay.classList.add('plan'); else overlay.classList.remove('plan');
+    }
   } else {
-    if (overlay) overlay.remove();
+    if (overlay) {
+      overlay.classList.add('complete');
+      const toRemove = overlay;
+      setTimeout(()=>{ try{ toRemove.remove(); }catch(e){} }, 360);
+    }
   }
 
   const actions = el('onbV2Actions');
@@ -939,7 +977,7 @@ function _renderOnboardingV2() {
 
   // Page mapping (onboardingV2Step 1..9) => Outline Page 1..9
   if (onboardingV2Step === 1) {
-    title.innerText = 'Meet your new nutrition sidekick 👋';
+    title.innerText = 'Meet your new nutrition sidekick';
     subtitle.innerText = 'Tracking calories should feel simple, not stressful.';
 
     // Hero image (swap in your own photo/illustration at assets/onboarding/sidekick.jpg)
@@ -978,7 +1016,7 @@ function _renderOnboardingV2() {
     cards.className = 'onbCards';
     [
       { t: '📱 Too slow', d: 'Searching foods takes forever.' },
-      { t: '📊 Too complicated', d: 'Macros, charts, menus everywhere.' },
+      { t: 'Too complicated', d: 'Macros, charts, menus everywhere.' },
       { t: '🧮 Too manual', d: 'You constantly guess your calorie targets.' }
     ].forEach((c) => {
       const card = document.createElement('div');
@@ -998,15 +1036,15 @@ function _renderOnboardingV2() {
     const grid = document.createElement('div');
     grid.className = 'onbChoiceGrid';
     const feats = [
-      ['Voice Logging', '🎤', 'Say what you ate.'],
-      ['Photo Logging', '📸', 'Snap your meal.'],
-      ['AI Nutrition Assistant', '🤖', 'Automatic calorie estimates.'],
-      ['Autopilot Goals', '📈', 'Calories adjust based on progress.']
+      ['Voice Logging', 'Say what you ate.'],
+      ['Photo Logging', 'Snap your meal.'],
+      ['AI Nutrition Assistant', 'Automatic calorie estimates.'],
+      ['Autopilot Goals', 'Calories adjust based on progress.']
     ];
-    feats.forEach(([t, em, d]) => {
+    feats.forEach(([t, d]) => {
       const card = document.createElement('div');
       card.className = 'onbCard';
-      card.innerHTML = `<div class="onbCardTitle">${em} ${t}</div><div class="onbCardDesc">${d}</div>`;
+      card.innerHTML = `<div class="onbCardTitle">${t}</div><div class="onbCardDesc">${d}</div>`;
       grid.appendChild(card);
     });
     body.appendChild(grid);
@@ -2418,7 +2456,7 @@ function stopVoiceRecognition() {
 
 function updateVoiceToggleLabel() {
   const btn = el('voiceToggleBtn');
-  if (btn) btn.innerText = voiceIsListening ? '■ Stop Voice Input' : '🎤 Start Voice Input';
+  if (btn) btn.innerText = voiceIsListening ? '■ Stop Voice Input' : 'Start Voice Input';
 }
 
 function ensureVoiceRecognition() {
