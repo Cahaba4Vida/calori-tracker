@@ -7,6 +7,8 @@ const DEFAULTS = {
   free_history_days: 20,
   monthly_price_usd: 5,
   yearly_price_usd: 50,
+  monthly_price_cents: 500,
+  yearly_price_cents: 5000,
   monthly_upgrade_url: 'https://buy.stripe.com/eVqbIUci9aZidBB9qg8bS0b',
   yearly_upgrade_url: 'https://buy.stripe.com/aFadR22Hz7N6app1XO8bS0c',
   manage_subscription_url: null
@@ -23,6 +25,7 @@ async function getPlanConfig() {
     const r = await query(
       `select free_food_entries_per_day, free_ai_actions_per_day, free_history_days,
               monthly_price_usd, yearly_price_usd,
+              monthly_price_cents, yearly_price_cents,
               monthly_upgrade_url, yearly_upgrade_url, manage_subscription_url
        from app_admin_settings where singleton=true limit 1`
     );
@@ -31,8 +34,10 @@ async function getPlanConfig() {
       free_food_entries_per_day: toPosInt(row.free_food_entries_per_day, DEFAULTS.free_food_entries_per_day),
       free_ai_actions_per_day: toPosInt(row.free_ai_actions_per_day, DEFAULTS.free_ai_actions_per_day),
       free_history_days: toPosInt(row.free_history_days, DEFAULTS.free_history_days),
-      monthly_price_usd: toPosInt(row.monthly_price_usd, DEFAULTS.monthly_price_usd),
-      yearly_price_usd: toPosInt(row.yearly_price_usd, DEFAULTS.yearly_price_usd),
+      monthly_price_usd: (Number.isFinite(Number(row.monthly_price_cents)) ? (Number(row.monthly_price_cents)/100) : toPosInt(row.monthly_price_usd, DEFAULTS.monthly_price_usd)),
+      monthly_price_cents: Number.isFinite(Number(row.monthly_price_cents)) ? Math.round(Number(row.monthly_price_cents)) : (toPosInt(row.monthly_price_usd, DEFAULTS.monthly_price_usd) * 100),
+      yearly_price_usd: (Number.isFinite(Number(row.yearly_price_cents)) ? (Number(row.yearly_price_cents)/100) : toPosInt(row.yearly_price_usd, DEFAULTS.yearly_price_usd)),
+      yearly_price_cents: Number.isFinite(Number(row.yearly_price_cents)) ? Math.round(Number(row.yearly_price_cents)) : (toPosInt(row.yearly_price_usd, DEFAULTS.yearly_price_usd) * 100),
       monthly_upgrade_url: row.monthly_upgrade_url || DEFAULTS.monthly_upgrade_url,
       yearly_upgrade_url: row.yearly_upgrade_url || DEFAULTS.yearly_upgrade_url,
       manage_subscription_url: row.manage_subscription_url || null

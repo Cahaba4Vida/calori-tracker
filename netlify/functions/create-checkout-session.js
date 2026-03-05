@@ -1,32 +1,76 @@
-const { json } = require('./_util');
 const { requireSignedUser } = require('./_auth');
-const { ensureUserProfile } = require('./_db');
 const { getPlanConfig } = require('./_plan');
+const { json, pickBaseUrl } = require('./_util');
 
-exports.handler = async (event, context) => {
-  if (event.httpMethod && event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
+// Creates a Stripe Checkout Session using dynamic price data.
+// This avoids Stripe Price IDs and allows admin-controlled pricing (NeonDB) to
+// instantly update what users are charged.
+//
+// ENV required:
+// - STRIPE_SECRET_KEY
+// - DATABASE_URL
+// Optional:
+// - PUBLIC_BASE_URL (falls back to request origin)
 
-  const auth = await requireSignedUser(event, context);
-  if (!auth.ok) return auth.response;
-  const { userId, email } = auth.user;
-  await ensureUserProfile(userId, email);
+function toCents(usd) {
+  const n = Number(usd);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n * 100);
+}
 
-  let body;
-  try { body = JSON.parse(event.body || '{}'); } catch { body = {}; }
+exports.handler = async (event) => {
+  try {
+    if (event.httpMethod !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
-  const interval = String(body.interval || 'monthly').toLowerCase();
-  if (!['monthly', 'yearly'].includes(interval)) {
-    return json(400, { error: 'interval must be monthly or yearly' });
+    const user = await requireSignedUser(event);
+    const body = JSON.parse(event.body || '{}');
+    const interval = body?.interval === 'yearly' ? 'year' : (body?.interval === 'monthly' ? 'month' : null);
+    if (!interval) return json({ error: 'Missing interval (monthly|yearly)' }, 400);
+
+    const cfg = await getPlanConfig();
+    const usd = interval === 'month' ? cfg.monthly_price_usd : cfg.yearly_price_usd;
+    const unitAmount = toCents(usd);
+    if (!unitAmount) return json({ error: 'Invalid pricing configuration' }, 500);
+
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeKey) return json({ error: 'Missing STRIPE_SECRET_KEY env var' }, 500);
+
+    const baseUrl = pickBaseUrl(event);
+    const success = `${baseUrl}/?checkout=success`;
+    const cancel = `${baseUrl}/?checkout=cancel`;
+
+    const stripe = require('stripe')(stripeKey);
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      customer_email: user.email,
+      allow_promotion_codes: true,
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: 'Aethon Pro',
+              description: 'Unlimited AI features + smarter adjustments'
+            },
+            recurring: { interval },
+            unit_amount: unitAmount
+          },
+          quantity: 1
+        }
+      ],
+      metadata: {
+        user_id: user.id,
+        plan_interval: interval
+      },
+      success_url: success,
+      cancel_url: cancel
+    });
+
+    return json({ url: session.url });
+  } catch (e) {
+    const msg = (e && (e.message || e.toString())) || 'Unknown error';
+    const status = e && e.statusCode ? e.statusCode : 500;
+    return json({ error: msg }, status);
   }
-
-  const cfg = await getPlanConfig();
-  const monthly = process.env.STRIPE_MONTHLY_PAYMENT_LINK_URL || cfg.monthly_upgrade_url;
-  const yearly = process.env.STRIPE_YEARLY_PAYMENT_LINK_URL || cfg.yearly_upgrade_url;
-  const checkoutUrl = interval === 'yearly' ? yearly : monthly;
-
-  if (!checkoutUrl) {
-    return json(503, { error: 'Stripe payment links are not configured.' });
-  }
-
-  return json(200, { url: checkoutUrl, checkout_url: checkoutUrl, interval });
 };
