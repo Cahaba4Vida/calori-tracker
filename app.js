@@ -1293,6 +1293,26 @@ function _renderOnboardingV2() {
   }
 
   if (onboardingV2Step === 9) {
+    title.innerText = 'Save your progress';
+    subtitle.innerText = 'Create a free account to store your food log and progress.';
+    const box = document.createElement('div');
+    box.className = 'onbCard';
+    box.innerHTML = `<div class="onbCardTitle">🔒 Your data is private and secure.</div><div class="onbCardDesc">Sign up now or continue — you can always create an account later.</div>`;
+    body.appendChild(box);
+    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
+    if (currentUser) {
+      actions.appendChild(_onbBtn('Continue', { kind: 'primary', onClick: next }));
+      fineprint.innerText = 'You’re already signed in.';
+    } else {
+      actions.appendChild(_onbBtn('Continue with Email', { kind: 'primary', onClick: () => openIdentityModal('signup') }));
+      actions.appendChild(_onbBtn('Continue Without Account', { kind: 'secondary', onClick: next }));
+      fineprint.innerText = 'Apple/Google sign-in can be added next — email works today.';
+    }
+    return;
+  }
+
+  // Paywall
+  if (onboardingV2Step === 8) {
     title.innerText = 'Unlock your AI Nutrition Coach';
     subtitle.innerText = 'Unlimited AI features + smarter adjustments.';
     const pw = document.createElement('div');
@@ -4795,24 +4815,4 @@ function _apSyncFromApi(path, body) {
   } catch (e) {
     // no-op
   }
-}if (onboardingV2Step === 8) {
-    title.innerText = 'Save your progress';
-    subtitle.innerText = 'Create a free account to store your food log and progress.';
-    const box = document.createElement('div');
-    box.className = 'onbCard';
-    box.innerHTML = `<div class="onbCardTitle">🔒 Your data is private and secure.</div><div class="onbCardDesc">Sign up now or continue — you can always create an account later.</div>`;
-    body.appendChild(box);
-    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
-    if (currentUser) {
-      actions.appendChild(_onbBtn('Continue', { kind: 'primary', onClick: next }));
-      fineprint.innerText = 'You’re already signed in.';
-    } else {
-      actions.appendChild(_onbBtn('Continue with Email', { kind: 'primary', onClick: () => openIdentityModal('signup') }));
-      actions.appendChild(_onbBtn('Continue Without Account', { kind: 'secondary', onClick: next }));
-      fineprint.innerText = 'Apple/Google sign-in can be added next — email works today.';
-    }
-    return;
-  }
-
-  // Paywall
-  
+}
