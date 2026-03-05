@@ -876,7 +876,7 @@ function _onbRenderDots(overallStep, total=10) {
     }
   }
   let html = '';
-  for (let i = 1; i <= total; i++) {
+  for (let i = 1; i <= 10; i++) {
     html += `<span class="onbDot ${i <= overallStep ? 'active' : ''}"></span>`;
   }
   dots.innerHTML = html;
