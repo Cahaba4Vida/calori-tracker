@@ -1529,3 +1529,9 @@ body.invertedTheme .aiGlobalLoadingCard {
 .onbHeroImg{width:100%;height:auto;display:block;aspect-ratio: 16 / 9;object-fit:cover;}
 .onbHeroFallback{width:100%;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;font-weight:800;color:rgba(0,0,0,0.7);background:linear-gradient(135deg, rgba(59,130,246,0.22), rgba(16,185,129,0.20));}
 .onbHeroNote{margin-top:12px;border:1px solid var(--border);border-radius:14px;padding:12px;background:rgba(0,0,0,0.02);font-weight:700;}
+
+
+/* Onboarding V2 dot progress */
+.onbV2DotProgress{display:flex;gap:8px;align-items:center;margin:10px 0 18px 0;}
+.onbV2DotProgress .onbDot{width:8px;height:8px;border-radius:50%;background:rgba(200,164,106,0.25);}
+.onbV2DotProgress .onbDot.active{background:#C8A46A;box-shadow:0 0 6px rgba(200,164,106,0.55);} 
