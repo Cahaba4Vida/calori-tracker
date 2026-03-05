@@ -930,14 +930,14 @@ function setOnbV2Loading(isLoading, message) {
       overlay = document.createElement('div');
       overlay.id = 'onbV2Loading';
       overlay.className = 'onbV2Loading';
-      overlay.innerHTML = '<div class="onbV2LoadingStack"><video class="onbV2LoadingVideo" autoplay muted loop playsinline><source src="//assets/videos/plan-loading.mp4" type="video/mp4"></video><div class="onbV2EnergyLine" aria-hidden="true"></div><div class="msg" id="onbV2LoadingMsg"></div><div class="onbV2EnergyLine" aria-hidden="true"></div><video class="onbV2LoadingVideo onbV2LoadingVideoSecondary" autoplay muted loop playsinline><source src="//assets/videos/plan-loading-2.mp4" type="video/mp4"></video></div><div class="spinner" aria-hidden="true"></div>';
+      overlay.innerHTML = '<div class="onbV2LoadingStack"><video class="onbV2LoadingVideo" autoplay muted loop playsinline><source src="/assets/videos/plan-loading.mp4" type="video/mp4"></video><div class="onbV2EnergyLine" aria-hidden="true"></div><div class="msg" id="onbV2LoadingMsg"></div><div class="onbV2EnergyLine" aria-hidden="true"></div><video class="onbV2LoadingVideo onbV2LoadingVideoSecondary" autoplay muted loop playsinline><source src="/assets/videos/plan-loading-2.mp4" type="video/mp4"></video></div><div class="spinner" aria-hidden="true"></div>';
       screen.appendChild(overlay);
       try {
         const v2 = overlay.querySelector('.onbV2LoadingVideoSecondary');
         if (v2) {
-          v2.addEventListener('error', ()=>{ try{ const s=v2.querySelector('source'); if(s){ s.src='//assets/videos/plan-loading.mp4'; v2.load(); } }catch(e){} });
+          v2.addEventListener('error', ()=>{ try{ const s=v2.querySelector('source'); if(s){ s.src='/assets/videos/plan-loading.mp4'; v2.load(); } }catch(e){} });
           const src = v2.querySelector('source');
-          if (src) src.addEventListener('error', ()=>{ try{ src.src='//assets/videos/plan-loading.mp4'; v2.load(); }catch(e){} });
+          if (src) src.addEventListener('error', ()=>{ try{ src.src='/assets/videos/plan-loading.mp4'; v2.load(); }catch(e){} });
         }
       } catch(e) {}
 
@@ -1292,26 +1292,6 @@ function _renderOnboardingV2() {
     return;
   }
 
-  if (onboardingV2Step === 8) {
-    title.innerText = 'Save your progress';
-    subtitle.innerText = 'Create a free account to store your food log and progress.';
-    const box = document.createElement('div');
-    box.className = 'onbCard';
-    box.innerHTML = `<div class="onbCardTitle">🔒 Your data is private and secure.</div><div class="onbCardDesc">Sign up now or continue — you can always create an account later.</div>`;
-    body.appendChild(box);
-    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
-    if (currentUser) {
-      actions.appendChild(_onbBtn('Continue', { kind: 'primary', onClick: next }));
-      fineprint.innerText = 'You’re already signed in.';
-    } else {
-      actions.appendChild(_onbBtn('Continue with Email', { kind: 'primary', onClick: () => openIdentityModal('signup') }));
-      actions.appendChild(_onbBtn('Continue Without Account', { kind: 'secondary', onClick: next }));
-      fineprint.innerText = 'Apple/Google sign-in can be added next — email works today.';
-    }
-    return;
-  }
-
-  // Paywall
   if (onboardingV2Step === 9) {
     title.innerText = 'Unlock your AI Nutrition Coach';
     subtitle.innerText = 'Unlimited AI features + smarter adjustments.';
@@ -4815,4 +4795,24 @@ function _apSyncFromApi(path, body) {
   } catch (e) {
     // no-op
   }
-}
+}if (onboardingV2Step === 8) {
+    title.innerText = 'Save your progress';
+    subtitle.innerText = 'Create a free account to store your food log and progress.';
+    const box = document.createElement('div');
+    box.className = 'onbCard';
+    box.innerHTML = `<div class="onbCardTitle">🔒 Your data is private and secure.</div><div class="onbCardDesc">Sign up now or continue — you can always create an account later.</div>`;
+    body.appendChild(box);
+    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
+    if (currentUser) {
+      actions.appendChild(_onbBtn('Continue', { kind: 'primary', onClick: next }));
+      fineprint.innerText = 'You’re already signed in.';
+    } else {
+      actions.appendChild(_onbBtn('Continue with Email', { kind: 'primary', onClick: () => openIdentityModal('signup') }));
+      actions.appendChild(_onbBtn('Continue Without Account', { kind: 'secondary', onClick: next }));
+      fineprint.innerText = 'Apple/Google sign-in can be added next — email works today.';
+    }
+    return;
+  }
+
+  // Paywall
+  
