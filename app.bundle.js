@@ -1077,7 +1077,10 @@ function showOnboardingScreen(which) {
   const v2 = el('onboardingV2Screen');
   if (v2) v2.classList.toggle('hidden', which !== 'v2');
   const onboardingModal = document.querySelector('#onboardingOverlay .onboardingModal');
-  if (onboardingModal) onboardingModal.classList.toggle('welcomeMode', which === 'welcome');
+  if (onboardingModal) {
+    onboardingModal.classList.toggle('welcomeMode', which === 'welcome');
+    onboardingModal.classList.toggle('v2Mode', which === 'v2');
+  }
   const step = which === 'welcome' ? '1' : (which === 'inputs' ? '2' : (which === 'suggestion' ? '3' : el('onboardingStepNum')?.innerText || '2'));
   const stepEl = el('onboardingStepNum');
   if (stepEl) stepEl.innerText = step;

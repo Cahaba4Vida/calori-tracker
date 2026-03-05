@@ -827,7 +827,11 @@ function showOnboardingScreen(which) {
   const v2 = el('onboardingV2Screen');
   if (v2) v2.classList.toggle('hidden', which !== 'v2');
   const onboardingModal = document.querySelector('#onboardingOverlay .onboardingModal');
-  if (onboardingModal) onboardingModal.classList.toggle('welcomeMode', which === 'welcome');
+  if (onboardingModal) {
+    onboardingModal.classList.toggle('welcomeMode', which === 'welcome');
+    // Styling hook: V2 uses its own header/kicker; hide legacy title/step to avoid duplication.
+    onboardingModal.classList.toggle('v2Mode', which === 'v2');
+  }
   // Keep the original welcome page exactly the same; after that we switch to a 10-step flow.
   // Step mapping:
   //  - welcome = Step 1
