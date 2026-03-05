@@ -39,35 +39,46 @@ exports.handler = async (event) => {
     const success = `${baseUrl}/?checkout=success`;
     const cancel = `${baseUrl}/?checkout=cancel`;
 
-    const stripe = require('stripe')(stripeKey);
+    // Avoid depending on the Stripe SDK during Netlify bundling. Use the Stripe
+    // REST API directly (Node 18+ has global fetch).
+    const params = new URLSearchParams();
+    params.set('mode', 'subscription');
+    params.set('customer_email', user.email);
+    params.set('allow_promotion_codes', 'true');
+    params.set('success_url', success);
+    params.set('cancel_url', cancel);
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      customer_email: user.email,
-      allow_promotion_codes: true,
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: 'Aethon Pro',
-              description: 'Unlimited AI features + smarter adjustments'
-            },
-            recurring: { interval },
-            unit_amount: unitAmount
-          },
-          quantity: 1
-        }
-      ],
-      metadata: {
-        user_id: user.id,
-        plan_interval: interval
+    // metadata
+    params.set('metadata[user_id]', String(user.id));
+    params.set('metadata[plan_interval]', interval);
+
+    // line_items[0]
+    params.set('line_items[0][quantity]', '1');
+    params.set('line_items[0][price_data][currency]', 'usd');
+    params.set('line_items[0][price_data][product_data][name]', 'Aethon Pro');
+    params.set(
+      'line_items[0][price_data][product_data][description]',
+      'Unlimited AI features + smarter adjustments'
+    );
+    params.set('line_items[0][price_data][recurring][interval]', interval);
+    params.set('line_items[0][price_data][unit_amount]', String(unitAmount));
+
+    const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${stripeKey}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
       },
-      success_url: success,
-      cancel_url: cancel
+      body: params.toString()
     });
 
-    return json({ url: session.url });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data?.error?.message || `Stripe error (${res.status})`;
+      return json({ error: msg }, res.status);
+    }
+
+    return json({ url: data.url });
   } catch (e) {
     const msg = (e && (e.message || e.toString())) || 'Unknown error';
     const status = e && e.statusCode ? e.statusCode : 500;
