@@ -14,8 +14,8 @@
     el('freeFoodLimitInput').value = String(stats.free_food_entries_per_day || 5);
     el('freeAiLimitInput').value = String(stats.free_ai_actions_per_day || 3);
     el('freeHistoryDaysInput').value = String(stats.free_history_days || 20);
-    el('monthlyPriceInput').value = String(stats.monthly_price_usd || 5);
-    el('yearlyPriceInput').value = String(stats.yearly_price_usd || 50);
+    el('monthlyPriceInput').value = String((stats.monthly_price_usd ?? 5).toFixed ? (stats.monthly_price_usd).toFixed(2) : (Number(stats.monthly_price_usd || 5)).toFixed(2));
+    el('yearlyPriceInput').value = String((stats.yearly_price_usd ?? 50).toFixed ? (stats.yearly_price_usd).toFixed(2) : (Number(stats.yearly_price_usd || 50)).toFixed(2));
     el('monthlyUpgradeUrlInput').value = stats.monthly_upgrade_url || '';
     el('yearlyUpgradeUrlInput').value = stats.yearly_upgrade_url || '';
     el('manageSubUrlInput').value = stats.manage_subscription_url || '';
