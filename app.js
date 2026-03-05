@@ -859,10 +859,57 @@ const onboardingV2State = {
   previous_app: null
 };
 
+
+function _onbRenderDots(overallStep, total=10) {
+  const header = document.querySelector('#onboardingV2Screen .onbV2Header');
+  if (!header) return;
+  let dots = document.getElementById('onbV2Dots');
+  if (!dots) {
+    dots = document.createElement('div');
+    dots.id = 'onbV2Dots';
+    dots.className = 'onbV2Dots';
+    const kicker = document.getElementById('onbV2Kicker');
+    if (kicker && kicker.parentNode === header) {
+      kicker.insertAdjacentElement('afterend', dots);
+    } else {
+      header.appendChild(dots);
+    }
+  }
+  let html = '';
+  for (let i = 1; i <= total; i++) {
+    html += `<span class="onbDot ${i <= overallStep ? 'active' : ''}"></span>`;
+  }
+  dots.innerHTML = html;
+}
+
 function _onbSetStepIndicator() {
   const overall = 1 + onboardingV2Step;
   const node = el('onbV2Kicker');
   if (node) node.innerText = `Step ${overall} of ${ONB_V2_TOTAL_STEPS}`;
+  
+  _onbRenderDots(overall, ONB_V2_TOTAL_STEPS);
+// Dot progress (● ● ● ○ …) for premium onboarding V2
+  const header = node ? node.parentElement : document.querySelector('#onboardingV2Screen .onbV2Header');
+  if (header) {
+    let dots = el('onbV2DotProgress');
+    if (!dots) {
+      dots = document.createElement('div');
+      dots.id = 'onbV2DotProgress';
+      dots.className = 'onbV2DotProgress';
+      // Insert right after kicker if possible
+      if (node && node.parentElement === header) {
+        node.insertAdjacentElement('afterend', dots);
+      } else {
+        header.insertBefore(dots, header.children[1] || null);
+      }
+    }
+    const filled = overall; // include current step as filled
+    let html = '';
+    for (let i = 1; i <= ONB_V2_TOTAL_STEPS; i++) {
+      html += `<span class="onbDot${i <= filled ? ' active' : ''}" aria-hidden="true"></span>`;
+    }
+    dots.innerHTML = html;
+  }
   const stepEl = el('onboardingStepNum');
   if (stepEl) stepEl.innerText = String(overall);
   // Update the "of 3" label visually by rewriting the whole container text, but only after leaving welcome.
@@ -943,7 +990,7 @@ function _renderOnboardingV2() {
 
   // Page mapping (onboardingV2Step 1..9) => Outline Page 1..9
   if (onboardingV2Step === 1) {
-    title.innerText = 'Meet your new nutrition sidekick 👋';
+    title.innerText = 'Meet your new nutrition sidekick';
     subtitle.innerText = 'Tracking calories should feel simple, not stressful.';
 
     // Hero image (swap in your own photo/illustration at assets/onboarding/sidekick.jpg)
@@ -982,7 +1029,7 @@ function _renderOnboardingV2() {
     cards.className = 'onbCards';
     [
       { t: '📱 Too slow', d: 'Searching foods takes forever.' },
-      { t: '📊 Too complicated', d: 'Macros, charts, menus everywhere.' },
+      { t: 'Too complicated', d: 'Macros, charts, menus everywhere.' },
       { t: '🧮 Too manual', d: 'You constantly guess your calorie targets.' }
     ].forEach((c) => {
       const card = document.createElement('div');
@@ -1002,15 +1049,15 @@ function _renderOnboardingV2() {
     const grid = document.createElement('div');
     grid.className = 'onbChoiceGrid';
     const feats = [
-      ['Voice Logging', '🎤', 'Say what you ate.'],
-      ['Photo Logging', '📸', 'Snap your meal.'],
-      ['AI Nutrition Assistant', '🤖', 'Automatic calorie estimates.'],
-      ['Autopilot Goals', '📈', 'Calories adjust based on progress.']
+      ['Voice Logging', 'Say what you ate.'],
+      ['Photo Logging', 'Snap your meal.'],
+      ['AI Nutrition Assistant', 'Automatic calorie estimates.'],
+      ['Autopilot Goals', 'Calories adjust based on progress.']
     ];
-    feats.forEach(([t, em, d]) => {
+    feats.forEach(([t, d]) => {
       const card = document.createElement('div');
       card.className = 'onbCard';
-      card.innerHTML = `<div class="onbCardTitle">${em} ${t}</div><div class="onbCardDesc">${d}</div>`;
+      card.innerHTML = `<div class="onbCardTitle">${t}</div><div class="onbCardDesc">${d}</div>`;
       grid.appendChild(card);
     });
     body.appendChild(grid);
@@ -2422,7 +2469,7 @@ function stopVoiceRecognition() {
 
 function updateVoiceToggleLabel() {
   const btn = el('voiceToggleBtn');
-  if (btn) btn.innerText = voiceIsListening ? '■ Stop Voice Input' : '🎤 Start Voice Input';
+  if (btn) btn.innerText = voiceIsListening ? '■ Stop Voice Input' : 'Start Voice Input';
 }
 
 function ensureVoiceRecognition() {

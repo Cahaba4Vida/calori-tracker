@@ -600,7 +600,9 @@ select { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border)
 .onboardingOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.55);
+  background: radial-gradient(circle at center, rgba(0,0,0,0.22) 0%, rgba(0,0,0,0.62) 100%);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   z-index:  9000;
   display: flex;
   align-items: center;
@@ -610,6 +612,7 @@ select { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border)
 
 .onboardingModal {
   position: relative;
+  max-width: 620px;
   width: min(760px, 100%);
   max-height: calc(100vh - 32px);
   overflow-y: auto;
@@ -1535,3 +1538,21 @@ body.invertedTheme .aiGlobalLoadingCard {
 .onbV2DotProgress{display:flex;gap:8px;align-items:center;margin:10px 0 18px 0;}
 .onbV2DotProgress .onbDot{width:8px;height:8px;border-radius:50%;background:rgba(200,164,106,0.25);}
 .onbV2DotProgress .onbDot.active{background:#C8A46A;box-shadow:0 0 6px rgba(200,164,106,0.55);} 
+
+
+/* Onboarding V2 dot progress (● ● ● ○ ○ ...) */
+#onboardingOverlay .onbV2Dots{
+  display:flex;
+  gap:10px;
+  margin: 10px 0 18px 0;
+}
+#onboardingOverlay .onbDot{
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  background: rgba(200,164,106,0.22);
+}
+#onboardingOverlay .onbDot.active{
+  background: var(--aethonGold);
+  box-shadow: 0 0 8px rgba(200,164,106,0.55);
+}
