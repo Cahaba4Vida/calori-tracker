@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { json } = require('./_util');
-const { query } = require('./_db');
+const { query, upsertDeviceSubscription } = require('./_db');
 
 function rawBody(event) {
   if (event.isBase64Encoded) return Buffer.from(event.body || '', 'base64').toString('utf8');
@@ -341,6 +341,26 @@ exports.handler = async (event) => {
     if (stripeEvent.type === 'checkout.session.completed') {
       const session = stripeEvent.data?.object || {};
       try { await recordAmbassadorPaymentFromCheckoutSession(session); } catch (e) {}
+      // If checkout happened before signup, bind subscription to device_id via metadata.
+      const deviceId = session?.metadata?.device_id;
+      if (deviceId && session.subscription) {
+        try {
+          const sub = await stripeGet(`/v1/subscriptions/${session.subscription}`);
+          const status = sub?.status || null;
+          const currentPeriodEnd = sub?.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
+          await upsertDeviceSubscription({
+            deviceId,
+            stripeCustomerId: session.customer || sub?.customer || null,
+            stripeSubscriptionId: session.subscription,
+            status,
+            planTier: 'pro',
+            currentPeriodEnd
+          });
+        } catch (e) {
+          // non-fatal
+        }
+      }
+
 
       if (session.subscription) {
         const sub = await stripeGet(`subscriptions/${encodeURIComponent(String(session.subscription))}`);

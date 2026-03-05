@@ -166,6 +166,76 @@ async function deleteUserDeviceLink({ userId, deviceId }) {
   return r.rowCount > 0;
 }
 
+// ---- Device subscriptions (for checkout-before-signup flows) ----
+async function ensureDeviceSubscriptionsTable() {
+  await query(`
+    create table if not exists device_subscriptions (
+      device_id text primary key,
+      stripe_customer_id text,
+      stripe_subscription_id text,
+      subscription_status text,
+      plan_tier text,
+      current_period_end timestamptz,
+      updated_at timestamptz default now()
+    )
+  `);
+}
+
+async function upsertDeviceSubscription({
+  deviceId,
+  stripeCustomerId,
+  stripeSubscriptionId,
+  status,
+  planTier,
+  currentPeriodEnd
+}) {
+  await ensureDeviceSubscriptionsTable();
+  await query(
+    `insert into device_subscriptions (device_id, stripe_customer_id, stripe_subscription_id, subscription_status, plan_tier, current_period_end, updated_at)
+     values ($1,$2,$3,$4,$5,$6, now())
+     on conflict (device_id) do update set
+       stripe_customer_id = excluded.stripe_customer_id,
+       stripe_subscription_id = excluded.stripe_subscription_id,
+       subscription_status = excluded.subscription_status,
+       plan_tier = excluded.plan_tier,
+       current_period_end = excluded.current_period_end,
+       updated_at = now()`,
+    [deviceId, stripeCustomerId || null, stripeSubscriptionId || null, status || null, planTier || null, currentPeriodEnd || null]
+  );
+}
+
+async function getDeviceSubscription(deviceId) {
+  await ensureDeviceSubscriptionsTable();
+  const r = await query(`select * from device_subscriptions where device_id = $1`, [deviceId]);
+  return r.rows[0] || null;
+}
+
+async function attachDeviceSubscriptionToUser({ userId, deviceId }) {
+  const ds = await getDeviceSubscription(deviceId);
+  if (!ds) return { attached: false, reason: 'no_device_subscription' };
+
+  // Only attach if user profile has no active subscription recorded yet
+  const up = await query(`select stripe_subscription_id, subscription_status from user_profiles where user_id = $1`, [userId]);
+  const cur = up.rows[0] || {};
+  if (cur.stripe_subscription_id && cur.subscription_status && cur.subscription_status !== 'canceled') {
+    return { attached: false, reason: 'user_already_has_subscription' };
+  }
+
+  await query(
+    `update user_profiles
+       set stripe_customer_id = coalesce(stripe_customer_id, $2),
+           stripe_subscription_id = $3,
+           subscription_status = $4,
+           plan_tier = $5,
+           updated_at = now()
+     where user_id = $1`,
+    [userId, ds.stripe_customer_id, ds.stripe_subscription_id, ds.subscription_status, ds.plan_tier]
+  );
+
+  return { attached: true };
+}
+
+
 module.exports = {
   query,
   ensureUserProfile,
@@ -174,5 +244,8 @@ module.exports = {
   resolveUserIdByDevice,
   listUserDevices,
   updateUserDeviceLink,
-  deleteUserDeviceLink
+  deleteUserDeviceLink,
+  upsertDeviceSubscription,
+  getDeviceSubscription,
+  attachDeviceSubscriptionToUser
 };
