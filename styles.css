@@ -1485,7 +1485,7 @@ body.invertedTheme .aiGlobalLoadingCard {
    Onboarding V2 (extra pages after existing welcome)
    ======================= */
 #onboardingV2Screen{margin-top:6px;position:relative;}
-.onbV2Loading{position:absolute;inset:0;border-radius:18px;background:rgba(255,255,255,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:5;animation:fadeIn .25s ease;}
+.onbV2Loading{position:fixed;inset:0;border-radius:0;background:radial-gradient(circle at center, rgba(0,0,0,.22) 0%, rgba(0,0,0,.55) 100%);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:9999;animation:fadeIn .25s ease;}
 
 .onbV2Loading .msg{font-weight:700;}
 .onbV2Loading .spinner{width:42px;height:42px;border-radius:50%;border:4px solid rgba(0,0,0,.15);border-top-color:rgba(0,0,0,.6);animation:onbSpin 1s linear infinite;}
@@ -1560,9 +1560,18 @@ body.invertedTheme .aiGlobalLoadingCard {
 
 
 /* Onboarding V2 plan loading cinematic video */
-#onboardingOverlay .onbV2LoadingVideo{display:none;width:240px;max-width:72%;border-radius:16px;box-shadow:0 14px 44px rgba(0,0,0,.32);border:1px solid rgba(200,164,106,.28);}
+#onboardingOverlay .onbV2LoadingVideo{display:none;width:260px;max-width:78%;border-radius:18px;box-shadow:0 18px 54px rgba(0,0,0,.34);border:1px solid rgba(200,164,106,.30);}
 
-.onbV2LoadingStack{display:flex;flex-direction:column;align-items:center;gap:12px;}
+
+.onbV2LoadingCard{
+  width:min(420px, 88vw);
+  padding:22px 18px;
+  border-radius:20px;
+  background:linear-gradient(145deg, rgba(255,255,255,.92), rgba(248,246,242,.90));
+  box-shadow:0 26px 80px rgba(0,0,0,.35);
+  border:1px solid rgba(200,164,106,.28);
+}
+.onbV2LoadingStack{display:flex;flex-direction:column;align-items:center;gap:16px;}
 .onbV2LoadingVideoSecondary{width:220px;max-width:68%;opacity:.95;}
 .onbV2LoadingVideo.hidden{display:none !important;}
 #onboardingOverlay .onbV2Loading.plan .onbV2LoadingVideo{display:block;}
@@ -1612,3 +1621,13 @@ body.invertedTheme .aiGlobalLoadingCard {
 #onboardingOverlay .onbV2Loading .onbV2EnergyLine{display:none;}
 #onboardingOverlay .onbV2Loading.plan .onbV2EnergyLine{display:block;}
 
+
+.onbV2Loading.plan .msg{
+  font-weight:700;
+  animation:onbMsgPulse 2.2s ease-in-out infinite;
+}
+@keyframes onbMsgPulse{
+  0%{opacity:.72;transform:translateY(0)}
+  50%{opacity:1;transform:translateY(-1px)}
+  100%{opacity:.72;transform:translateY(0)}
+}

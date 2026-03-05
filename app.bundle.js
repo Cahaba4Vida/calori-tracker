@@ -1170,8 +1170,8 @@ function setOnbV2Loading(isLoading, message) {
       overlay = document.createElement('div');
       overlay.id = 'onbV2Loading';
       overlay.className = 'onbV2Loading';
-      overlay.innerHTML = '<div class="onbV2LoadingStack"><video class="onbV2LoadingVideo" autoplay muted loop playsinline><source src="/assets/videos/plan-loading.mp4" type="video/mp4"></video><div class="onbV2EnergyLine" aria-hidden="true"></div><div class="msg" id="onbV2LoadingMsg"></div><div class="onbV2EnergyLine" aria-hidden="true"></div><video class="onbV2LoadingVideo onbV2LoadingVideoSecondary" autoplay muted loop playsinline><source src="/assets/videos/plan-loading-2.mp4" type="video/mp4"></video></div><div class="spinner" aria-hidden="true"></div>';
-      screen.appendChild(overlay);
+      overlay.innerHTML = '<div class=\"onbV2LoadingCard\"><div class=\"onbV2LoadingStack\"><video class=\"onbV2LoadingVideo\" autoplay muted loop playsinline><source src=\"/assets/videos/plan-loading.mp4\" type=\"video/mp4\"></video><div class=\"onbV2EnergyLine\" aria-hidden=\"true\"></div><div class=\"msg\" id=\"onbV2LoadingMsg\"></div><div class=\"onbV2EnergyLine\" aria-hidden=\"true\"></div><video class=\"onbV2LoadingVideo onbV2LoadingVideoSecondary\" autoplay muted loop playsinline><source src=\"/assets/videos/plan-loading-2.mp4\" type=\"video/mp4\"></video></div><div class=\"spinner\" aria-hidden=\"true\"></div></div>';
+      document.body.appendChild(overlay);
       try {
         const v2 = overlay.querySelector('.onbV2LoadingVideoSecondary');
         if (v2) {
