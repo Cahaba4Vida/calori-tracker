@@ -8,6 +8,15 @@ function asPositiveInt(v, field) {
   return Math.round(n);
 }
 
+function asMoneyCents(v, field) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) throw new Error(`${field} must be a positive number`);
+  // allow 2 decimals max
+  const cents = Math.round(n * 100);
+  if (cents <= 0) throw new Error(`${field} must be a positive number`);
+  return cents;
+}
+
 function asUrlOrNull(v) {
   if (v == null || String(v).trim() === '') return null;
   const s = String(v).trim();
@@ -30,8 +39,8 @@ exports.handler = async (event) => {
     const freeFood = asPositiveInt(body.free_food_entries_per_day, 'free_food_entries_per_day');
     const freeAi = asPositiveInt(body.free_ai_actions_per_day, 'free_ai_actions_per_day');
     const freeHistory = asPositiveInt(body.free_history_days, 'free_history_days');
-    const monthlyPrice = asPositiveInt(body.monthly_price_usd, 'monthly_price_usd');
-    const yearlyPrice = asPositiveInt(body.yearly_price_usd, 'yearly_price_usd');
+    const monthlyPriceCents = asMoneyCents(body.monthly_price_usd, 'monthly_price_usd');
+    const yearlyPriceCents = asMoneyCents(body.yearly_price_usd, 'yearly_price_usd');
     const monthlyUrl = asUrlOrNull(body.monthly_upgrade_url);
     const yearlyUrl = asUrlOrNull(body.yearly_upgrade_url);
     const manageUrl = asUrlOrNull(body.manage_subscription_url);
@@ -46,6 +55,8 @@ exports.handler = async (event) => {
          free_history_days,
          monthly_price_usd,
          yearly_price_usd,
+         monthly_price_cents,
+         yearly_price_cents,
          monthly_upgrade_url,
          yearly_upgrade_url,
          manage_subscription_url,

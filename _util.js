@@ -1,188 +1,119 @@
 const { query } = require('./_db');
-const { getDenverDateISO, json } = require('./_util');
 
-const DEFAULTS = {
-  free_food_entries_per_day: 5,
-  free_ai_actions_per_day: 5,
-  free_history_days: 20,
-  monthly_price_usd: 5,
-  yearly_price_usd: 50,
-  monthly_upgrade_url: 'https://buy.stripe.com/eVqbIUci9aZidBB9qg8bS0b',
-  yearly_upgrade_url: 'https://buy.stripe.com/aFadR22Hz7N6app1XO8bS0c',
-  manage_subscription_url: null
-};
-
-function toPosInt(v, fallback) {
-  const n = Number(v);
-  if (!Number.isFinite(n) || n <= 0) return fallback;
-  return Math.round(n);
-}
-
-async function getPlanConfig() {
-  try {
-    const r = await query(
-      `select free_food_entries_per_day, free_ai_actions_per_day, free_history_days,
-              monthly_price_usd, yearly_price_usd,
-              monthly_upgrade_url, yearly_upgrade_url, manage_subscription_url
-       from app_admin_settings where singleton=true limit 1`
-    );
-    const row = r.rows[0] || {};
-    return {
-      free_food_entries_per_day: toPosInt(row.free_food_entries_per_day, DEFAULTS.free_food_entries_per_day),
-      free_ai_actions_per_day: toPosInt(row.free_ai_actions_per_day, DEFAULTS.free_ai_actions_per_day),
-      free_history_days: toPosInt(row.free_history_days, DEFAULTS.free_history_days),
-      monthly_price_usd: toPosInt(row.monthly_price_usd, DEFAULTS.monthly_price_usd),
-      yearly_price_usd: toPosInt(row.yearly_price_usd, DEFAULTS.yearly_price_usd),
-      monthly_upgrade_url: row.monthly_upgrade_url || DEFAULTS.monthly_upgrade_url,
-      yearly_upgrade_url: row.yearly_upgrade_url || DEFAULTS.yearly_upgrade_url,
-      manage_subscription_url: row.manage_subscription_url || null
-    };
-  } catch (e) {
-    if (e && (e.code === '42P01' || e.code === '42703')) return { ...DEFAULTS };
-    throw e;
-  }
-}
-
-function isSubscriptionPremium(row = {}) {
-  return row.plan_tier === 'premium' && ['active', 'trialing'].includes(row.subscription_status);
-}
-
-function isPassPremium(row = {}) {
-  if (!row.premium_pass) return false;
-  if (!row.premium_pass_expires_at) return true;
-  return new Date(row.premium_pass_expires_at).getTime() > Date.now();
-}
-
-async function getUserEntitlements(userId) {
-  const cfg = await getPlanConfig();
-  const r = await query(
-    `select coalesce(plan_tier, 'free') as plan_tier,
-            coalesce(subscription_status, 'inactive') as subscription_status,
-            coalesce(premium_pass, false) as premium_pass,
-            premium_pass_expires_at
-     from user_profiles
-     where user_id=$1`,
-    [userId]
-  );
-  const row = r.rows[0] || {};
-  const hasSubscription = isSubscriptionPremium(row);
-  const hasPass = isPassPremium(row);
-  const isPremium = hasSubscription || hasPass;
-
-  return {
-    plan_tier: isPremium ? 'premium' : 'free',
-    is_premium: isPremium,
-    premium_source: hasSubscription ? 'subscription' : (hasPass ? 'admin_pass' : 'none'),
-    pricing: {
-      monthly_price_usd: cfg.monthly_price_usd,
-      yearly_price_usd: cfg.yearly_price_usd,
-      monthly_upgrade_url: cfg.monthly_upgrade_url,
-      yearly_upgrade_url: cfg.yearly_upgrade_url,
-      manage_subscription_url: cfg.manage_subscription_url
-    },
-    limits: {
-      food_entries_per_day: isPremium ? null : cfg.free_food_entries_per_day,
-      ai_actions_per_day: isPremium ? null : cfg.free_ai_actions_per_day,
-      history_days: isPremium ? null : cfg.free_history_days,
-      can_export: isPremium
-    }
+function createStripeClient(secret = process.env.STRIPE_SECRET_KEY) {
+  return async function stripeGet(pathname) {
+    if (!secret) return null;
+    const resp = await fetch(`https://api.stripe.com/v1/${pathname}`, {
+      headers: { Authorization: `Bearer ${secret}` }
+    });
+    if (!resp.ok) return null;
+    return resp.json();
   };
 }
 
-function parseISODateOnly(v) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))) return null;
-  return String(v);
-}
-
-function minAllowedHistoryDate(todayISO, historyDays) {
-  const [y, m, d] = todayISO.split('-').map(Number);
-  const anchor = new Date(Date.UTC(y, m - 1, d));
-  const from = new Date(anchor.getTime() - (historyDays - 1) * 86400000);
-  return from.toISOString().slice(0, 10);
-}
-
-async function enforceHistoryAccess(userId, dateISO) {
-  const ent = await getUserEntitlements(userId);
-  if (ent.is_premium) return { ok: true, entitlements: ent };
-
-  const today = getDenverDateISO(new Date());
-  const reqDate = parseISODateOnly(dateISO) || today;
-  const limitDays = ent.limits.history_days || DEFAULTS.free_history_days;
-  const minISO = minAllowedHistoryDate(today, limitDays);
-  if (reqDate < minISO) {
-    return {
-      ok: false,
-      response: json(403, {
-        error: `Free tier includes last ${limitDays} days of history. Upgrade to Premium for unlimited history.`
-      }),
-      entitlements: ent
-    };
+async function sendAlert(summary) {
+  const url = process.env.RECON_ALERT_WEBHOOK_URL;
+  if (!url) return false;
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(summary)
+    });
+    return resp.ok;
+  } catch {
+    return false;
   }
-  return { ok: true, entitlements: ent };
 }
 
-async function enforceFoodEntryLimit(userId, entryDateISO) {
-  const ent = await getUserEntitlements(userId);
-  if (ent.is_premium) return { ok: true, entitlements: ent };
+function createReconciler(deps = {}) {
+  const queryFn = deps.queryFn || query;
+  const stripeGet = deps.stripeGet || createStripeClient();
+  const alertFn = deps.alertFn || sendAlert;
 
-  const r = await query(
-    `select count(*)::int as count from food_entries where user_id=$1 and entry_date=$2`,
-    [userId, entryDateISO]
-  );
-  const used = Number(r.rows[0]?.count || 0);
-  const limit = ent.limits.food_entries_per_day || DEFAULTS.free_food_entries_per_day;
-  if (used >= limit) {
-    return {
-      ok: false,
-      response: json(403, {
-        error: `Free tier allows up to ${limit} food entries per day. Upgrade to Premium for unlimited entries.`
-      }),
-      entitlements: ent
-    };
-  }
-  return { ok: true, entitlements: ent };
-}
-
-async function enforceAiActionLimit(userId, entryDateISO, actionType) {
-  const ent = await getUserEntitlements(userId);
-  if (ent.is_premium) {
-    await query(
-      `insert into ai_usage_events(user_id, entry_date, action_type) values ($1,$2,$3)`,
-      [userId, entryDateISO, String(actionType || 'unknown').slice(0, 48)]
+  return async function reconcileSubscriptions({ actor = 'system/scheduled' } = {}) {
+    const users = await queryFn(
+      `select user_id, stripe_subscription_id, stripe_customer_id, subscription_status
+       from user_profiles
+       where stripe_subscription_id is not null or stripe_customer_id is not null`
     );
-    return { ok: true, entitlements: ent };
-  }
 
-  const usedR = await query(
-    `select count(*)::int as count from ai_usage_events where user_id=$1 and entry_date=$2`,
-    [userId, entryDateISO]
-  );
-  const used = Number(usedR.rows[0]?.count || 0);
-  const limit = ent.limits.ai_actions_per_day || DEFAULTS.free_ai_actions_per_day;
-  if (used >= limit) {
-    return {
-      ok: false,
-      response: json(403, {
-        error: `Free tier allows up to ${limit} AI actions per day. Upgrade to Premium for unlimited AI.`
-      }),
-      entitlements: ent
-    };
-  }
+    let checked = 0;
+    let updated = 0;
+    let errors = 0;
 
-  await query(
-    `insert into ai_usage_events(user_id, entry_date, action_type) values ($1,$2,$3)`,
-    [userId, entryDateISO, String(actionType || 'unknown').slice(0, 48)]
-  );
+    for (const u of users.rows) {
+      checked += 1;
+      let subscription = null;
 
-  return { ok: true, entitlements: ent };
+      try {
+        if (u.stripe_subscription_id) {
+          subscription = await stripeGet(`subscriptions/${encodeURIComponent(String(u.stripe_subscription_id))}`);
+        }
+
+        if (!subscription && u.stripe_customer_id) {
+          const list = await stripeGet(`subscriptions?customer=${encodeURIComponent(String(u.stripe_customer_id))}&status=all&limit=1`);
+          subscription = list?.data?.[0] || null;
+        }
+      } catch {
+        errors += 1;
+        continue;
+      }
+
+      if (!subscription) continue;
+
+      const status = String(subscription.status || 'inactive');
+      const planTier = ['active', 'trialing'].includes(status) ? 'premium' : 'free';
+      const periodEnd = subscription.current_period_end
+        ? new Date(Number(subscription.current_period_end) * 1000).toISOString()
+        : null;
+
+      if (status !== u.subscription_status || String(subscription.id || '') !== String(u.stripe_subscription_id || '')) {
+        updated += 1;
+      }
+
+      await queryFn(
+        `update user_profiles
+         set plan_tier=$2,
+             subscription_status=$3,
+             stripe_customer_id=$4,
+             stripe_subscription_id=$5,
+             subscription_current_period_end=$6
+         where user_id=$1`,
+        [u.user_id, planTier, status, subscription.customer ? String(subscription.customer) : null, subscription.id ? String(subscription.id) : null, periodEnd]
+      );
+    }
+
+    const result = { checked, updated, errors, actor };
+
+    await queryFn(
+      `insert into subscription_reconcile_runs(actor, checked, updated, errors)
+       values ($1, $2, $3, $4)`,
+      [actor, checked, updated, errors]
+    );
+
+    await queryFn(
+      `insert into admin_audit_log(action, actor, target, details)
+       values ($1, $2, $3, $4::jsonb)`,
+      ['subscriptions_reconciled', actor, 'all_users', JSON.stringify(result)]
+    );
+
+    if (errors > 0) {
+      const delivered = await alertFn({
+        type: 'reconciliation_alert',
+        severity: 'error',
+        message: `Subscription reconciliation encountered ${errors} errors`,
+        ...result
+      });
+      await queryFn(
+        `insert into alert_notifications(alert_type, severity, payload, delivered)
+         values ($1, $2, $3::jsonb, $4)`,
+        ['reconciliation_error', 'error', JSON.stringify(result), delivered]
+      );
+    }
+
+    return result;
+  };
 }
 
-module.exports = {
-  DEFAULTS,
-  getPlanConfig,
-  getUserEntitlements,
-  enforceHistoryAccess,
-  enforceFoodEntryLimit,
-  enforceAiActionLimit,
-  minAllowedHistoryDate
-};
+module.exports = { createReconciler, createStripeClient, sendAlert };

@@ -1,50 +1,24 @@
-const { json } = require('./_util');
-const { requireSignedUser } = require('./_auth');
-const { ensureUserProfile, query } = require('./_db');
-const { getPlanConfig } = require('./_plan');
-
-function asForm(payload) {
-  return Object.entries(payload)
-    .filter(([, v]) => v != null && v !== '')
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
-    .join('&');
-}
+const { json } = require("./_util");
+const { requireUser } = require("./_auth");
+const { query, ensureUserProfile } = require("./_db");
 
 exports.handler = async (event, context) => {
-  if (event.httpMethod && event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
-
-  const auth = await requireSignedUser(event, context);
+  const auth = await requireUser(event, context);
   if (!auth.ok) return auth.response;
   const { userId, email } = auth.user;
   await ensureUserProfile(userId, email);
 
-  const cfg = await getPlanConfig();
-  const fallbackUrl = cfg.manage_subscription_url;
-  const secret = process.env.STRIPE_SECRET_KEY;
+  let body;
+  try { body = JSON.parse(event.body || "{}"); } catch { body = {}; }
 
-  const userRow = await query(
-    `select stripe_customer_id from user_profiles where user_id=$1 limit 1`,
-    [userId]
+  const rollover_enabled = body.rollover_enabled === true;
+  const rollover_cap_raw = Number(body.rollover_cap);
+  const rollover_cap = Number.isFinite(rollover_cap_raw) ? Math.max(0, Math.min(2000, Math.round(rollover_cap_raw))) : 500;
+
+  await query(
+    "update user_profiles set rollover_enabled=$2, rollover_cap=$3 where user_id=$1",
+    [userId, rollover_enabled, rollover_cap]
   );
-  const customerId = userRow.rows[0]?.stripe_customer_id || null;
 
-  if (secret && customerId) {
-    const siteUrl = process.env.URL || process.env.SITE_URL || 'http://localhost:8888';
-    const response = await fetch('https://api.stripe.com/v1/billing_portal/sessions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${secret}`,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: asForm({ customer: customerId, return_url: siteUrl })
-    });
-
-    if (response.ok) {
-      const body = await response.json();
-      if (body?.url) return json(200, { url: body.url, source: 'stripe_portal' });
-    }
-  }
-
-  if (fallbackUrl) return json(200, { url: fallbackUrl, source: 'configured_link' });
-  return json(404, { error: 'Manage subscription is not configured yet.' });
+  return json(200, { ok: true, rollover_enabled, rollover_cap });
 };

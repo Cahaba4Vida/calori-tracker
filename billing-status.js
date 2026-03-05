@@ -1,39 +1,80 @@
-const { json } = require('./_util');
-const { query } = require('./_db');
-const { requireAmbassador } = require('./_ambassadorAuth');
+const { json, getDenverDateISO } = require('./_util');
+const { requireUser } = require('./_auth');
+const { query, ensureUserProfile } = require('./_db');
 
-exports.handler = async (event) => {
-  if (event.httpMethod && event.httpMethod !== 'GET') return json(405, { error: 'Method not allowed' });
-  const a = await requireAmbassador(event);
-  if (!a.ok) return a.response;
+function weekStartISO(denverISO) {
+  const [y, m, d] = denverISO.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const dow = dt.getUTCDay();
+  const offsetToMon = (dow + 6) % 7;
+  dt.setUTCDate(dt.getUTCDate() - offsetToMon);
+  return dt.toISOString().slice(0, 10);
+}
+
+exports.handler = async (event, context) => {
+  if (event.httpMethod && event.httpMethod !== 'POST') {
+    return json(405, { error: 'Method not allowed' });
+  }
+
+  const auth = await requireUser(event, context);
+  if (!auth.ok) return auth.response;
+  const { userId, email } = auth.user;
+  await ensureUserProfile(userId, email);
+
+  let body;
+  try { body = JSON.parse(event.body || '{}'); } catch { body = {}; }
+
+  if (typeof body.accept !== 'boolean') return json(400, { error: 'accept must be boolean' });
+
+  const todayISO = getDenverDateISO(new Date());
+  const thisWeek = weekStartISO(todayISO);
+
+  // Mark reviewed regardless (best-effort; column may not exist yet)
+  let reviewPersisted = true;
+  try {
+    await query('update user_profiles set autopilot_last_review_week = $2 where user_id=$1', [userId, thisWeek]);
+  } catch (e) {
+    reviewPersisted = false;
+  }
+
+  if (!body.accept) {
+    return json(200, { ok: true, applied: false, week_start: thisWeek, review_persisted: reviewPersisted });
+  }
+
+  // Recompute suggestion server-side by calling the logic in autopilot-weekly-suggest (inline minimal)
+  // To avoid circular requires, we do a simple fetch from DB again: use the same computation in the suggest endpoint.
+  // Easiest: call the suggest endpoint via internal logic is not available; so we require the client to pass suggested_daily_calories,
+  // but clamp it to a safe range and max-step from current goal.
+  const suggested = Number(body.suggested_daily_calories);
+  if (!Number.isFinite(suggested) || suggested < 800 || suggested > 6000) {
+    return json(400, { error: 'suggested_daily_calories must be a reasonable number' });
+  }
 
   try {
-    const ambId = a.ambassador.id;
+  const gr = await query('select daily_calories from calorie_goals where user_id=$1', [userId]);
+  const currentGoal = gr.rows[0]?.daily_calories == null ? null : Number(gr.rows[0].daily_calories);
+  if (!Number.isFinite(currentGoal) || currentGoal <= 0) return json(400, { error: 'No current calorie goal to update' });
 
-    // Pull referrals/conversions + stitch to user_profiles when possible.
-    const r = await query(
-      `select r.user_id,
-              coalesce(r.email, p.email) as email,
-              r.ref_code,
-              r.first_seen_at,
-              r.last_seen_at,
-              r.status,
-              r.price_paid_cents,
-              r.currency,
-              r.stripe_subscription_id,
-              r.stripe_customer_id,
-              r.stripe_subscription_status,
-              r.stripe_current_period_end
-         from ambassador_referrals r
-         left join user_profiles p on p.user_id = r.user_id
-        where r.ambassador_id = $1
-        order by coalesce(r.price_paid_cents,0) desc, r.last_seen_at desc
-        limit 500`,
-      [ambId]
+  const maxStep = 150;
+  const delta = Math.max(-maxStep, Math.min(maxStep, suggested - currentGoal));
+  const appliedGoal = Math.round((currentGoal + delta) / 10) * 10;
+
+  // Upsert calorie goal (supports either schema)
+  try {
+    await query(
+      `insert into calorie_goals(user_id, daily_calories, updated_at)
+       values ($1, $2, now())
+       on conflict (user_id) do update set daily_calories=excluded.daily_calories, updated_at=now()`,
+      [userId, appliedGoal]
     );
-
-    return json(200, { ok: true, users: r.rows });
   } catch (e) {
-    return json(500, { error: 'Could not load ambassador users' });
+    // fallback: some DBs store goal on user_profiles
+    await query('update user_profiles set daily_calories=$2 where user_id=$1', [userId, appliedGoal]);
   }
+
+  return json(200, { ok: true, applied: true, week_start: thisWeek, applied_daily_calories: appliedGoal, review_persisted: reviewPersisted });
+  } catch (e) {
+    return json(500, { error: 'Failed to apply autopilot update', detail: String(e && e.message || e) });
+  }
+
 };

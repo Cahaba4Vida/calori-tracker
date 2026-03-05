@@ -131,7 +131,7 @@ global.playAssistantAudio = playAssistantAudio;
       try {
         setStatus('Creating Stripe checkout link…');
         trackEvent('upgrade_click', { interval });
-        const out = await api('create-checkout-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interval }) });
+        const out = await api('create-checkout-session-public', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interval, device_id: getOrCreateDeviceId() }) });
         if (out?.url) {
           window.location.href = out.url;
           return;

@@ -1,110 +1,40 @@
-const { json, getDenverDateISO } = require("./_util");
-const { requireUser } = require("./_auth");
-const { ensureUserProfile, query } = require("./_db");
-const { enforceAiActionLimit } = require("./_plan");
-const { responsesCreate, outputText } = require("./_openai");
 const crypto = require("crypto");
+const { json } = require("./_util");
+const { requireUser } = require("./_auth");
+const { query, ensureUserProfile } = require("./_db");
 
-const OPENAI_AUDIO_URL = "https://api.openai.com/v1/audio/speech";
-
-function hoursBetween(a, b) {
-  return Math.abs(a.getTime() - b.getTime()) / (1000 * 60 * 60);
+function mustGetKey() {
+  const k = process.env.OPENAI_API_KEY;
+  if (!k) throw new Error("Missing OPENAI_API_KEY env var");
+  return k;
 }
 
-async function createVoiceAudio(text) {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key || !text) return null;
-  const r = await fetch(OPENAI_AUDIO_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini-tts",
-      voice: "alloy",
-      format: "mp3",
-      input: text.slice(0, 800)
-    })
-  });
-  if (!r.ok) return null;
-  const arr = await r.arrayBuffer();
-  return Buffer.from(arr).toString("base64");
+function newId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return crypto.randomBytes(16).toString("hex");
 }
 
-async function getThreadForUser(userId, threadId) {
-  if (!threadId) return null;
-  const r = await query(
-    `select id, last_active_at
-     from voice_threads
-     where id = $1 and user_id = $2
-     limit 1`,
-    [threadId, userId]
+// Build a multipart/form-data request body WITHOUT using Blob/FormData.
+// Netlify's Node runtime may not provide those globals.
+function buildMultipart({ model, filename, mime, fileBuffer }) {
+  const boundary = "----ctBoundary" + crypto.randomBytes(16).toString("hex");
+
+  const pre = Buffer.from(
+    `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="model"\r\n\r\n` +
+      `${model}\r\n` +
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="file"; filename="${filename}"\r\n` +
+      `Content-Type: ${mime}\r\n\r\n`,
+    "utf8"
   );
-  return r.rows[0] || null;
-}
 
-async function getLatestThread(userId) {
-  const r = await query(
-    `select id, last_active_at
-     from voice_threads
-     where user_id = $1
-     order by last_active_at desc
-     limit 1`,
-    [userId]
-  );
-  return r.rows[0] || null;
-}
+  const post = Buffer.from(`\r\n--${boundary}--\r\n`, "utf8");
 
-async function createThread(userId) {
-  const id = crypto.randomUUID();
-  await query(
-    `insert into voice_threads(id, user_id, created_at, last_active_at)
-     values ($1, $2, now(), now())`,
-    [id, userId]
-  );
-  return id;
-}
-
-async function upsertActiveThread(userId, incomingThreadId) {
-  const now = new Date();
-
-  const incoming = await getThreadForUser(userId, incomingThreadId);
-  if (incoming && incoming.last_active_at) {
-    const last = new Date(incoming.last_active_at);
-    if (hoursBetween(now, last) <= 4) return incoming.id;
-  }
-
-  // try latest thread if incoming is missing/invalid/expired
-  const latest = await getLatestThread(userId);
-  if (latest && latest.last_active_at) {
-    const last = new Date(latest.last_active_at);
-    if (hoursBetween(now, last) <= 4) return latest.id;
-  }
-
-  return await createThread(userId);
-}
-
-async function appendMessage(threadId, role, content) {
-  const id = crypto.randomUUID();
-  await query(
-    `insert into voice_messages(id, thread_id, role, content, created_at)
-     values ($1, $2, $3, $4, now())`,
-    [id, threadId, role, content]
-  );
-}
-
-async function loadRecentMessages(threadId, limit) {
-  const r = await query(
-    `select role, content
-     from voice_messages
-     where thread_id = $1
-     order by created_at desc
-     limit $2`,
-    [threadId, limit]
-  );
-  // reverse to chronological
-  return r.rows.reverse().map(x => ({ role: x.role, text: x.content }));
+  return {
+    boundary,
+    body: Buffer.concat([pre, fileBuffer, post])
+  };
 }
 
 exports.handler = async (event, context) => {
@@ -114,71 +44,80 @@ exports.handler = async (event, context) => {
   const { userId, email } = auth.user;
   await ensureUserProfile(userId, email);
 
-  const today = getDenverDateISO(new Date());
-  const aiLimit = await enforceAiActionLimit(userId, today, "voice_thread_send");
-  if (!aiLimit.ok) return aiLimit.response;
-
   let body;
   try { body = JSON.parse(event.body || "{}"); } catch { body = {}; }
 
-  const message = String(body.message || "").trim();
-  if (!message) return json(400, { error: "message is required" });
+  // Two modes:
+  // 1) clip_id: load audio bytes from DB (preferred when "must use DB")
+  // 2) audio_base64: accept inline base64 and (optionally) store in DB
+  const clipId = body.clip_id ? String(body.clip_id) : null;
 
-  const threadId = await upsertActiveThread(userId, String(body.thread_id || "").trim() || null);
+  let mime = "audio/webm";
+  let buf = null;
 
-  // persist user message
-  await appendMessage(threadId, "user", message);
+  if (clipId) {
+    const r = await query(
+      `select mime, bytes
+         from voice_audio_clips
+        where id = $1 and user_id = $2`,
+      [clipId, userId]
+    );
+    if (!r.rows[0]) return json(404, { error: "clip_id not found" });
+    mime = r.rows[0].mime || mime;
+    buf = r.rows[0].bytes;
+  } else {
+    const audio_base64 = body.audio_base64;
+    mime = body.mime || mime;
+    if (!audio_base64 || typeof audio_base64 !== "string") {
+      return json(400, { error: "audio_base64 is required (or provide clip_id)" });
+    }
+    buf = Buffer.from(audio_base64, "base64");
 
-  const history = await loadRecentMessages(threadId, 20);
+    // Store clip in DB so the system can be DB-first and we can inspect failures.
+    // If the table hasn't been migrated yet, fail gracefully and continue.
+    try {
+      const id = newId();
+      await query(
+        `insert into voice_audio_clips (id, user_id, mime, bytes)
+         values ($1, $2, $3, $4)`,
+        [id, userId, mime, buf]
+      );
+      // Return clip_id to the client for subsequent requests if desired.
+      // (We still proceed to transcribe right away.)
+      body._stored_clip_id = id;
+    } catch (e) {
+      // 42P01 = undefined_table
+      if (!(e && e.code === "42P01")) throw e;
+    }
+  }
 
-  const prompt = `You help users log food from voice descriptions.
-Return ONLY JSON with this exact shape:
-{
-  "reply": "short conversational response",
-  "needs_follow_up": boolean,
-  "suggested_entry": {
-    "calories": number|null,
-    "protein_g": number|null,
-    "carbs_g": number|null,
-    "fat_g": number|null,
-    "description": "short label"
-  }|null
-}
-
-Rules:
-- If user describes a meal, estimate calories/macros.
-- If user is unclear, ask ONE follow-up question and set needs_follow_up=true.
-- Keep reply <= 2 sentences.
-- suggested_entry.description should be <= 60 chars.`;
-
-  const input = [
-    { role: "system", content: prompt },
-    ...history.map(h => ({ role: h.role, content: h.text }))
-  ];
-
-  const resp = await responsesCreate({
-    model: "gpt-4.1-mini",
-    input
+  const key = mustGetKey();
+  const ext = mime.includes("wav") ? "wav" : (mime.includes("mp4") ? "mp4" : "webm");
+  const { boundary, body: mpBody } = buildMultipart({
+    model: "gpt-4o-mini-transcribe",
+    filename: `audio.${ext}`,
+    mime,
+    fileBuffer: buf
   });
 
-  const raw = outputText(resp);
+  const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": `multipart/form-data; boundary=${boundary}`
+    },
+    body: mpBody
+  });
+
+  const text = await r.text();
   let data;
-  try { data = JSON.parse(raw); } catch { data = { reply: raw?.slice(0, 240) || "", needs_follow_up: false, suggested_entry: null }; }
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
 
-  const reply = String(data.reply || "").trim();
-  if (reply) await appendMessage(threadId, "assistant", reply);
+  if (!r.ok) {
+    return json(502, { error: data?.error?.message || "Transcription failed", details: data });
+  }
 
-  // keep thread active
-  await query(`update voice_threads set last_active_at = now() where id = $1`, [threadId]);
-
-  const audio_base64 = await createVoiceAudio(reply);
-
-  return json(200, {
-    thread_id: threadId,
-    reply,
-    needs_follow_up: !!data.needs_follow_up,
-    suggested_entry: data.suggested_entry || null,
-    audio_base64,
-    audio_mime_type: audio_base64 ? "audio/mp3" : null
-  });
+  const out = { text: data.text || "" };
+  if (body._stored_clip_id) out.clip_id = body._stored_clip_id;
+  return json(200, out);
 };

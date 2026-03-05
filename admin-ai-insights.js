@@ -1,119 +1,145 @@
+const crypto = require('crypto');
 const { query } = require('./_db');
+const { json } = require('./_util');
 
-function createStripeClient(secret = process.env.STRIPE_SECRET_KEY) {
-  return async function stripeGet(pathname) {
-    if (!secret) return null;
-    const resp = await fetch(`https://api.stripe.com/v1/${pathname}`, {
-      headers: { Authorization: `Bearer ${secret}` }
-    });
-    if (!resp.ok) return null;
-    return resp.json();
-  };
-}
-
-async function sendAlert(summary) {
-  const url = process.env.RECON_ALERT_WEBHOOK_URL;
-  if (!url) return false;
-  try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(summary)
-    });
-    return resp.ok;
-  } catch {
-    return false;
+function randomReferralCode(len = 6) {
+  // Base32-ish, avoid ambiguous chars.
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.randomBytes(len);
+  let out = '';
+  for (let i = 0; i < len; i++) {
+    out += alphabet[bytes[i] % alphabet.length];
   }
+  return out;
 }
 
-function createReconciler(deps = {}) {
-  const queryFn = deps.queryFn || query;
-  const stripeGet = deps.stripeGet || createStripeClient();
-  const alertFn = deps.alertFn || sendAlert;
+async function ensureReferralCode(userId) {
+  const r = await query(
+    `select referral_code from user_profiles where user_id=$1 limit 1`,
+    [String(userId)]
+  );
+  const existing = r.rows[0]?.referral_code ? String(r.rows[0].referral_code) : null;
+  if (existing) return existing;
 
-  return async function reconcileSubscriptions({ actor = 'system/scheduled' } = {}) {
-    const users = await queryFn(
-      `select user_id, stripe_subscription_id, stripe_customer_id, subscription_status
-       from user_profiles
-       where stripe_subscription_id is not null or stripe_customer_id is not null`
-    );
-
-    let checked = 0;
-    let updated = 0;
-    let errors = 0;
-
-    for (const u of users.rows) {
-      checked += 1;
-      let subscription = null;
-
-      try {
-        if (u.stripe_subscription_id) {
-          subscription = await stripeGet(`subscriptions/${encodeURIComponent(String(u.stripe_subscription_id))}`);
-        }
-
-        if (!subscription && u.stripe_customer_id) {
-          const list = await stripeGet(`subscriptions?customer=${encodeURIComponent(String(u.stripe_customer_id))}&status=all&limit=1`);
-          subscription = list?.data?.[0] || null;
-        }
-      } catch {
-        errors += 1;
-        continue;
-      }
-
-      if (!subscription) continue;
-
-      const status = String(subscription.status || 'inactive');
-      const planTier = ['active', 'trialing'].includes(status) ? 'premium' : 'free';
-      const periodEnd = subscription.current_period_end
-        ? new Date(Number(subscription.current_period_end) * 1000).toISOString()
-        : null;
-
-      if (status !== u.subscription_status || String(subscription.id || '') !== String(u.stripe_subscription_id || '')) {
-        updated += 1;
-      }
-
-      await queryFn(
-        `update user_profiles
-         set plan_tier=$2,
-             subscription_status=$3,
-             stripe_customer_id=$4,
-             stripe_subscription_id=$5,
-             subscription_current_period_end=$6
-         where user_id=$1`,
-        [u.user_id, planTier, status, subscription.customer ? String(subscription.customer) : null, subscription.id ? String(subscription.id) : null, periodEnd]
+  // Generate + set with retry (handles unique collisions).
+  for (let i = 0; i < 8; i++) {
+    const code = randomReferralCode(6);
+    try {
+      await query(
+        `update user_profiles set referral_code=$2 where user_id=$1 and referral_code is null`,
+        [String(userId), code]
       );
-    }
-
-    const result = { checked, updated, errors, actor };
-
-    await queryFn(
-      `insert into subscription_reconcile_runs(actor, checked, updated, errors)
-       values ($1, $2, $3, $4)`,
-      [actor, checked, updated, errors]
-    );
-
-    await queryFn(
-      `insert into admin_audit_log(action, actor, target, details)
-       values ($1, $2, $3, $4::jsonb)`,
-      ['subscriptions_reconciled', actor, 'all_users', JSON.stringify(result)]
-    );
-
-    if (errors > 0) {
-      const delivered = await alertFn({
-        type: 'reconciliation_alert',
-        severity: 'error',
-        message: `Subscription reconciliation encountered ${errors} errors`,
-        ...result
-      });
-      await queryFn(
-        `insert into alert_notifications(alert_type, severity, payload, delivered)
-         values ($1, $2, $3::jsonb, $4)`,
-        ['reconciliation_error', 'error', JSON.stringify(result), delivered]
+      const check = await query(
+        `select referral_code from user_profiles where user_id=$1 limit 1`,
+        [String(userId)]
       );
+      const got = check.rows[0]?.referral_code ? String(check.rows[0].referral_code) : null;
+      if (got) return got;
+    } catch (e) {
+      // 23505 = unique_violation
+      if (e && e.code === '23505') continue;
+      throw e;
     }
-
-    return result;
-  };
+  }
+  throw new Error('Failed to generate referral code');
 }
 
-module.exports = { createReconciler, createStripeClient, sendAlert };
+async function claimReferralForUser({ userId, referralCode }) {
+  const code = String(referralCode || '').trim().toUpperCase();
+  if (!/^[A-Z2-9]{5,12}$/.test(code)) {
+    return { ok: false, response: json(400, { error: 'Invalid referral code' }) };
+  }
+
+  const ref = await query(
+    `select user_id from user_profiles where referral_code=$1 limit 1`,
+    [code]
+  );
+  const referrerId = ref.rows[0]?.user_id ? String(ref.rows[0].user_id) : null;
+  if (!referrerId) {
+    return { ok: false, response: json(404, { error: 'Referral code not found' }) };
+  }
+  if (String(referrerId) === String(userId)) {
+    return { ok: false, response: json(400, { error: 'You cannot refer yourself' }) };
+  }
+
+  // Only allow one referral per referred user.
+  const prof = await query(
+    `select referred_by from user_profiles where user_id=$1 limit 1`,
+    [String(userId)]
+  );
+  const already = prof.rows[0]?.referred_by ? String(prof.rows[0].referred_by) : null;
+  if (already) {
+    return { ok: true, referrer_user_id: referrerId, referral_code: already, already_claimed: true };
+  }
+
+  await query(
+    `update user_profiles set referred_by=$2 where user_id=$1 and referred_by is null`,
+    [String(userId), code]
+  );
+  await query(
+    `insert into referrals(referrer_user_id, referred_user_id) values ($1,$2)
+     on conflict (referred_user_id) do nothing`,
+    [String(referrerId), String(userId)]
+  );
+
+  return { ok: true, referrer_user_id: referrerId, referral_code: code, already_claimed: false };
+}
+
+async function extendPremiumByDays(userId, days) {
+  const d = Number(days || 0);
+  if (!Number.isFinite(d) || d <= 0) return;
+  await query(
+    `update user_profiles
+        set premium_expires_at = (
+          greatest(coalesce(premium_expires_at, now()), now()) + ($2::text || ' days')::interval
+        )
+      where user_id=$1`,
+    [String(userId), String(Math.round(d))]
+  );
+}
+
+async function maybeGrantReferralReward(referredUserId) {
+  // Only grant once.
+  const r = await query(
+    `select id, referrer_user_id, reward_granted
+       from referrals
+      where referred_user_id=$1
+      order by created_at desc
+      limit 1`,
+    [String(referredUserId)]
+  );
+  const row = r.rows[0] || null;
+  if (!row) return { granted: false };
+  if (row.reward_granted) return { granted: false };
+
+  // Guard: referred user must have at least 1 food entry (the caller usually runs after insert).
+  const hasEntry = await query(
+    `select 1 from food_entries where user_id=$1 limit 1`,
+    [String(referredUserId)]
+  );
+  if (!hasEntry.rows.length) return { granted: false };
+
+  const referrerId = String(row.referrer_user_id);
+
+  // Apply rewards.
+  await extendPremiumByDays(referrerId, 30);
+  await extendPremiumByDays(String(referredUserId), 30);
+
+  // Mark granted + increment count.
+  await query(
+    `update referrals set reward_granted=true where id=$1`,
+    [Number(row.id)]
+  );
+  await query(
+    `update user_profiles set referral_count = coalesce(referral_count,0) + 1 where user_id=$1`,
+    [referrerId]
+  );
+
+  return { granted: true, referrer_user_id: referrerId };
+}
+
+module.exports = {
+  ensureReferralCode,
+  claimReferralForUser,
+  maybeGrantReferralReward
+};

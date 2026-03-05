@@ -1,32 +1,50 @@
-const { json } = require('./_util');
-const { requireSignedUser } = require('./_auth');
-const { ensureUserProfile } = require('./_db');
-const { getPlanConfig } = require('./_plan');
+const { json } = require("./_util");
+const { requireUser } = require("./_auth");
+const { ensureUserProfile, query } = require("./_db");
+const crypto = require("crypto");
+
+function hoursBetween(a, b) {
+  return Math.abs(a.getTime() - b.getTime()) / (1000 * 60 * 60);
+}
+
+async function getLatestThread(userId) {
+  const r = await query(
+    `select id, last_active_at
+     from coach_threads
+     where user_id = $1
+     order by last_active_at desc
+     limit 1`,
+    [userId]
+  );
+  return r.rows[0] || null;
+}
+
+async function createThread(userId) {
+  const id = crypto.randomUUID();
+  await query(
+    `insert into coach_threads(id, user_id, created_at, last_active_at)
+     values ($1, $2, now(), now())`,
+    [id, userId]
+  );
+  return id;
+}
 
 exports.handler = async (event, context) => {
-  if (event.httpMethod && event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed' });
-
-  const auth = await requireSignedUser(event, context);
+  const auth = await requireUser(event, context);
   if (!auth.ok) return auth.response;
+
   const { userId, email } = auth.user;
   await ensureUserProfile(userId, email);
 
-  let body;
-  try { body = JSON.parse(event.body || '{}'); } catch { body = {}; }
-
-  const interval = String(body.interval || 'monthly').toLowerCase();
-  if (!['monthly', 'yearly'].includes(interval)) {
-    return json(400, { error: 'interval must be monthly or yearly' });
+  const latest = await getLatestThread(userId);
+  if (latest && latest.last_active_at) {
+    const last = new Date(latest.last_active_at);
+    const now = new Date();
+    if (hoursBetween(now, last) <= 12) { // coach chat can persist longer than food voice
+      return json(200, { thread_id: latest.id, rotated: false });
+    }
   }
 
-  const cfg = await getPlanConfig();
-  const monthly = process.env.STRIPE_MONTHLY_PAYMENT_LINK_URL || cfg.monthly_upgrade_url;
-  const yearly = process.env.STRIPE_YEARLY_PAYMENT_LINK_URL || cfg.yearly_upgrade_url;
-  const checkoutUrl = interval === 'yearly' ? yearly : monthly;
-
-  if (!checkoutUrl) {
-    return json(503, { error: 'Stripe payment links are not configured.' });
-  }
-
-  return json(200, { url: checkoutUrl, checkout_url: checkoutUrl, interval });
+  const id = await createThread(userId);
+  return json(200, { thread_id: id, rotated: true });
 };

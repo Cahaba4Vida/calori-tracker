@@ -2,6 +2,7 @@ const { json, getDenverDateISO } = require("./_util");
 const { requireUser } = require("./_auth");
 const { query, ensureUserProfile } = require("./_db");
 const { enforceFoodEntryLimit } = require("./_plan");
+const { maybeGrantReferralReward } = require('./_referrals');
 
 function safeNum(x) {
   if (x == null) return null;
@@ -123,6 +124,15 @@ exports.handler = async (event, context) => {
      returning id, taken_at, entry_date, calories, protein_g, carbs_g, fat_g, raw_extraction`,
     [userId, entry_date, totalCalories, totalProtein, totalCarbs, totalFat, raw_extraction]
   );
+
+  // Referral reward: only for signed-in users (prevents abuse with anonymous device ids).
+  try {
+    if (auth.user?.identity_type === 'user') {
+      await maybeGrantReferralReward(userId);
+    }
+  } catch (e) {
+    // Non-blocking.
+  }
 
   return json(200, { entry: ins.rows[0] });
 };

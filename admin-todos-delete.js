@@ -69,6 +69,7 @@ exports.handler = async (event) => {
         select weekly_active_goal, paying_users_goal,
                free_food_entries_per_day, free_ai_actions_per_day, free_history_days,
                monthly_price_usd, yearly_price_usd,
+               monthly_price_cents, yearly_price_cents,
                monthly_upgrade_url, yearly_upgrade_url, manage_subscription_url
         from app_admin_settings where singleton=true limit 1
       `),
@@ -112,8 +113,8 @@ exports.handler = async (event) => {
       free_food_entries_per_day: Number(cfg.free_food_entries_per_day || DEFAULTS.free_food_entries_per_day),
       free_ai_actions_per_day: Number(cfg.free_ai_actions_per_day || DEFAULTS.free_ai_actions_per_day),
       free_history_days: Number(cfg.free_history_days || DEFAULTS.free_history_days),
-      monthly_price_usd: Number(cfg.monthly_price_usd || DEFAULTS.monthly_price_usd),
-      yearly_price_usd: Number(cfg.yearly_price_usd || DEFAULTS.yearly_price_usd),
+      monthly_price_usd: (Number.isFinite(Number(cfg.monthly_price_cents)) ? (Number(cfg.monthly_price_cents)/100) : Number(cfg.monthly_price_usd || DEFAULTS.monthly_price_usd)),
+      yearly_price_usd: (Number.isFinite(Number(cfg.yearly_price_cents)) ? (Number(cfg.yearly_price_cents)/100) : Number(cfg.yearly_price_usd || DEFAULTS.yearly_price_usd)),
       monthly_upgrade_url: cfg.monthly_upgrade_url || DEFAULTS.monthly_upgrade_url,
       yearly_upgrade_url: cfg.yearly_upgrade_url || DEFAULTS.yearly_upgrade_url,
       manage_subscription_url: cfg.manage_subscription_url || null,

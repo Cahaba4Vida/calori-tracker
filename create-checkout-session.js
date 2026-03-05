@@ -1,49 +1,49 @@
-const { json, getDenverDateISO } = require('./_util');
-const { requireUser } = require('./_auth');
-const { ensureUserProfile, query } = require('./_db');
-const { getUserEntitlements, DEFAULTS } = require('./_plan');
+const { json, getDenverDateISO } = require("./_util");
+const { requireUser } = require("./_auth");
+const { query, ensureUserProfile } = require("./_db");
+const { getUserEntitlements, DEFAULTS } = require("./_plan");
 
 exports.handler = async (event, context) => {
-  if (event.httpMethod && event.httpMethod !== 'GET') return json(405, { error: 'Method not allowed' });
-
   const auth = await requireUser(event, context);
   if (!auth.ok) return auth.response;
   const { userId, email } = auth.user;
   await ensureUserProfile(userId, email);
 
+  const qs = event.queryStringParameters || {};
   const ent = await getUserEntitlements(userId);
-  const today = getDenverDateISO(new Date());
+  const maxDays = ent.is_premium ? 365 : (ent.limits.history_days || DEFAULTS.free_history_days);
+  const days = Math.min(maxDays, Math.max(1, Number(qs.days || 30)));
 
-  const [food, ai] = await Promise.all([
-    query(`select count(*)::int as count from food_entries where user_id=$1 and entry_date=$2`, [userId, today]),
-    query(`select count(*)::int as count from ai_usage_events where user_id=$1 and entry_date=$2`, [userId, today])
-  ]);
+  // Compute from-date in Denver time by taking today's date string and subtracting days in JS Date in UTC.
+  const today = new Date();
+  const todayISO = getDenverDateISO(today);
+  const [y,m,d] = todayISO.split("-").map(Number);
+  const anchor = new Date(Date.UTC(y, m-1, d));
+  const from = new Date(anchor.getTime() - (days-1) * 86400000);
+  const fromISO = from.toISOString().slice(0,10);
 
-  const usedFood = Number(food.rows[0]?.count || 0);
-  const usedAi = Number(ai.rows[0]?.count || 0);
-
-  return json(200, {
-    plan_tier: ent.plan_tier,
-    is_premium: ent.is_premium,
-    premium_source: ent.premium_source,
-    monthly_price_usd: ent.pricing?.monthly_price_usd || DEFAULTS.monthly_price_usd,
-    yearly_price_usd: ent.pricing?.yearly_price_usd || DEFAULTS.yearly_price_usd,
-    upgrade_links: {
-      monthly: ent.pricing?.monthly_upgrade_url || DEFAULTS.monthly_upgrade_url,
-      yearly: ent.pricing?.yearly_upgrade_url || DEFAULTS.yearly_upgrade_url,
-      manage: ent.pricing?.manage_subscription_url || null
-    },
-    limits: {
-      food_entries_per_day: ent.limits.food_entries_per_day,
-      ai_actions_per_day: ent.limits.ai_actions_per_day,
-      history_days: ent.limits.history_days,
-      can_export: !!ent.is_premium
-    },
-    usage_today: {
-      food_entries: usedFood,
-      ai_actions: usedAi,
-      food_entries_remaining: ent.is_premium ? null : Math.max(0, (ent.limits.food_entries_per_day || 0) - usedFood),
-      ai_actions_remaining: ent.is_premium ? null : Math.max(0, (ent.limits.ai_actions_per_day || 0) - usedAi)
+  let r;
+  try {
+    r = await query(
+      `select entry_date::text as entry_date, weight_lbs::float8 as weight_lbs, body_fat_percent::float8 as body_fat_percent
+       from daily_weights
+       where user_id=$1 and entry_date between $2 and $3
+       order by entry_date asc`,
+      [userId, fromISO, todayISO]
+    );
+  } catch (e) {
+    if (e && e.code === '42703') {
+      r = await query(
+        `select entry_date::text as entry_date, weight_lbs::float8 as weight_lbs
+         from daily_weights
+         where user_id=$1 and entry_date between $2 and $3
+         order by entry_date asc`,
+        [userId, fromISO, todayISO]
+      );
+    } else {
+      throw e;
     }
-  });
+  }
+
+  return json(200, { weights: r.rows });
 };

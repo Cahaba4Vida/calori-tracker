@@ -1,80 +1,53 @@
-const { json, getDenverDateISO } = require('./_util');
-const { requireUser } = require('./_auth');
-const { query, ensureUserProfile } = require('./_db');
+const { json } = require('./_util');
+const { requireAdmin } = require('./_adminAuth');
+const { query } = require('./_db');
 
-function weekStartISO(denverISO) {
-  const [y, m, d] = denverISO.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  const dow = dt.getUTCDay();
-  const offsetToMon = (dow + 6) % 7;
-  dt.setUTCDate(dt.getUTCDate() - offsetToMon);
-  return dt.toISOString().slice(0, 10);
-}
+exports.handler = async (event) => {
+  if (event.httpMethod && event.httpMethod !== 'GET') return json(405, { error: 'Method not allowed' });
+  const auth = await requireAdmin(event);
+  if (auth) return auth;
 
-exports.handler = async (event, context) => {
-  if (event.httpMethod && event.httpMethod !== 'POST') {
-    return json(405, { error: 'Method not allowed' });
-  }
-
-  const auth = await requireUser(event, context);
-  if (!auth.ok) return auth.response;
-  const { userId, email } = auth.user;
-  await ensureUserProfile(userId, email);
-
-  let body;
-  try { body = JSON.parse(event.body || '{}'); } catch { body = {}; }
-
-  if (typeof body.accept !== 'boolean') return json(400, { error: 'accept must be boolean' });
-
-  const todayISO = getDenverDateISO(new Date());
-  const thisWeek = weekStartISO(todayISO);
-
-  // Mark reviewed regardless (best-effort; column may not exist yet)
-  let reviewPersisted = true;
+  // Admin overview: per-ambassador totals and active MRR equivalent.
   try {
-    await query('update user_profiles set autopilot_last_review_week = $2 where user_id=$1', [userId, thisWeek]);
-  } catch (e) {
-    reviewPersisted = false;
-  }
-
-  if (!body.accept) {
-    return json(200, { ok: true, applied: false, week_start: thisWeek, review_persisted: reviewPersisted });
-  }
-
-  // Recompute suggestion server-side by calling the logic in autopilot-weekly-suggest (inline minimal)
-  // To avoid circular requires, we do a simple fetch from DB again: use the same computation in the suggest endpoint.
-  // Easiest: call the suggest endpoint via internal logic is not available; so we require the client to pass suggested_daily_calories,
-  // but clamp it to a safe range and max-step from current goal.
-  const suggested = Number(body.suggested_daily_calories);
-  if (!Number.isFinite(suggested) || suggested < 800 || suggested > 6000) {
-    return json(400, { error: 'suggested_daily_calories must be a reasonable number' });
-  }
-
-  try {
-  const gr = await query('select daily_calories from calorie_goals where user_id=$1', [userId]);
-  const currentGoal = gr.rows[0]?.daily_calories == null ? null : Number(gr.rows[0].daily_calories);
-  if (!Number.isFinite(currentGoal) || currentGoal <= 0) return json(400, { error: 'No current calorie goal to update' });
-
-  const maxStep = 150;
-  const delta = Math.max(-maxStep, Math.min(maxStep, suggested - currentGoal));
-  const appliedGoal = Math.round((currentGoal + delta) / 10) * 10;
-
-  // Upsert calorie goal (supports either schema)
-  try {
-    await query(
-      `insert into calorie_goals(user_id, daily_calories, updated_at)
-       values ($1, $2, now())
-       on conflict (user_id) do update set daily_calories=excluded.daily_calories, updated_at=now()`,
-      [userId, appliedGoal]
+    const r = await query(
+      `
+      select
+        a.id as ambassador_id,
+        a.email,
+        a.currency,
+        a.monthly_price_cents,
+        a.yearly_price_cents,
+        count(ar.*) as referred_count,
+        count(ar.*) filter (where ar.status='paid') as paid_count,
+        coalesce(sum(ar.price_paid_cents) filter (where ar.status='paid'), 0) as total_first_payment_cents,
+        coalesce(sum(
+          case
+            when ar.stripe_subscription_status in ('active','trialing') then
+              case when ar.ambassador_interval='year' then (ar.price_paid_cents::numeric / 12.0) else ar.price_paid_cents::numeric end
+            else 0
+          end
+        ), 0) as active_mrr_equiv_cents
+      from admin_ambassadors a
+      left join ambassador_referrals ar on ar.ambassador_id = a.id
+      group by a.id, a.email, a.currency, a.monthly_price_cents, a.yearly_price_cents
+      order by lower(a.email) asc
+      `
     );
-  } catch (e) {
-    // fallback: some DBs store goal on user_profiles
-    await query('update user_profiles set daily_calories=$2 where user_id=$1', [userId, appliedGoal]);
-  }
 
-  return json(200, { ok: true, applied: true, week_start: thisWeek, applied_daily_calories: appliedGoal, review_persisted: reviewPersisted });
-  } catch (e) {
-    return json(500, { error: 'Failed to apply autopilot update', detail: String(e && e.message || e) });
-  }
+    const rows = (r.rows || []).map(x => ({
+      ambassador_id: Number(x.ambassador_id),
+      email: x.email,
+      currency: (x.currency || 'usd'),
+      referred_count: Number(x.referred_count || 0),
+      paid_count: Number(x.paid_count || 0),
+      total_first_payment_cents: Math.round(Number(x.total_first_payment_cents || 0)),
+      active_mrr_equiv_cents: Math.round(Number(x.active_mrr_equiv_cents || 0)),
+      monthly_price_cents: x.monthly_price_cents != null ? Number(x.monthly_price_cents) : null,
+      yearly_price_cents: x.yearly_price_cents != null ? Number(x.yearly_price_cents) : null,
+    }));
 
+    return json(200, { ok: true, ambassadors: rows });
+  } catch (e) {
+    return json(500, { error: 'Could not load ambassador stats' });
+  }
 };

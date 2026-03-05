@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { json } = require("./_util");
-const { ensureUserProfile, ensureDeviceIdentity, linkDeviceToUser, resolveUserIdByDevice, query } = require('./_db');
+const { ensureUserProfile, ensureDeviceIdentity, linkDeviceToUser, resolveUserIdByDevice, attachDeviceSubscriptionToUser, query } = require('./_db');
 
 async function stripeGet(pathname) {
   const secret = process.env.STRIPE_SECRET_KEY;
@@ -129,6 +129,9 @@ async function requireUser(event, context) {
     if (deviceId) {
       await ensureDeviceIdentity(deviceId);
       await linkDeviceToUser(deviceId, userId);
+
+    // If checkout happened before signup, attach subscription recorded for this device.
+    try { await attachDeviceSubscriptionToUser({ userId, deviceId }); } catch (e) {}
     }
 
     return { ok: true, user: { userId, email, claims: user, identity_type: 'user', device_id: deviceId || null } };
@@ -166,6 +169,9 @@ async function requireSignedUser(event, context) {
   if (deviceId) {
     await ensureDeviceIdentity(deviceId);
     await linkDeviceToUser(deviceId, userId);
+
+    // If checkout happened before signup, attach subscription recorded for this device.
+    try { await attachDeviceSubscriptionToUser({ userId, deviceId }); } catch (e) {}
   }
 
   return { ok: true, user: { userId, email, claims: user, identity_type: 'user', device_id: deviceId || null } };
