@@ -1381,13 +1381,25 @@ function _renderOnboardingV2() {
     };
 
     actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
-    actions.appendChild(_onbBtn('Start 7-Day Free Trial', { kind: 'primary', onClick: () => {
-      // Use existing billing controller. If not configured, fall back to finishing onboarding.
-      try {
-        if (billingController) billingController.startUpgradeCheckout('monthly');
-        else finish();
-      } catch (_) { finish(); }
-    }}));
+    actions.appendChild(_onbBtn(currentUser ? 'Start 7-Day Free Trial' : 'Create account & Start 7-Day Trial', {
+      kind: 'primary',
+      onClick: () => {
+        // If not signed in yet, collect identity first then automatically continue into checkout.
+        if (!currentUser) {
+          try {
+            localStorage.setItem('pending_checkout_plan', 'monthly');
+            localStorage.setItem('pending_onb_step', String(onboardingV2Step));
+          } catch (_) {}
+          openIdentityModal('signup');
+          return;
+        }
+        // Use existing billing controller. If not configured, fall back to finishing onboarding.
+        try {
+          if (billingController) billingController.startUpgradeCheckout('monthly');
+          else finish();
+        } catch (_) { finish(); }
+      }
+    }));
     const free = document.createElement('button');
     free.className = 'linkMiniBtn';
     free.type = 'button';
@@ -3573,12 +3585,22 @@ if (typeof netlifyIdentity !== 'undefined') {
   showApp(true);
   setFeedbackOverlay(false, null);
 
-  // Skip onboarding after a paid user logs in.
+  // If the user just signed up/logged in as part of an upgrade flow,
+  // automatically continue into checkout.
+  let pendingPlan = null;
+  try { pendingPlan = localStorage.getItem('pending_checkout_plan'); } catch (_) {}
+
   initAuthedSession({ skipOnboarding: true })
     .then(() => claimPendingReferralIfSignedIn())
+    .then(() => {
+      if (pendingPlan && billingController && typeof billingController.startUpgradeCheckout === 'function') {
+        try { localStorage.removeItem('pending_checkout_plan'); localStorage.removeItem('pending_onb_step'); } catch (_) {}
+        billingController.startUpgradeCheckout(pendingPlan);
+      }
+    })
     .catch(e => setStatus(e.message));
 
-  try { netlifyIdentity.close(); } catch {}
+  try { netlifyIdentity.close(); } catch (_) {}
   setStatus('Logged in.');
 });
   netlifyIdentity.on('logout', () => {
