@@ -1558,7 +1558,7 @@ function _renderOnboardingV2() {
           </ul>
         </div>
       </div>
-      <div style="margin-top:12px;font-weight:900;">$4.99 / month <span class="muted" style="font-weight:700;">or</span> $39 / year <span class="muted" style="font-weight:700;">(Save 35%)</span></div>
+      <div style="margin-top:12px;font-weight:900;">$5 / month <span class="muted" style="font-weight:700;">or</span> $49.99 / year <span class="muted" style="font-weight:700;">(Save 35%)</span></div>
     `;
     body.appendChild(pw);
 
