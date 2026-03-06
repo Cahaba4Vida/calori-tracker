@@ -3695,10 +3695,25 @@ function hideAllBlockingOverlays() {
 
 
 
-async function completePendingFreePlanSignup() {
+function shouldRunPendingFreePlanSignupRestore() {
   try {
     if (!localStorage.getItem(ONBOARDING_FREE_PLAN_SIGNUP_KEY)) return false;
     if (!currentUser) return false;
+    const snapshot = localStorage.getItem(ONBOARDING_FREE_PLAN_SNAPSHOT_KEY);
+    if (!snapshot) {
+      localStorage.removeItem(ONBOARDING_FREE_PLAN_SIGNUP_KEY);
+      return false;
+    }
+    const onboardingVisible = !el('onboardingOverlay')?.classList.contains('hidden');
+    return !onboardingVisible;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function completePendingFreePlanSignup() {
+  try {
+    if (!shouldRunPendingFreePlanSignupRestore()) return false;
     let replayed = false;
     try {
       replayed = await replayPendingFreePlanSnapshot();
