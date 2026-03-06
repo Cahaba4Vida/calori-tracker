@@ -1276,6 +1276,7 @@ function _renderOnboardingV2() {
     wrap.appendChild(field('Height (inches)', 'onbHeight', 'number', 'e.g., 70'));
     wrap.appendChild(field(`Current Weight (${unitSuffix()})`, 'onbCurW', 'number', 'e.g., 180'));
     wrap.appendChild(field(`Target Weight (${unitSuffix()})`, 'onbGoalW', 'number', 'e.g., 165'));
+    wrap.appendChild(field('Goal Date', 'onbGoalDate', 'date'));
 
     const activityField = document.createElement('div');
     activityField.className = 'field';
@@ -1300,6 +1301,13 @@ function _renderOnboardingV2() {
       const h = el('onbHeight'); if (h && onboardingV2State.height_in != null) h.value = String(onboardingV2State.height_in);
       const cw = el('onbCurW'); if (cw && onboardingV2State.current_weight_lbs != null) cw.value = weightUnit === 'kg' ? String(lbsToKg(onboardingV2State.current_weight_lbs).toFixed(1)) : String(onboardingV2State.current_weight_lbs);
       const gw = el('onbGoalW'); if (gw && onboardingV2State.target_weight_lbs != null) gw.value = weightUnit === 'kg' ? String(lbsToKg(onboardingV2State.target_weight_lbs).toFixed(1)) : String(onboardingV2State.target_weight_lbs);
+      const gd = el('onbGoalDate');
+      if (gd) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        gd.min = tomorrow.toISOString().slice(0,10);
+        gd.value = onboardingV2State.goal_date ? String(onboardingV2State.goal_date) : gd.min;
+      }
       const al = el('onbActivity'); if (al) al.value = onboardingV2State.activity_level || 'moderate';
     }, 0);
 
@@ -1308,26 +1316,30 @@ function _renderOnboardingV2() {
       const height = Number(el('onbHeight')?.value);
       const cur = Number(el('onbCurW')?.value);
       const goal = Number(el('onbGoalW')?.value);
+      const rawGoalDate = String(el('onbGoalDate')?.value || '').trim();
       const activity = String(el('onbActivity')?.value || 'moderate');
 
       if (!Number.isFinite(age) || age < 10 || age > 120) { setStatus('Enter a valid age.'); return; }
       if (!Number.isFinite(height) || height < 36 || height > 96) { setStatus('Enter height in inches (e.g., 70).'); return; }
       if (!Number.isFinite(cur) || cur <= 0) { setStatus('Enter a valid current weight.'); return; }
       if (!Number.isFinite(goal) || goal <= 0) { setStatus('Enter a valid target weight.'); return; }
+      if (!rawGoalDate || !/^\d{4}-\d{2}-\d{2}$/.test(rawGoalDate)) { setStatus('Choose a valid goal date.'); return; }
+      const goalDateTs = Date.parse(rawGoalDate + 'T00:00:00');
+      if (!Number.isFinite(goalDateTs)) { setStatus('Choose a valid goal date.'); return; }
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      if (goalDateTs <= today.getTime()) { setStatus('Goal date must be in the future.'); return; }
 
       const curLbs = weightUnit === 'kg' ? kgToLbs(cur) : cur;
       const goalLbs = weightUnit === 'kg' ? kgToLbs(goal) : goal;
+      const goalDate = rawGoalDate;
 
       onboardingV2State.age_years = Math.round(age);
       onboardingV2State.height_in = Math.round(height);
       onboardingV2State.current_weight_lbs = curLbs;
       onboardingV2State.target_weight_lbs = goalLbs;
       onboardingV2State.activity_level = activity;
-
-      // Default goal date: 8 weeks from today (keeps plan generation deterministic).
-      const dt = new Date();
-      dt.setDate(dt.getDate() + 56);
-      const goalDate = dt.toISOString().slice(0,10);
+      onboardingV2State.goal_date = goalDate;
 
       setOnbV2Loading(true, 'Generating your plan…');
       setStatus('Creating your plan…');
