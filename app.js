@@ -516,10 +516,10 @@ function _numOrNull(v) {
 
 function buildPendingFreePlanSnapshot() {
   const snapshot = {};
-  const domDaily = _numOrNull((el('aiSuggestedCalories')?.innerText || '').replace(/[^0-9.-]/g, ''));
+  const acceptedDaily = _numOrNull(localStorage.getItem('accepted_daily_calories'));
   const daily = _numOrNull((typeof aiGoalSuggestion !== 'undefined' && aiGoalSuggestion && aiGoalSuggestion.daily_calories != null)
     ? aiGoalSuggestion.daily_calories
-    : (localStorage.getItem('calorie_goal_base') || localStorage.getItem('calorie_goal') || localStorage.getItem('daily_calories') || domDaily));
+    : (acceptedDaily != null ? acceptedDaily : (localStorage.getItem('calorie_goal_base') || localStorage.getItem('calorie_goal') || localStorage.getItem('daily_calories'))));
   if (daily != null && daily >= 0) {
     snapshot.daily_calories = Math.round(daily);
     snapshot.accepted_daily_calories = Math.round(daily);
@@ -528,8 +528,7 @@ function buildPendingFreePlanSnapshot() {
   const sources = [
     (typeof profileState !== 'undefined' && profileState) ? profileState : null,
     (typeof onboardingV2State !== 'undefined' && onboardingV2State) ? onboardingV2State : null,
-    (typeof aiGoalSuggestion !== 'undefined' && aiGoalSuggestion) ? aiGoalSuggestion : null,
-    snapshot
+    (typeof aiGoalSuggestion !== 'undefined' && aiGoalSuggestion) ? aiGoalSuggestion : null
   ].filter(Boolean);
 
   const firstPresent = (...keys) => {
@@ -589,24 +588,25 @@ async function replayPendingFreePlanSnapshot() {
   if (!snapshot || typeof snapshot !== 'object') return false;
 
   const daily = _numOrNull(
-    Object.prototype.hasOwnProperty.call(snapshot, 'daily_calories')
-      ? snapshot.daily_calories
-      : (Object.prototype.hasOwnProperty.call(snapshot, 'accepted_daily_calories')
-          ? snapshot.accepted_daily_calories
-          : (localStorage.getItem('calorie_goal_base') || localStorage.getItem('calorie_goal') || localStorage.getItem('daily_calories')))
+    Object.prototype.hasOwnProperty.call(snapshot, 'accepted_daily_calories')
+      ? snapshot.accepted_daily_calories
+      : (Object.prototype.hasOwnProperty.call(snapshot, 'daily_calories')
+          ? snapshot.daily_calories
+          : localStorage.getItem('accepted_daily_calories'))
   );
   if (daily != null) {
     try {
-      const roundedDaily = Math.round(Number(daily));
+      const safeDaily = Math.round(Number(daily));
       await api('goal-set', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ daily_calories: roundedDaily })
+        body: JSON.stringify({ daily_calories: safeDaily })
       });
       try {
-        localStorage.setItem('calorie_goal_base', String(roundedDaily));
-        localStorage.setItem('calorie_goal', String(roundedDaily));
-        localStorage.setItem('daily_calories', String(roundedDaily));
+        localStorage.setItem('accepted_daily_calories', String(safeDaily));
+        localStorage.setItem('calorie_goal_base', String(safeDaily));
+        localStorage.setItem('calorie_goal', String(safeDaily));
+        localStorage.setItem('daily_calories', String(safeDaily));
       } catch (_) {}
     } catch (_) {}
   }
@@ -614,7 +614,7 @@ async function replayPendingFreePlanSnapshot() {
   const safeProfilePayload = { onboarding_completed: true };
   [
     'macro_protein_g','macro_carbs_g','macro_fat_g',
-    'goal_weight_lbs','activity_level','goal_mode'
+    'goal_weight_lbs','activity_level','goal_date','goal_mode'
   ].forEach((key) => {
     if (Object.prototype.hasOwnProperty.call(snapshot, key) && snapshot[key] != null && snapshot[key] !== '') {
       safeProfilePayload[key] = snapshot[key];
@@ -1391,6 +1391,15 @@ function _renderOnboardingV2() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ daily_calories: suggestion.daily_calories })
         });
+        try {
+          const __acceptedDaily = Math.round(Number(suggestion.daily_calories) || 0);
+          if (__acceptedDaily >= 0) {
+            localStorage.setItem('accepted_daily_calories', String(__acceptedDaily));
+            localStorage.setItem('calorie_goal_base', String(__acceptedDaily));
+            localStorage.setItem('calorie_goal', String(__acceptedDaily));
+            localStorage.setItem('daily_calories', String(__acceptedDaily));
+          }
+        } catch (_) {}
         await api('profile-set', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2504,6 +2513,15 @@ async function acceptAiPlan() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ daily_calories: aiGoalSuggestion.daily_calories })
   });
+  try {
+    const __acceptedDaily = Math.round(Number(aiGoalSuggestion.daily_calories) || 0);
+    if (__acceptedDaily >= 0) {
+      localStorage.setItem('accepted_daily_calories', String(__acceptedDaily));
+      localStorage.setItem('calorie_goal_base', String(__acceptedDaily));
+      localStorage.setItem('calorie_goal', String(__acceptedDaily));
+      localStorage.setItem('daily_calories', String(__acceptedDaily));
+    }
+  } catch (_) {}
 
   const payload = {
     macro_protein_g: aiGoalSuggestion.protein_g,
