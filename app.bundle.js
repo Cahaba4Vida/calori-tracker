@@ -783,15 +783,20 @@ function _numOrNull(v) {
 
 function buildPendingFreePlanSnapshot() {
   const snapshot = {};
+  const domDaily = _numOrNull((el('aiSuggestedCalories')?.innerText || '').replace(/[^0-9.-]/g, ''));
   const daily = _numOrNull((typeof aiGoalSuggestion !== 'undefined' && aiGoalSuggestion && aiGoalSuggestion.daily_calories != null)
     ? aiGoalSuggestion.daily_calories
-    : (localStorage.getItem('calorie_goal_base') || localStorage.getItem('calorie_goal') || localStorage.getItem('daily_calories')));
-  if (daily != null && daily >= 0) snapshot.daily_calories = Math.round(daily);
+    : (localStorage.getItem('calorie_goal_base') || localStorage.getItem('calorie_goal') || localStorage.getItem('daily_calories') || domDaily));
+  if (daily != null && daily >= 0) {
+    snapshot.daily_calories = Math.round(daily);
+    snapshot.accepted_daily_calories = Math.round(daily);
+  }
 
   const sources = [
     (typeof profileState !== 'undefined' && profileState) ? profileState : null,
     (typeof onboardingV2State !== 'undefined' && onboardingV2State) ? onboardingV2State : null,
-    (typeof aiGoalSuggestion !== 'undefined' && aiGoalSuggestion) ? aiGoalSuggestion : null
+    (typeof aiGoalSuggestion !== 'undefined' && aiGoalSuggestion) ? aiGoalSuggestion : null,
+    snapshot
   ].filter(Boolean);
 
   const firstPresent = (...keys) => {
@@ -853,22 +858,30 @@ async function replayPendingFreePlanSnapshot() {
   const daily = _numOrNull(
     Object.prototype.hasOwnProperty.call(snapshot, 'daily_calories')
       ? snapshot.daily_calories
-      : (localStorage.getItem('calorie_goal_base') || localStorage.getItem('calorie_goal') || localStorage.getItem('daily_calories'))
+      : (Object.prototype.hasOwnProperty.call(snapshot, 'accepted_daily_calories')
+          ? snapshot.accepted_daily_calories
+          : (localStorage.getItem('calorie_goal_base') || localStorage.getItem('calorie_goal') || localStorage.getItem('daily_calories')))
   );
   if (daily != null) {
     try {
+      const roundedDaily = Math.round(Number(daily));
       await api('goal-set', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ daily_calories: Math.round(Number(daily)) })
+        body: JSON.stringify({ daily_calories: roundedDaily })
       });
+      try {
+        localStorage.setItem('calorie_goal_base', String(roundedDaily));
+        localStorage.setItem('calorie_goal', String(roundedDaily));
+        localStorage.setItem('daily_calories', String(roundedDaily));
+      } catch (_) {}
     } catch (_) {}
   }
 
   const safeProfilePayload = { onboarding_completed: true };
   [
     'macro_protein_g','macro_carbs_g','macro_fat_g',
-    'goal_weight_lbs','activity_level','goal_date','goal_mode'
+    'goal_weight_lbs','activity_level','goal_mode'
   ].forEach((key) => {
     if (Object.prototype.hasOwnProperty.call(snapshot, key) && snapshot[key] != null && snapshot[key] !== '') {
       safeProfilePayload[key] = snapshot[key];
