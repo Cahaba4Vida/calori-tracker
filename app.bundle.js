@@ -16,6 +16,30 @@ window.startTrial = async function(interval="month"){
 
 // --- iOS Safari audio unlock + playback helpers (prevents autoplay blocking) ---
 let __audioUnlocked = false;
+let __coachAudioEl = null;
+
+function normalizeAudioMime(mime) {
+  const m = String(mime || '').toLowerCase();
+  if (!m) return 'audio/mpeg';
+  if (m === 'audio/mp3') return 'audio/mpeg';
+  return m;
+}
+
+function ensureCoachAudioElement() {
+  if (__coachAudioEl) return __coachAudioEl;
+  const audio = document.createElement('audio');
+  try {
+    audio.preload = 'auto';
+    audio.playsInline = true;
+    audio.setAttribute('playsinline', '');
+    audio.setAttribute('webkit-playsinline', '');
+  } catch (e) {}
+  audio.style.display = 'none';
+  document.body.appendChild(audio);
+  __coachAudioEl = audio;
+  return audio;
+}
+
 function unlockAudioOnce() {
   if (__audioUnlocked) return;
   __audioUnlocked = true;
@@ -34,36 +58,59 @@ function unlockAudioOnce() {
       osc.stop(ctx.currentTime + 0.01);
     }
   } catch (e) {}
+  // Prime a persistent <audio> element while we still have a user gesture.
+  try {
+    const audio = ensureCoachAudioElement();
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.catch === 'function') playPromise.catch(() => {});
+    try { audio.pause(); } catch (e) {}
+    try { audio.removeAttribute('src'); audio.load(); } catch (e) {}
+  } catch (e) {}
 }
 
 function base64ToBlobUrl(b64, mime) {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  const blob = new Blob([bytes], { type: mime || 'audio/mpeg' });
+  const blob = new Blob([bytes], { type: normalizeAudioMime(mime) });
   return URL.createObjectURL(blob);
 }
 
 async function playAssistantAudio(j) {
   if (j && j.audio_base64) {
+    let url = null;
     try {
-      const url = base64ToBlobUrl(j.audio_base64, j.audio_mime_type || 'audio/mpeg');
-      const audio = new Audio(url);
-      try { audio.playsInline = true; audio.setAttribute('playsinline',''); audio.preload = 'auto'; } catch (e) {}
-      audio.addEventListener('ended', () => URL.revokeObjectURL(url));
-      audio.addEventListener('error', () => URL.revokeObjectURL(url));
+      url = base64ToBlobUrl(j.audio_base64, j.audio_mime_type || 'audio/mpeg');
+      const audio = ensureCoachAudioElement();
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+      } catch (e) {}
+      audio.src = url;
+      audio.load();
       await audio.play();
-      return;
+      const cleanup = () => {
+        if (url) URL.revokeObjectURL(url);
+        url = null;
+      };
+      audio.onended = cleanup;
+      audio.onerror = cleanup;
+      return true;
     } catch (e) {
-      // fall through to TTS
+      if (url) {
+        try { URL.revokeObjectURL(url); } catch (_) {}
+      }
+      // fall through to speech synthesis
     }
   }
   if (j && j.reply && 'speechSynthesis' in window) {
     try {
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(new SpeechSynthesisUtterance(j.reply));
+      return true;
     } catch (e) {}
   }
+  return false;
 }
 // --- end iOS helpers ---
 
@@ -3252,7 +3299,7 @@ async function sendChat(opts) {
 
     // If voice mode is enabled OR audio is returned, play it.
     if (from_voice && j.audio_base64 && typeof playAssistantAudio === 'function') {
-      playAssistantAudio({ audio_base64: j.audio_base64, audio_mime_type: (j.audio_mime_type || 'audio/mp3'), reply: j.reply });
+      await playAssistantAudio({ audio_base64: j.audio_base64, audio_mime_type: (j.audio_mime_type || 'audio/mpeg'), reply: j.reply });
     }
 
     // Clear typed input after send so we never re-send stale text.

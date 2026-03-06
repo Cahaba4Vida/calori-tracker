@@ -186,6 +186,6 @@ exports.handler = async (event, context) => {
     thread_id: threadId,
     reply,
     audio_base64,
-    audio_mime_type: audio_base64 ? "audio/mp3" : null
+    audio_mime_type: audio_base64 ? "audio/mpeg" : null
   });
 };
