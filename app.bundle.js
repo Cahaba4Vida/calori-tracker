@@ -1,3 +1,17 @@
+
+window.startTrial = async function(interval="month"){
+  const deviceId = localStorage.getItem("device_id") || (crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+  localStorage.setItem("device_id", deviceId);
+  const res = await fetch("/.netlify/functions/create-checkout-session-public",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({device_id:deviceId, interval})
+  });
+  const data = await res.json().catch(()=>({}));
+  if(data && data.url){ window.location.href=data.url; return; }
+  alert(data.error || "Could not start checkout.");
+};
+
 (function initAppBilling(global) {
 
 // --- iOS Safari audio unlock + playback helpers (prevents autoplay blocking) ---
