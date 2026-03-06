@@ -583,33 +583,50 @@ async function replayPendingFreePlanSnapshot() {
   try { snapshot = JSON.parse(raw || '{}'); } catch (_) { snapshot = null; }
   if (!snapshot || typeof snapshot !== 'object') return false;
 
-  if (_numOrNull(snapshot.daily_calories) != null) {
-    await api('goal-set', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ daily_calories: Math.round(Number(snapshot.daily_calories)) })
-    });
+  const daily = _numOrNull(
+    Object.prototype.hasOwnProperty.call(snapshot, 'daily_calories')
+      ? snapshot.daily_calories
+      : (localStorage.getItem('calorie_goal_base') || localStorage.getItem('calorie_goal') || localStorage.getItem('daily_calories'))
+  );
+  if (daily != null) {
+    try {
+      await api('goal-set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ daily_calories: Math.round(Number(daily)) })
+      });
+    } catch (_) {}
   }
 
-  const profilePayload = {};
+  const safeProfilePayload = { onboarding_completed: true };
   [
-    'macro_protein_g','macro_carbs_g','macro_fat_g','goal_weight_lbs','activity_level','goal_date',
-    'goal_mode','age_years','height_in','current_weight_lbs','target_weight_lbs',
-    'tracking_experience','heard_about','previous_app',
-    'goal_body_fat_percent','goal_body_fat_date','current_body_fat_percent','current_body_fat_weight_lbs',
-    'onboarding_completed'
+    'macro_protein_g','macro_carbs_g','macro_fat_g',
+    'goal_weight_lbs','activity_level','goal_date','goal_mode'
   ].forEach((key) => {
     if (Object.prototype.hasOwnProperty.call(snapshot, key) && snapshot[key] != null && snapshot[key] !== '') {
-      profilePayload[key] = snapshot[key];
+      safeProfilePayload[key] = snapshot[key];
     }
   });
-  if (!Object.prototype.hasOwnProperty.call(profilePayload, 'onboarding_completed')) profilePayload.onboarding_completed = true;
 
-  await api('profile-set', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(profilePayload)
-  });
+  try {
+    await api('profile-set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(safeProfilePayload)
+    });
+  } catch (_) {
+    const minimalProfilePayload = { onboarding_completed: true };
+    ['macro_protein_g','macro_carbs_g','macro_fat_g'].forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(snapshot, key) && snapshot[key] != null && snapshot[key] !== '') {
+        minimalProfilePayload[key] = snapshot[key];
+      }
+    });
+    await api('profile-set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(minimalProfilePayload)
+    });
+  }
   return true;
 }
 let activeAddFoodPanel = null;
