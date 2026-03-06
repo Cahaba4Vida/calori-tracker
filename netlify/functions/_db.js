@@ -235,6 +235,101 @@ async function attachDeviceSubscriptionToUser({ userId, deviceId }) {
   return { attached: true };
 }
 
+async function migrateAnonymousProfileToUser({ deviceId, userId, email }) {
+  if (!deviceId || !userId) return { migrated: false, reason: 'missing_ids' };
+  const deviceScopedUserId = `device_${require('crypto').createHash('sha256').update(String(deviceId)).digest('hex').slice(0, 40)}`;
+  if (deviceScopedUserId === String(userId)) return { migrated: false, reason: 'same_user' };
+
+  const srcProfile = await query(`select user_id from user_profiles where user_id = $1 limit 1`, [deviceScopedUserId]);
+  if (!srcProfile.rows[0]) return { migrated: false, reason: 'no_device_profile' };
+
+  let profileMigrated = false;
+  try {
+    const r = await query(
+      `update user_profiles as dst
+          set email = coalesce(dst.email, $3),
+              onboarding_completed = (coalesce(dst.onboarding_completed, false) or coalesce(src.onboarding_completed, false)),
+              macro_protein_g = coalesce(dst.macro_protein_g, src.macro_protein_g),
+              macro_carbs_g = coalesce(dst.macro_carbs_g, src.macro_carbs_g),
+              macro_fat_g = coalesce(dst.macro_fat_g, src.macro_fat_g),
+              goal_weight_lbs = coalesce(dst.goal_weight_lbs, src.goal_weight_lbs),
+              activity_level = coalesce(dst.activity_level, src.activity_level),
+              goal_date = coalesce(dst.goal_date, src.goal_date),
+              goal_mode = coalesce(dst.goal_mode, src.goal_mode),
+              age_years = coalesce(dst.age_years, src.age_years),
+              height_in = coalesce(dst.height_in, src.height_in),
+              current_weight_lbs = coalesce(dst.current_weight_lbs, src.current_weight_lbs),
+              target_weight_lbs = coalesce(dst.target_weight_lbs, src.target_weight_lbs),
+              tracking_experience = coalesce(dst.tracking_experience, src.tracking_experience),
+              heard_about = coalesce(dst.heard_about, src.heard_about),
+              previous_app = coalesce(dst.previous_app, src.previous_app),
+              goal_body_fat_percent = coalesce(dst.goal_body_fat_percent, src.goal_body_fat_percent),
+              goal_body_fat_date = coalesce(dst.goal_body_fat_date, src.goal_body_fat_date),
+              current_body_fat_percent = coalesce(dst.current_body_fat_percent, src.current_body_fat_percent),
+              current_body_fat_weight_lbs = coalesce(dst.current_body_fat_weight_lbs, src.current_body_fat_weight_lbs),
+              autopilot_enabled = case
+                when dst.autopilot_enabled is true then true
+                when src.autopilot_enabled is true then true
+                else coalesce(dst.autopilot_enabled, src.autopilot_enabled)
+              end,
+              autopilot_mode = coalesce(dst.autopilot_mode, src.autopilot_mode),
+              autopilot_last_review_week = coalesce(dst.autopilot_last_review_week, src.autopilot_last_review_week),
+              rollover_enabled = case
+                when dst.rollover_enabled is true then true
+                when src.rollover_enabled is true then true
+                else coalesce(dst.rollover_enabled, src.rollover_enabled)
+              end,
+              rollover_cap = coalesce(dst.rollover_cap, src.rollover_cap),
+              quick_fills = case
+                when dst.quick_fills is null or dst.quick_fills = '[]'::jsonb then src.quick_fills
+                else dst.quick_fills
+              end,
+              updated_at = now()
+         from user_profiles as src
+        where dst.user_id = $1
+          and src.user_id = $2`,
+      [userId, deviceScopedUserId, email || null]
+    );
+    profileMigrated = r.rowCount > 0;
+  } catch (e) {
+    if (!(e && e.code === '42703')) throw e;
+    const r = await query(
+      `update user_profiles as dst
+          set email = coalesce(dst.email, $3),
+              onboarding_completed = (coalesce(dst.onboarding_completed, false) or coalesce(src.onboarding_completed, false)),
+              macro_protein_g = coalesce(dst.macro_protein_g, src.macro_protein_g),
+              macro_carbs_g = coalesce(dst.macro_carbs_g, src.macro_carbs_g),
+              macro_fat_g = coalesce(dst.macro_fat_g, src.macro_fat_g),
+              goal_weight_lbs = coalesce(dst.goal_weight_lbs, src.goal_weight_lbs),
+              activity_level = coalesce(dst.activity_level, src.activity_level),
+              goal_date = coalesce(dst.goal_date, src.goal_date),
+              updated_at = now()
+         from user_profiles as src
+        where dst.user_id = $1
+          and src.user_id = $2`,
+      [userId, deviceScopedUserId, email || null]
+    );
+    profileMigrated = r.rowCount > 0;
+  }
+
+  let calorieGoalMigrated = false;
+  try {
+    const r = await query(
+      `insert into calorie_goals(user_id, daily_calories, updated_at)
+       select $1, src.daily_calories, now()
+         from calorie_goals src
+        where src.user_id = $2
+          and not exists (select 1 from calorie_goals dst where dst.user_id = $1)`,
+      [userId, deviceScopedUserId]
+    );
+    calorieGoalMigrated = r.rowCount > 0;
+  } catch (e) {
+    // ignore if calorie_goals table is unavailable for any reason
+  }
+
+  return { migrated: profileMigrated || calorieGoalMigrated, profileMigrated, calorieGoalMigrated, deviceScopedUserId };
+}
+
 
 module.exports = {
   query,
@@ -247,5 +342,6 @@ module.exports = {
   deleteUserDeviceLink,
   upsertDeviceSubscription,
   getDeviceSubscription,
-  attachDeviceSubscriptionToUser
+  attachDeviceSubscriptionToUser,
+  migrateAnonymousProfileToUser
 };

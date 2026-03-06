@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { json } = require("./_util");
-const { ensureUserProfile, ensureDeviceIdentity, linkDeviceToUser, resolveUserIdByDevice, attachDeviceSubscriptionToUser, query } = require('./_db');
+const { ensureUserProfile, ensureDeviceIdentity, linkDeviceToUser, resolveUserIdByDevice, attachDeviceSubscriptionToUser, migrateAnonymousProfileToUser, query } = require('./_db');
 
 async function stripeGet(pathname) {
   const secret = process.env.STRIPE_SECRET_KEY;
@@ -128,10 +128,14 @@ async function requireUser(event, context) {
     }
     if (deviceId) {
       await ensureDeviceIdentity(deviceId);
+
+      // Preserve onboarding/profile data created before signup on this device.
+      try { await migrateAnonymousProfileToUser({ deviceId, userId, email }); } catch (e) {}
+
       await linkDeviceToUser(deviceId, userId);
 
-    // If checkout happened before signup, attach subscription recorded for this device.
-    try { await attachDeviceSubscriptionToUser({ userId, deviceId }); } catch (e) {}
+      // If checkout happened before signup, attach subscription recorded for this device.
+      try { await attachDeviceSubscriptionToUser({ userId, deviceId }); } catch (e) {}
     }
 
     return { ok: true, user: { userId, email, claims: user, identity_type: 'user', device_id: deviceId || null } };
@@ -168,6 +172,10 @@ async function requireSignedUser(event, context) {
   await ensureUserProfile(userId, email);
   if (deviceId) {
     await ensureDeviceIdentity(deviceId);
+
+    // Preserve onboarding/profile data created before signup on this device.
+    try { await migrateAnonymousProfileToUser({ deviceId, userId, email }); } catch (e) {}
+
     await linkDeviceToUser(deviceId, userId);
 
     // If checkout happened before signup, attach subscription recorded for this device.
