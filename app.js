@@ -1346,6 +1346,44 @@ function _renderOnboardingV2() {
     box.className = 'onbCard';
     box.innerHTML = `<div class="onbCardTitle">🔒 Your data is private and secure.</div><div class="onbCardDesc">Sign up now or continue — you can always create an account later.</div>`;
     body.appendChild(box);
+
+    const checkoutBox = document.createElement('div');
+    checkoutBox.className = 'onbCard';
+    checkoutBox.style.marginTop = '12px';
+    checkoutBox.innerHTML = `<div class="onbCardTitle">Start your trial</div><div class="onbCardDesc">Pick monthly or yearly to check out now from onboarding.</div>`;
+
+    const checkoutActions = document.createElement('div');
+    checkoutActions.style.display = 'grid';
+    checkoutActions.style.gap = '12px';
+    checkoutActions.style.marginTop = '14px';
+
+    const monthlyBtn = document.createElement('button');
+    monthlyBtn.type = 'button';
+    monthlyBtn.className = 'primaryBtn';
+    monthlyBtn.innerText = 'Start Trial — $5/mo';
+    monthlyBtn.onclick = () => {
+      try {
+        if (typeof window.startTrial === 'function') window.startTrial('month');
+        else if (billingController) billingController.startUpgradeCheckout('monthly');
+      } catch (_) {}
+    };
+
+    const yearlyBtn = document.createElement('button');
+    yearlyBtn.type = 'button';
+    yearlyBtn.className = 'secondaryBtn';
+    yearlyBtn.innerText = 'Start Trial — $49/year';
+    yearlyBtn.onclick = () => {
+      try {
+        if (typeof window.startTrial === 'function') window.startTrial('year');
+        else if (billingController) billingController.startUpgradeCheckout('yearly');
+      } catch (_) {}
+    };
+
+    checkoutActions.appendChild(monthlyBtn);
+    checkoutActions.appendChild(yearlyBtn);
+    checkoutBox.appendChild(checkoutActions);
+    body.appendChild(checkoutBox);
+
     actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
     if (currentUser) {
       actions.appendChild(_onbBtn('Continue', { kind: 'primary', onClick: next }));
