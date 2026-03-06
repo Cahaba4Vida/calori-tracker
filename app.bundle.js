@@ -772,6 +772,7 @@ let aiGoalInputs = null;
 let aiGoalThread = [];
 let feedbackGateState = { required: false, campaign: null };
 let billingController = null;
+const ONBOARDING_FREE_PLAN_SIGNUP_KEY = 'onboardingFreePlanSignup';
 let activeAddFoodPanel = null;
 let activePhotoMode = 'plate';
 
@@ -1722,7 +1723,15 @@ function _renderOnboardingV2() {
     free.className = 'linkMiniBtn';
     free.type = 'button';
     free.innerText = 'Continue With Free Plan';
-    free.onclick = () => finish();
+    free.onclick = () => {
+      if (!currentUser) {
+        try { localStorage.setItem(ONBOARDING_FREE_PLAN_SIGNUP_KEY, '1'); } catch (_) {}
+        try { openIdentityModal('signup'); } catch (_) {}
+        return;
+      }
+      try { localStorage.removeItem(ONBOARDING_FREE_PLAN_SIGNUP_KEY); } catch (_) {}
+      finish();
+    };
     actions.appendChild(free);
     fineprint.innerText = 'Most users lose 5–10 lbs in their first 8 weeks.';
     return;
@@ -3961,6 +3970,27 @@ function hideAllBlockingOverlays() {
 }
 
 
+
+async function completePendingFreePlanSignup() {
+  try {
+    if (!localStorage.getItem(ONBOARDING_FREE_PLAN_SIGNUP_KEY)) return false;
+    if (!currentUser) return false;
+    await api('profile-set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ onboarding_completed: true })
+    });
+    localStorage.removeItem(ONBOARDING_FREE_PLAN_SIGNUP_KEY);
+    await loadProfile();
+    setOnboardingVisible(false);
+    hideAllBlockingOverlays();
+    await refresh();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 function openIdentityModal(mode = 'login') {
   if (typeof netlifyIdentity === 'undefined') {
     setStatus('Sign in is not available in this environment yet.');
@@ -4053,7 +4083,10 @@ if (typeof netlifyIdentity !== 'undefined') {
 
   // Skip onboarding after a paid user logs in.
   initAuthedSession({ skipOnboarding: true })
-    .then(() => claimPendingReferralIfSignedIn())
+    .then(async () => {
+      await completePendingFreePlanSignup();
+      await claimPendingReferralIfSignedIn();
+    })
     .catch(e => setStatus(e.message));
 
   try { netlifyIdentity.close(); } catch {}
