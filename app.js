@@ -506,6 +506,112 @@ let aiGoalThread = [];
 let feedbackGateState = { required: false, campaign: null };
 let billingController = null;
 const ONBOARDING_FREE_PLAN_SIGNUP_KEY = 'onboardingFreePlanSignup';
+const ONBOARDING_FREE_PLAN_SNAPSHOT_KEY = 'onboardingFreePlanSnapshotV1';
+
+function _numOrNull(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function buildPendingFreePlanSnapshot() {
+  const snapshot = {};
+  const daily = _numOrNull((typeof aiGoalSuggestion !== 'undefined' && aiGoalSuggestion && aiGoalSuggestion.daily_calories != null)
+    ? aiGoalSuggestion.daily_calories
+    : (localStorage.getItem('calorie_goal_base') || localStorage.getItem('calorie_goal') || localStorage.getItem('daily_calories')));
+  if (daily != null && daily >= 0) snapshot.daily_calories = Math.round(daily);
+
+  const sources = [
+    (typeof profileState !== 'undefined' && profileState) ? profileState : null,
+    (typeof onboardingV2State !== 'undefined' && onboardingV2State) ? onboardingV2State : null,
+    (typeof aiGoalSuggestion !== 'undefined' && aiGoalSuggestion) ? aiGoalSuggestion : null
+  ].filter(Boolean);
+
+  const firstPresent = (...keys) => {
+    for (const src of sources) {
+      for (const key of keys) {
+        if (src[key] != null && src[key] !== '') return src[key];
+      }
+    }
+    return null;
+  };
+
+  const assignNum = (destKey, ...srcKeys) => {
+    const n = _numOrNull(firstPresent(...srcKeys));
+    if (n != null) snapshot[destKey] = n;
+  };
+  const assignText = (destKey, ...srcKeys) => {
+    const v = firstPresent(...srcKeys);
+    if (v != null && String(v).trim()) snapshot[destKey] = String(v).trim();
+  };
+
+  assignNum('macro_protein_g', 'macro_protein_g', 'protein_g');
+  assignNum('macro_carbs_g', 'macro_carbs_g', 'carbs_g');
+  assignNum('macro_fat_g', 'macro_fat_g', 'fat_g');
+  assignNum('goal_weight_lbs', 'goal_weight_lbs', 'target_weight_lbs');
+  assignText('activity_level', 'activity_level');
+  assignText('goal_date', 'goal_date');
+  assignText('goal_mode', 'goal_mode');
+  assignNum('age_years', 'age_years');
+  assignNum('height_in', 'height_in');
+  assignNum('current_weight_lbs', 'current_weight_lbs');
+  assignNum('target_weight_lbs', 'target_weight_lbs', 'goal_weight_lbs');
+  assignText('tracking_experience', 'tracking_experience');
+  assignText('heard_about', 'heard_about');
+  assignText('previous_app', 'previous_app');
+  assignNum('goal_body_fat_percent', 'goal_body_fat_percent');
+  assignText('goal_body_fat_date', 'goal_body_fat_date');
+  assignNum('current_body_fat_percent', 'current_body_fat_percent');
+  assignNum('current_body_fat_weight_lbs', 'current_body_fat_weight_lbs');
+
+  snapshot.onboarding_completed = true;
+  return snapshot;
+}
+
+function stashPendingFreePlanSnapshot() {
+  try {
+    localStorage.setItem(ONBOARDING_FREE_PLAN_SNAPSHOT_KEY, JSON.stringify(buildPendingFreePlanSnapshot()));
+  } catch (_) {}
+}
+
+async function replayPendingFreePlanSnapshot() {
+  let raw = null;
+  try { raw = localStorage.getItem(ONBOARDING_FREE_PLAN_SNAPSHOT_KEY); } catch (_) {}
+  if (!raw) return false;
+
+  let snapshot = null;
+  try { snapshot = JSON.parse(raw || '{}'); } catch (_) { snapshot = null; }
+  if (!snapshot || typeof snapshot !== 'object') return false;
+
+  if (_numOrNull(snapshot.daily_calories) != null) {
+    await api('goal-set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ daily_calories: Math.round(Number(snapshot.daily_calories)) })
+    });
+  }
+
+  const profilePayload = {};
+  [
+    'macro_protein_g','macro_carbs_g','macro_fat_g','goal_weight_lbs','activity_level','goal_date',
+    'goal_mode','age_years','height_in','current_weight_lbs','target_weight_lbs',
+    'tracking_experience','heard_about','previous_app',
+    'goal_body_fat_percent','goal_body_fat_date','current_body_fat_percent','current_body_fat_weight_lbs',
+    'onboarding_completed'
+  ].forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(snapshot, key) && snapshot[key] != null && snapshot[key] !== '') {
+      profilePayload[key] = snapshot[key];
+    }
+  });
+  if (!Object.prototype.hasOwnProperty.call(profilePayload, 'onboarding_completed')) profilePayload.onboarding_completed = true;
+
+  await api('profile-set', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(profilePayload)
+  });
+  return true;
+}
 let activeAddFoodPanel = null;
 let activePhotoMode = 'plate';
 
@@ -1490,6 +1596,7 @@ function _renderOnboardingV2() {
     free.innerText = 'Continue With Free Plan';
     free.onclick = () => {
       if (!currentUser) {
+        try { stashPendingFreePlanSnapshot(); } catch (_) {}
         try { localStorage.setItem(ONBOARDING_FREE_PLAN_SIGNUP_KEY, '1'); } catch (_) {}
         try { openIdentityModal('signup'); } catch (_) {}
         return;
@@ -3592,12 +3699,21 @@ async function completePendingFreePlanSignup() {
   try {
     if (!localStorage.getItem(ONBOARDING_FREE_PLAN_SIGNUP_KEY)) return false;
     if (!currentUser) return false;
-    await api('profile-set', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ onboarding_completed: true })
-    });
+    let replayed = false;
+    try {
+      replayed = await replayPendingFreePlanSnapshot();
+    } catch (_) {
+      replayed = false;
+    }
+    if (!replayed) {
+      await api('profile-set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ onboarding_completed: true })
+      });
+    }
     localStorage.removeItem(ONBOARDING_FREE_PLAN_SIGNUP_KEY);
+    localStorage.removeItem(ONBOARDING_FREE_PLAN_SNAPSHOT_KEY);
     await loadProfile();
     setOnboardingVisible(false);
     hideAllBlockingOverlays();
