@@ -1700,14 +1700,24 @@ function _renderOnboardingV2() {
       await refresh();
     };
 
-    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
-    actions.appendChild(_onbBtn(currentUser ? 'Start 7-Day Free Trial' : 'Continue with Email & Start Trial', { kind: 'primary', onClick: () => {
+    const monthlyBtn = _onbBtn('Start Trial — $5/mo', { kind: 'secondary', onClick: () => {
       try {
         if (!currentUser) { try { openIdentityModal('signup'); } catch (_) {} return; }
-        if (billingController) billingController.startUpgradeCheckout('monthly');
+        if (typeof window.startTrial === 'function') window.startTrial('month');
+        else if (billingController) billingController.startUpgradeCheckout('monthly');
         else finish();
       } catch (_) { finish(); }
-    }}));
+    }});
+    const yearlyBtn = _onbBtn('Start Trial — $49/year', { kind: 'primary', onClick: () => {
+      try {
+        if (!currentUser) { try { openIdentityModal('signup'); } catch (_) {} return; }
+        if (typeof window.startTrial === 'function') window.startTrial('year');
+        else if (billingController) billingController.startUpgradeCheckout('yearly');
+        else finish();
+      } catch (_) { finish(); }
+    }});
+    actions.appendChild(monthlyBtn);
+    actions.appendChild(yearlyBtn);
     const free = document.createElement('button');
     free.className = 'linkMiniBtn';
     free.type = 'button';
