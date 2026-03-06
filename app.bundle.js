@@ -4178,7 +4178,10 @@ if (typeof netlifyIdentity !== 'undefined') {
       setOnboardingVisible(false);
       setFeedbackOverlay(false, null);
       initAuthedSession({ skipOnboarding: true })
-        .then(() => claimPendingReferralIfSignedIn())
+        .then(async () => {
+          await completePendingFreePlanSignup();
+          await claimPendingReferralIfSignedIn();
+        })
         .catch(e => setStatus(e.message));
       return;
     }
