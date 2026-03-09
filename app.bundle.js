@@ -1423,7 +1423,7 @@ function _renderOnboardingV2() {
       cards.appendChild(card);
     });
     body.appendChild(cards);
-    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: back }));
+    actions.appendChild(_onbBtn('Back', { kind: 'secondary', onClick: () => showOnboardingScreen('welcome') }));
     actions.appendChild(_onbBtn('Get Started', { kind: 'primary', onClick: next }));
     fineprint.innerText = 'Takes less than a minute';
     return;
