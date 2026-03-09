@@ -86,16 +86,32 @@ async function playAssistantAudio(j) {
         audio.pause();
         audio.currentTime = 0;
       } catch (e) {}
+      try {
+        audio.muted = false;
+        audio.volume = 1;
+        audio.autoplay = true;
+      } catch (e) {}
       audio.src = url;
       audio.load();
-      await audio.play();
       const cleanup = () => {
         if (url) URL.revokeObjectURL(url);
         url = null;
       };
       audio.onended = cleanup;
       audio.onerror = cleanup;
-      return true;
+      const playOnce = async () => {
+        try {
+          await audio.play();
+          return true;
+        } catch (e) {
+          return false;
+        }
+      };
+      if (await playOnce()) return true;
+      try { if (typeof unlockAudioOnce === 'function') unlockAudioOnce(); } catch (e) {}
+      if (await playOnce()) return true;
+      // fall through to speech synthesis if browser blocks direct audio playback
+      cleanup();
     } catch (e) {
       if (url) {
         try { URL.revokeObjectURL(url); } catch (_) {}
@@ -106,7 +122,10 @@ async function playAssistantAudio(j) {
   if (j && j.reply && 'speechSynthesis' in window) {
     try {
       window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(new SpeechSynthesisUtterance(j.reply));
+      const utter = new SpeechSynthesisUtterance(j.reply);
+      utter.rate = 1;
+      utter.pitch = 1;
+      window.speechSynthesis.speak(utter);
       return true;
     } catch (e) {}
   }
@@ -3492,9 +3511,10 @@ async function sendChat(opts) {
 
     el('chatOutput').innerText = j.reply;
 
-    // If voice mode is enabled OR audio is returned, play it.
-    if (from_voice && j.audio_base64 && typeof playAssistantAudio === 'function') {
-      await playAssistantAudio({ audio_base64: j.audio_base64, audio_mime_type: (j.audio_mime_type || 'audio/mpeg'), reply: j.reply });
+    // Only auto-speak when the message came from coach voice mode.
+    // Try returned TTS audio first, and fall back to browser speech synthesis if no audio is returned.
+    if (from_voice && typeof playAssistantAudio === 'function') {
+      await playAssistantAudio({ audio_base64: j.audio_base64 || null, audio_mime_type: (j.audio_mime_type || 'audio/mpeg'), reply: j.reply });
     }
 
     // Clear typed input after send so we never re-send stale text.
