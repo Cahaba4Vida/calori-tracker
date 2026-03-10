@@ -377,8 +377,10 @@ global.playAssistantAudio = playAssistantAudio;
         try { trackEvent('upgrade_click', { interval }); } catch (_) {}
 
         const which = interval === 'year' || interval === 'yearly' ? 'yearly' : 'monthly';
+        const DEFAULT_MONTHLY = 'https://buy.stripe.com/eVqbIUci9aZidBB9qg8bS0b';
+        const DEFAULT_YEARLY = 'https://buy.stripe.com/aFadR22Hz7N6app1XO8bS0c';
 
-        // Prefer the direct Stripe links returned by billing-status.
+        // 1) Prefer links from billing-status if available.
         try {
           const billing = await api('billing-status');
           const direct = billing && billing.upgrade_links
@@ -388,6 +390,35 @@ global.playAssistantAudio = playAssistantAudio;
             window.location.href = direct;
             return;
           }
+        } catch (_) {}
+
+        // 2) Hard fallback to the known Stripe payment links from _plan defaults.
+        const directFallback = which === 'yearly' ? DEFAULT_YEARLY : DEFAULT_MONTHLY;
+        if (directFallback) {
+          window.location.href = directFallback;
+          return;
+        }
+
+        // 3) Last resort only.
+        const out = await api('create-checkout-session-public', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            interval: which === 'yearly' ? 'year' : 'month',
+            device_id: getOrCreateDeviceId()
+          })
+        });
+
+        if (out?.url) {
+          window.location.href = out.url;
+          return;
+        }
+
+        setStatus((out && (out.error || out.message)) || 'Upgrade link unavailable. Please try again.');
+      } catch (e) {
+        setStatus(e && e.message ? e.message : 'Could not start checkout');
+      }
+    }
         } catch (_) {}
 
         // Fallback to public checkout session creation only if direct links are unavailable.
