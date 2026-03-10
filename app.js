@@ -1026,77 +1026,152 @@ function showAiLimitModal() {
 }
 
 function bindAiLimitAndReferralUI() {
-  const closeA = el('aiLimitCloseBtn');
-  if (closeA) closeA.onclick = () => setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
-  const overlayA = el('aiLimitOverlay');
-  if (overlayA) overlayA.onclick = () => setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
+  function stopEvt(e) {
+    if (!e) return;
+    try { e.preventDefault(); } catch {}
+    try { e.stopPropagation(); } catch {}
+    try { e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch {}
+  }
 
-  const upgradeBtn = el('aiLimitUpgradeBtn');
-  if (upgradeBtn) upgradeBtn.onclick = () => {
-    // If the user isn't signed in yet, open the signup/login flow first.
+  function handleUpgradeClick(e) {
+    stopEvt(e);
     if (!currentUser) {
       openIdentityModal('signup');
-      return;
+      return false;
     }
     setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
-    goToUpgradeFlow();
-  };
-  const inviteBtn = el('aiLimitInviteBtn');
-  if (inviteBtn) inviteBtn.onclick = () => {
-    // Referrals require an account, so prompt sign-in if needed.
+    setTimeout(() => {
+      try { goToUpgradeFlow(); } catch (e) {}
+    }, 10);
+    return false;
+  }
+
+  function handleInviteClick(e) {
+    stopEvt(e);
     if (!currentUser) {
       markPendingReferralShare();
       setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
       openIdentityModal('signup');
-      return;
+      return false;
     }
     openReferralShare();
-  };
+    return false;
+  }
 
-  const closeR = el('referralCloseBtn');
-  if (closeR) closeR.onclick = () => setModalVisible('referralOverlay', 'referralSheet', false);
-  const overlayR = el('referralOverlay');
-  if (overlayR) overlayR.onclick = () => setModalVisible('referralOverlay', 'referralSheet', false);
+  function handleCloseAiLimit(e) {
+    stopEvt(e);
+    setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
+    return false;
+  }
 
-  const copyBtn = el('referralCopyBtn');
-  if (copyBtn) copyBtn.onclick = async () => {
-    const input = el('referralLinkInput');
-    const link = input ? String(input.value || '') : '';
-    const status = el('referralStatus');
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(link);
-      } else {
-        // Fallback
-        window.prompt('Copy your referral link:', link);
-      }
-      if (status) status.innerText = 'Copied!';
-      setTimeout(() => { if (status && status.innerText === 'Copied!') status.innerText = ''; }, 1500);
-    } catch (e) {
-      if (status) status.innerText = 'Could not copy. Please tap and hold to copy.';
+  function handleCloseReferral(e) {
+    stopEvt(e);
+    setModalVisible('referralOverlay', 'referralSheet', false);
+    return false;
+  }
+
+  function bindTap(elm, handler, flagName) {
+    if (!elm || elm[flagName]) return;
+    elm[flagName] = true;
+    elm.onclick = handler;
+    elm.addEventListener('pointerup', handler, { passive: false });
+    elm.addEventListener('touchend', handler, { passive: false });
+  }
+
+  function wireDirectHandlers() {
+    bindTap(el('aiLimitCloseBtn'), handleCloseAiLimit, '__boundAiLimit');
+    bindTap(el('aiLimitUpgradeBtn'), handleUpgradeClick, '__boundAiLimit');
+    bindTap(el('aiLimitInviteBtn'), handleInviteClick, '__boundAiLimit');
+    bindTap(el('referralCloseBtn'), handleCloseReferral, '__boundReferral');
+
+    const overlayA = el('aiLimitOverlay');
+    if (overlayA && !overlayA.__boundAiLimitOverlay) {
+      overlayA.__boundAiLimitOverlay = true;
+      overlayA.onclick = handleCloseAiLimit;
+      overlayA.addEventListener('pointerup', handleCloseAiLimit, { passive: false });
+      overlayA.addEventListener('touchend', handleCloseAiLimit, { passive: false });
     }
-  };
 
-  const shareBtn = el('referralShareBtn');
-  if (shareBtn) shareBtn.onclick = async () => {
-    const input = el('referralLinkInput');
-    const link = input ? String(input.value || '') : '';
-    const status = el('referralStatus');
-    const msg = `I've been using this AI calorie tracker and it's the easiest one I've tried. Use my link and we both get 1 month of Premium free. ${link}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ text: msg, url: link });
-        if (status) status.innerText = '';
-      } else if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(msg);
-        if (status) status.innerText = 'Copied share message!';
-      } else {
-        window.prompt('Share this message:', msg);
-      }
-    } catch (e) {
-      if (status) status.innerText = 'Share cancelled.';
+    const overlayR = el('referralOverlay');
+    if (overlayR && !overlayR.__boundReferralOverlay) {
+      overlayR.__boundReferralOverlay = true;
+      overlayR.onclick = handleCloseReferral;
+      overlayR.addEventListener('pointerup', handleCloseReferral, { passive: false });
+      overlayR.addEventListener('touchend', handleCloseReferral, { passive: false });
     }
-  };
+
+    const copyBtn = el('referralCopyBtn');
+    if (copyBtn && !copyBtn.__boundReferralCopy) {
+      copyBtn.__boundReferralCopy = true;
+      const copyHandler = async (e) => {
+        stopEvt(e);
+        const input = el('referralLinkInput');
+        const link = input ? String(input.value || '') : '';
+        const status = el('referralStatus');
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(link);
+          } else {
+            window.prompt('Copy your referral link:', link);
+          }
+          if (status) status.innerText = 'Copied!';
+          setTimeout(() => { if (status && status.innerText === 'Copied!') status.innerText = ''; }, 1500);
+        } catch (e) {
+          if (status) status.innerText = 'Could not copy. Please tap and hold to copy.';
+        }
+        return false;
+      };
+      copyBtn.onclick = copyHandler;
+      copyBtn.addEventListener('pointerup', copyHandler, { passive: false });
+      copyBtn.addEventListener('touchend', copyHandler, { passive: false });
+    }
+
+    const shareBtn = el('referralShareBtn');
+    if (shareBtn && !shareBtn.__boundReferralShare) {
+      shareBtn.__boundReferralShare = true;
+      const shareHandler = async (e) => {
+        stopEvt(e);
+        const input = el('referralLinkInput');
+        const link = input ? String(input.value || '') : '';
+        const status = el('referralStatus');
+        const msg = `I've been using this AI calorie tracker and it's the easiest one I've tried. Use my link and we both get 1 month of Premium free. ${link}`;
+        try {
+          if (navigator.share) {
+            await navigator.share({ text: msg, url: link });
+            if (status) status.innerText = 'Shared!';
+            setTimeout(() => { if (status && status.innerText === 'Shared!') status.innerText = ''; }, 1500);
+          } else {
+            window.prompt('Share this referral link:', link);
+          }
+        } catch (e) {
+          if (status) status.innerText = 'Could not share automatically. Please copy the link below.';
+        }
+        return false;
+      };
+      shareBtn.onclick = shareHandler;
+      shareBtn.addEventListener('pointerup', shareHandler, { passive: false });
+      shareBtn.addEventListener('touchend', shareHandler, { passive: false });
+    }
+  }
+
+  wireDirectHandlers();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wireDirectHandlers, { once: true });
+  } else {
+    setTimeout(wireDirectHandlers, 0);
+  }
+
+  if (!document.__boundAiLimitDelegation) {
+    document.__boundAiLimitDelegation = true;
+    document.addEventListener('click', (e) => {
+      const t = e.target;
+      if (!t || !t.closest) return;
+      if (t.closest('#aiLimitUpgradeBtn')) return handleUpgradeClick(e);
+      if (t.closest('#aiLimitInviteBtn')) return handleInviteClick(e);
+      if (t.closest('#aiLimitCloseBtn')) return handleCloseAiLimit(e);
+      if (t.closest('#referralCloseBtn')) return handleCloseReferral(e);
+    }, true);
+  }
 }
 
 

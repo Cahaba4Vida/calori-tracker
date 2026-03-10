@@ -1725,31 +1725,28 @@ body.invertedTheme .appHeader .headerBrand .bannerDark {
 }
 
 
-/* Center the AI limit popup on screen instead of docking it to the bottom */
-#aiLimitSheet {
-  left: 50%;
-  right: auto;
-  bottom: auto;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: min(92vw, 760px);
-  max-height: min(78vh, 720px);
-  border-radius: 18px;
-  box-shadow: 0 18px 48px rgba(0,0,0,0.22);
+
+/* Ensure AI/referral modals sit above floating controls and receive taps */
+#aiLimitOverlay,
+#referralOverlay {
+  z-index: 3000 !important;
+  pointer-events: auto;
 }
 
-#aiLimitSheet .sheetBody {
-  max-height: calc(min(78vh, 720px) - 72px);
-  overflow: auto;
+#aiLimitSheet,
+#referralSheet {
+  z-index: 3001 !important;
+  pointer-events: auto;
 }
 
-@media (max-width: 640px) {
-  #aiLimitSheet {
-    width: calc(100vw - 24px);
-    max-height: 74vh;
-    top: 52%;
-  }
-  #aiLimitSheet .sheetBody {
-    max-height: calc(74vh - 72px);
-  }
+#aiLimitSheet .limitChoice,
+#referralSheet button,
+#referralSheet input {
+  position: relative;
+  z-index: 3002;
+  pointer-events: auto;
+}
+
+.coachFab {
+  z-index: 1200;
 }
