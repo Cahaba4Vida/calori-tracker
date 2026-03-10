@@ -1116,14 +1116,46 @@ function applyFontSizeUI() {
   if (slider) slider.value = String(appFontSizePct);
 }
 
+function panelStateKey(id) {
+  return `panelCollapsed:${id}`;
+}
+
+function getPanelCollapsed(id, fallback = false) {
+  try {
+    const raw = localStorage.getItem(panelStateKey(id));
+    if (raw === null || raw === undefined) return !!fallback;
+    return raw === '1';
+  } catch (e) {
+    return !!fallback;
+  }
+}
+
+function setPanelCollapsed(id, collapsed) {
+  try {
+    localStorage.setItem(panelStateKey(id), collapsed ? '1' : '0');
+  } catch (e) {}
+}
+
+function applySectionState(bodyId, buttonId, collapsed, collapseText = 'Collapse', expandText = 'Expand') {
+  const body = el(bodyId);
+  const btn = el(buttonId);
+  if (!body || !btn) return;
+  body.classList.toggle('hidden', !!collapsed);
+  btn.innerText = collapsed ? expandText : collapseText;
+  btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+}
+
+function restoreSectionState(bodyId, buttonId, collapseText = 'Collapse', expandText = 'Expand', fallbackCollapsed = false) {
+  applySectionState(bodyId, buttonId, getPanelCollapsed(bodyId, fallbackCollapsed), collapseText, expandText);
+}
+
 function toggleSection(bodyId, buttonId, collapseText = 'Collapse', expandText = 'Expand') {
   const body = el(bodyId);
   const btn = el(buttonId);
   if (!body || !btn) return;
   const willCollapse = !body.classList.contains('hidden');
-  body.classList.toggle('hidden', willCollapse);
-  btn.innerText = willCollapse ? expandText : collapseText;
-  btn.setAttribute('aria-expanded', willCollapse ? 'false' : 'true');
+  applySectionState(bodyId, buttonId, willCollapse, collapseText, expandText);
+  setPanelCollapsed(bodyId, willCollapse);
 }
 function setOnboardingVisible(visible) {
   const overlay = el('onboardingOverlay');
@@ -3828,6 +3860,8 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
 
   bindClick('toggleDailyGoalsBtn', () => toggleSection('dailyGoalsBody', 'toggleDailyGoalsBtn'));
   bindClick('toggleAddFoodBtn', () => toggleSection('addFoodBody', 'toggleAddFoodBtn'));
+  restoreSectionState('dailyGoalsBody', 'toggleDailyGoalsBtn');
+  restoreSectionState('addFoodBody', 'toggleAddFoodBtn');
   // Coach chat is now opened/closed via a floating button (bottom-right).
   // Keep the existing "Hide" button as a close control.
   bindClick('chatToggleBtn', () => {

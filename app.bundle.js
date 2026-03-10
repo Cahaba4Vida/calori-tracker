@@ -1413,19 +1413,6 @@ function restoreSectionState(bodyId, buttonId, collapseText = 'Collapse', expand
   applySectionState(bodyId, buttonId, getPanelCollapsed(bodyId, fallbackCollapsed), collapseText, expandText);
 }
 
-function setCoachChatOpenPersisted(isOpen) {
-  const card = el('coachChatCard');
-  const fab = el('coachFab');
-  if (card) card.classList.toggle('open', !!isOpen);
-  if (fab) fab.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-  setPanelCollapsed('coachChatCard', !isOpen);
-}
-
-function restoreCoachChatOpenPersisted() {
-  const collapsed = getPanelCollapsed('coachChatCard', true);
-  setCoachChatOpenPersisted(!collapsed);
-}
-
 function toggleSection(bodyId, buttonId, collapseText = 'Collapse', expandText = 'Expand') {
   const body = el(bodyId);
   const btn = el(buttonId);
@@ -2801,28 +2788,39 @@ async function loadGoal() {
   el('todayCarbsGoal').innerText = fmtGoal(macroGoals.carbs_g);
   el('todayFatGoal').innerText = fmtGoal(macroGoals.fat_g);
 
-  el('goalInput').value = j.daily_calories ?? '';
-  el('proteinGoalInput').value = macroGoals.protein_g ?? '';
-  el('carbsGoalInput').value = macroGoals.carbs_g ?? '';
-  el('fatGoalInput').value = macroGoals.fat_g ?? '';
+  const goalInputEl = el('goalInput');
+  const proteinGoalInputEl = el('proteinGoalInput');
+  const carbsGoalInputEl = el('carbsGoalInput');
+  const fatGoalInputEl = el('fatGoalInput');
+  const goalDisplayEl = el('goalDisplay');
+
+  if (goalInputEl) goalInputEl.value = j.daily_calories ?? '';
+  if (proteinGoalInputEl) proteinGoalInputEl.value = macroGoals.protein_g ?? '';
+  if (carbsGoalInputEl) carbsGoalInputEl.value = macroGoals.carbs_g ?? '';
+  if (fatGoalInputEl) fatGoalInputEl.value = macroGoals.fat_g ?? '';
 
   const parts = [`Calories: ${j.daily_calories ?? '—'}`];
   if (macroGoals.protein_g != null) parts.push(`Protein: ${macroGoals.protein_g}g`);
   if (macroGoals.carbs_g != null) parts.push(`Carbs: ${macroGoals.carbs_g}g`);
   if (macroGoals.fat_g != null) parts.push(`Fat: ${macroGoals.fat_g}g`);
-  el('goalDisplay').innerText = parts.join(' • ');
+  if (goalDisplayEl) goalDisplayEl.innerText = parts.join(' • ');
   renderAiPlanSummary();
 
   return j.daily_calories ?? null;
 }
 
 async function saveGoal() {
-  const vRaw = el('goalInput').value;
+  const goalInputEl = el('goalInput');
+  if (!goalInputEl) return null;
+
+  const vRaw = goalInputEl.value;
   const v = Number(vRaw);
   if (!vRaw || !Number.isFinite(v) || v < 0) throw new Error('Calories goal must be a number >= 0.');
 
   const asOptional = (id) => {
-    const raw = (el(id).value || '').trim();
+    const node = el(id);
+    if (!node) return null;
+    const raw = (node.value || '').trim();
     if (raw === '') return null;
     const n = Number(raw);
     if (!Number.isFinite(n) || n < 0) throw new Error('Macro goals must be numbers >= 0.');
@@ -3802,7 +3800,8 @@ function bindUI() {
   const resetMockBtn = el('resetMockBtn');
   if (enterMockBtn) enterMockBtn.onclick = () => initAuthedSession().catch(e => setStatus(e.message));
   if (resetMockBtn) resetMockBtn.onclick = () => { resetMockState(); setStatus('Local demo data reset. Starting fresh onboarding…'); initAuthedSession().catch(e => setStatus(e.message)); };
-  el('saveGoalBtn').onclick = () => saveGoal().catch(e => setStatus(e.message));
+  const saveGoalBtn = el('saveGoalBtn');
+  if (saveGoalBtn) saveGoalBtn.onclick = () => saveGoal().catch(e => setStatus(e.message));
   const unifiedPhotoInputIds = ['photoModeCameraInput'];
   unifiedPhotoInputIds.forEach((id) => {
     const node = el(id);
@@ -4118,14 +4117,17 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
     }, true);
   }
 
+  bindClick('toggleDailyGoalsBtn', () => toggleSection('dailyGoalsBody', 'toggleDailyGoalsBtn'));
   bindClick('toggleAddFoodBtn', () => toggleSection('addFoodBody', 'toggleAddFoodBtn'));
-
+  restoreSectionState('dailyGoalsBody', 'toggleDailyGoalsBtn');
   restoreSectionState('addFoodBody', 'toggleAddFoodBtn');
-  restoreCoachChatOpenPersisted();
   // Coach chat is now opened/closed via a floating button (bottom-right).
   // Keep the existing "Hide" button as a close control.
   bindClick('chatToggleBtn', () => {
-    setCoachChatOpenPersisted(false);
+    const card = el('coachChatCard');
+    if (card) card.classList.remove('open');
+    const fab = el('coachFab');
+    if (fab) fab.setAttribute('aria-expanded', 'false');
   });
   bindClick('upgradeMonthlyBtn', () => billingController && billingController.startUpgradeCheckout('monthly'));
   bindClick('upgradeYearlyBtn', () => billingController && billingController.startUpgradeCheckout('yearly'));
@@ -4382,7 +4384,9 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
   // Close coach chat with Escape
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    setCoachChatOpenPersisted(false);
+    const card = el('coachChatCard');
+    if (card) card.classList.remove('open');
+    if (coachFab) coachFab.setAttribute('aria-expanded', 'false');
   });
 }
 
@@ -5024,24 +5028,6 @@ function initSettingsTabs_v37() {
 
 }
 
-function getRolloverLocalSettings() {
-  try {
-    const enabled = localStorage.getItem('rollover_enabled') === '1';
-    const rawCap = parseInt(localStorage.getItem('rollover_cap') || '500', 10);
-    return { enabled, cap: Number.isFinite(rawCap) && rawCap > 0 ? rawCap : 500 };
-  } catch (e) {
-    return { enabled: false, cap: 500 };
-  }
-}
-
-function setRolloverLocalSettings(enabled, cap) {
-  try {
-    const n = parseInt(cap || '500', 10);
-    localStorage.setItem('rollover_enabled', enabled ? '1' : '0');
-    localStorage.setItem('rollover_cap', String(Number.isFinite(n) && n > 0 ? n : 500));
-  } catch (e) {}
-}
-
 function initRolloverCaloriesSettings() {
   const toggle = document.getElementById('rolloverToggle');
   const capInput = document.getElementById('rolloverCap');
@@ -5049,64 +5035,29 @@ function initRolloverCaloriesSettings() {
   const saveBtn = document.getElementById('rolloverSaveBtn');
   if (!toggle || !capInput || !saveBtn) return;
 
-  function renderLocalStatus() {
-    if (!status) return;
-    status.textContent = toggle.checked ? 'Rollover is enabled.' : 'Rollover is disabled.';
-  }
-
-  function applyLocal() {
-    const local = getRolloverLocalSettings();
-    toggle.checked = !!local.enabled;
-    capInput.value = String(local.cap || 500);
-    renderLocalStatus();
-  }
-
   async function load() {
-    applyLocal();
     try {
       const j = await api('nutrition-settings-get');
-      const enabled = !!j.rollover_enabled;
-      const cap = parseInt(j.rollover_cap ?? 500, 10) || 500;
-      toggle.checked = enabled;
-      capInput.value = String(cap);
-      setRolloverLocalSettings(enabled, cap);
-      renderLocalStatus();
+      toggle.checked = !!j.rollover_enabled;
+      capInput.value = String(j.rollover_cap ?? 500);
+      status.textContent = toggle.checked ? 'Rollover is enabled.' : 'Rollover is disabled.';
     } catch (e) {
-      if (status) status.textContent = toggle.checked ? 'Rollover is enabled. (local)' : 'Rollover is disabled. (local)';
+      status.textContent = 'Failed to load rollover settings.';
     }
   }
 
-  if (!toggle.__rolloverBound) {
-    toggle.__rolloverBound = true;
-    toggle.addEventListener('change', () => {
-      setRolloverLocalSettings(toggle.checked, capInput.value || 500);
-      renderLocalStatus();
-    });
-  }
-
-  if (!capInput.__rolloverBound) {
-    capInput.__rolloverBound = true;
-    capInput.addEventListener('input', () => {
-      setRolloverLocalSettings(toggle.checked, capInput.value || 500);
-    });
-  }
-
-  if (!saveBtn.__rolloverBound) {
-    saveBtn.__rolloverBound = true;
-    saveBtn.addEventListener('click', async () => {
-      if (status) status.textContent = 'Saving…';
-      try {
-        const cap = parseInt(capInput.value || '500', 10) || 500;
-        setRolloverLocalSettings(toggle.checked, cap);
-        const j = await api('nutrition-settings-set', { rollover_enabled: toggle.checked, rollover_cap: cap });
-        if (status) status.textContent = j && j.ok ? 'Saved.' : 'Save failed.';
-        try { await loadGoal(); await refreshToday(); } catch (e) {}
-      } catch (e) {
-        setRolloverLocalSettings(toggle.checked, capInput.value || 500);
-        if (status) status.textContent = 'Saved locally.';
-      }
-    });
-  }
+  saveBtn.addEventListener('click', async () => {
+    status.textContent = 'Saving…';
+    try {
+      const cap = parseInt(capInput.value || '500', 10);
+      const j = await api('nutrition-settings-set', { rollover_enabled: toggle.checked, rollover_cap: cap });
+      status.textContent = j.ok ? 'Saved.' : 'Save failed.';
+      // refresh goal so UI reflects effective calories (server truth)
+      try { await loadGoal(); await refreshToday(); } catch(e) {}
+    } catch (e) {
+      status.textContent = 'Save failed.';
+    }
+  });
 
   load();
 }
