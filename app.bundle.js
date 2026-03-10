@@ -9,7 +9,12 @@ window.startTrial = async function(interval="month"){
   });
   const data = await res.json().catch(()=>({}));
   if(data && data.url){ window.location.href=data.url; return; }
-  alert(data.error || "Could not start checkout.");
+  const msg = (data && (data.error || data.message)) || "Could not start checkout.";
+  try {
+    const statusEl = document.getElementById('status');
+    if (statusEl) statusEl.innerText = msg;
+  } catch (_) {}
+  alert(msg);
 };
 
 (function initAppBilling(global) {
