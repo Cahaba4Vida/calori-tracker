@@ -36,11 +36,113 @@ function ensureCoachAudioElement() {
     audio.playsInline = true;
     audio.setAttribute('playsinline', '');
     audio.setAttribute('webkit-playsinline', '');
+    audio.controls = false;
   } catch (e) {}
-  audio.style.display = 'none';
+  audio.style.position = 'fixed';
+  audio.style.width = '1px';
+  audio.style.height = '1px';
+  audio.style.opacity = '0.001';
+  audio.style.pointerEvents = 'none';
+  audio.style.left = '-9999px';
+  audio.style.bottom = '0';
   document.body.appendChild(audio);
   __coachAudioEl = audio;
   return audio;
+}
+
+
+let __coachPendingPlayback = null;
+let __coachReplayBtn = null;
+
+function ensureCoachReplayButton() {
+  if (__coachReplayBtn) return __coachReplayBtn;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.id = 'coachReplayBtn';
+  btn.textContent = '▶ Tap to hear reply';
+  btn.setAttribute('aria-live', 'polite');
+  btn.style.position = 'fixed';
+  btn.style.left = '50%';
+  btn.style.transform = 'translateX(-50%)';
+  btn.style.bottom = '92px';
+  btn.style.zIndex = '99999';
+  btn.style.padding = '12px 16px';
+  btn.style.borderRadius = '999px';
+  btn.style.border = 'none';
+  btn.style.background = '#111';
+  btn.style.color = '#fff';
+  btn.style.fontSize = '15px';
+  btn.style.fontWeight = '600';
+  btn.style.boxShadow = '0 8px 24px rgba(0,0,0,.2)';
+  btn.style.display = 'none';
+  btn.style.maxWidth = 'calc(100vw - 32px)';
+  btn.style.whiteSpace = 'nowrap';
+  btn.onclick = async () => {
+    try { await tryPlayPendingReply(true); } catch (e) {}
+  };
+  document.body.appendChild(btn);
+  __coachReplayBtn = btn;
+  return btn;
+}
+
+function showCoachReplayButton(label) {
+  const btn = ensureCoachReplayButton();
+  btn.textContent = label || '▶ Tap to hear reply';
+  btn.style.display = 'block';
+}
+
+function hideCoachReplayButton() {
+  const btn = ensureCoachReplayButton();
+  btn.style.display = 'none';
+}
+
+async function tryPlayPendingReply(fromTap) {
+  const pending = __coachPendingPlayback;
+  if (!pending) return false;
+
+  if (pending.audio_base64) {
+    let url = null;
+    try {
+      url = base64ToBlobUrl(pending.audio_base64, pending.audio_mime_type || 'audio/mpeg');
+      const audio = ensureCoachAudioElement();
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+      } catch (e) {}
+      audio.src = url;
+      audio.load();
+      try {
+        if (fromTap && typeof unlockAudioOnce === 'function') unlockAudioOnce();
+      } catch (e) {}
+      const p = audio.play();
+      if (p && typeof p.then === 'function') await p;
+      if (!audio.paused) {
+        hideCoachReplayButton();
+        __coachPendingPlayback = null;
+        const cleanup = () => {
+          if (url) URL.revokeObjectURL(url);
+          url = null;
+        };
+        audio.onended = cleanup;
+        audio.onerror = cleanup;
+        return true;
+      }
+    } catch (e) {
+      if (url) { try { URL.revokeObjectURL(url); } catch (_) {} }
+    }
+  }
+
+  if (pending.reply) {
+    const ok = await speakTextFallback(pending.reply);
+    if (ok) {
+      hideCoachReplayButton();
+      __coachPendingPlayback = null;
+      return true;
+    }
+  }
+
+  showCoachReplayButton('▶ Tap to hear reply');
+  return false;
 }
 
 function cacheSpeechVoices() {
@@ -220,7 +322,7 @@ async function playAssistantAudio(j) {
         audio.addEventListener('canplay', done, { once: true });
         audio.addEventListener('loadeddata', done, { once: true });
         audio.addEventListener('canplaythrough', done, { once: true });
-        setTimeout(done, 600);
+        setTimeout(done, 900);
       });
 
       const playOnce = async () => {
@@ -234,18 +336,41 @@ async function playAssistantAudio(j) {
         }
       };
 
-      if (await playOnce()) return true;
+      if (await playOnce()) {
+        hideCoachReplayButton();
+        __coachPendingPlayback = null;
+        return true;
+      }
+
       try { if (typeof unlockAudioOnce === 'function') unlockAudioOnce(); } catch (e) {}
-      if (await playOnce()) return true;
+      if (await playOnce()) {
+        hideCoachReplayButton();
+        __coachPendingPlayback = null;
+        return true;
+      }
+
       cleanup();
     } catch (e) {
       if (url) { try { URL.revokeObjectURL(url); } catch (_) {} }
     }
   }
 
+  __coachPendingPlayback = {
+    audio_base64: j && j.audio_base64 ? j.audio_base64 : null,
+    audio_mime_type: j && j.audio_mime_type ? j.audio_mime_type : 'audio/mpeg',
+    reply: j && j.reply ? j.reply : ''
+  };
+
   if (j && j.reply) {
-    return await speakTextFallback(j.reply);
+    const ok = await speakTextFallback(j.reply);
+    if (ok) {
+      hideCoachReplayButton();
+      __coachPendingPlayback = null;
+      return true;
+    }
   }
+
+  showCoachReplayButton('▶ Tap to hear reply');
   return false;
 }
 
