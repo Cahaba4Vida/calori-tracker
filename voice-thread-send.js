@@ -12,40 +12,6 @@ async function ensureTable() {
   await db.query(`INSERT INTO client_update (id) VALUES (1) ON CONFLICT (id) DO NOTHING;`);
 }
 
-
-function deriveVoiceFoodLabel(message, se) {
-  const candidates = [
-    se && se.description,
-    se && se.name,
-    se && se.food_name,
-    se && se.product_name,
-    se && se.item,
-    se && se.notes
-  ].map(v => String(v || "").trim()).filter(Boolean);
-
-  for (const c of candidates) {
-    const lc = c.toLowerCase();
-    if (lc && !["plate estimate", "meal", "food entry", "estimate", "snack", "drink"].includes(lc)) {
-      return c.slice(0, 60);
-    }
-  }
-
-  const raw = String(message || "").trim()
-    .replace(/^(log|add|track|record)\s+/i, "")
-    .replace(/^(i\s+(had|ate|drank)\s+)/i, "")
-    .replace(/^(for\s+(breakfast|lunch|dinner|snack)\s*[,:-]?\s*)/i, "")
-    .replace(/^(it\s+was\s+)/i, "")
-    .replace(/[.?!]+$/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!raw) return "Food entry";
-
-  const clipped = raw.length > 60 ? raw.slice(0, 60).trim() : raw;
-  return clipped.charAt(0).toUpperCase() + clipped.slice(1);
-}
-
-
 exports.handler = async () => {
   try {
     await ensureTable();

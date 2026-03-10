@@ -492,7 +492,7 @@
 <div class="muted" id="sheetError" style="color:#b00020"></div>
 </div>
 </div>
-<!-- Food entry confirmation sheet -->
+<!-- Plate estimate confirmation sheet -->
 <div class="estimate-overlay hidden" hidden="" id="estimateOverlay"></div>
 <div aria-label="Confirm estimate" aria-modal="true" class="sheet hidden" hidden="" id="plateEstimateSheet" role="dialog">
 <div class="sheetHeader">

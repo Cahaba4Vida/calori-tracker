@@ -1,13 +1,4 @@
 
-function apiFetch(fn, body) {
-  return fetch(`/.netlify/functions/${fn}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body || {})
-  }).then(r => r.json());
-}
-
-
 window.startTrial = async function(interval="month"){
   const deviceId = localStorage.getItem("device_id") || (crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
   localStorage.setItem("device_id", deviceId);
@@ -45,120 +36,11 @@ function ensureCoachAudioElement() {
     audio.playsInline = true;
     audio.setAttribute('playsinline', '');
     audio.setAttribute('webkit-playsinline', '');
-    audio.controls = false;
   } catch (e) {}
-  audio.style.position = 'fixed';
-  audio.style.width = '1px';
-  audio.style.height = '1px';
-  audio.style.opacity = '0.001';
-  audio.style.pointerEvents = 'none';
-  audio.style.left = '-9999px';
-  audio.style.bottom = '0';
+  audio.style.display = 'none';
   document.body.appendChild(audio);
   __coachAudioEl = audio;
   return audio;
-}
-
-
-let __coachPendingPlayback = null;
-let __coachReplayBtn = null;
-
-function ensureCoachReplayButton() {
-  if (__coachReplayBtn) return __coachReplayBtn;
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.id = 'coachReplayBtn';
-  btn.textContent = '▶ Tap to hear reply';
-  btn.setAttribute('aria-live', 'polite');
-  btn.style.position = 'fixed';
-  btn.style.left = '50%';
-  btn.style.transform = 'translateX(-50%)';
-  btn.style.bottom = '92px';
-  btn.style.minHeight = '48px';
-  btn.style.zIndex = '99999';
-  btn.style.padding = '12px 16px';
-  btn.style.borderRadius = '999px';
-  btn.style.border = 'none';
-  btn.style.background = '#111';
-  btn.style.color = '#fff';
-  btn.style.fontSize = '15px';
-  btn.style.fontWeight = '600';
-  btn.style.boxShadow = '0 8px 24px rgba(0,0,0,.2)';
-  btn.style.display = 'none';
-  btn.style.webkitAppearance = 'none';
-  btn.style.maxWidth = 'calc(100vw - 32px)';
-  btn.style.whiteSpace = 'nowrap';
-  btn.onclick = async () => {
-    try { await tryPlayPendingReply(true); } catch (e) {}
-  };
-  document.body.appendChild(btn);
-  __coachReplayBtn = btn;
-  return btn;
-}
-
-function showCoachReplayButton(label) {
-  const btn = ensureCoachReplayButton();
-  btn.textContent = label || '▶ Tap to hear reply';
-  btn.style.display = 'block';
-}
-
-function hideCoachReplayButton() {
-  const btn = ensureCoachReplayButton();
-  btn.style.display = 'none';
-  btn.style.webkitAppearance = 'none';
-}
-
-async function tryPlayPendingReply(fromTap) {
-  const pending = __coachPendingPlayback;
-  if (!pending) return false;
-  const ios = isIOSPlaybackDevice();
-
-  if (pending.audio_base64) {
-    let url = null;
-    try {
-      url = base64ToBlobUrl(pending.audio_base64, pending.audio_mime_type || 'audio/mpeg');
-      const audio = ensureCoachAudioElement();
-      try {
-        audio.pause();
-        audio.currentTime = 0;
-      } catch (e) {}
-      audio.src = url;
-      audio.controls = !!ios;
-      if (ios) {
-        audio.style.opacity = '1';
-        audio.style.pointerEvents = 'auto';
-        audio.style.left = '12px';
-        audio.style.bottom = '146px';
-        audio.style.width = 'calc(100vw - 24px)';
-        audio.style.maxWidth = '420px';
-        audio.style.height = '40px';
-        audio.style.zIndex = '99998';
-      }
-      audio.load();
-      try {
-        if (fromTap && typeof unlockAudioOnce === 'function') unlockAudioOnce();
-      } catch (e) {}
-      const p = audio.play();
-      if (p && typeof p.then === 'function') await p;
-      if (!audio.paused) {
-        showCoachReplayButton('▶ Replay reply');
-        return true;
-      }
-    } catch (e) {
-      if (url) { try { URL.revokeObjectURL(url); } catch (_) {} }
-    }
-  }
-
-  if (pending.reply) {
-    const ok = await speakTextFallback(pending.reply);
-    if (ok) {
-      showCoachReplayButton('▶ Replay reply');
-      return true;
-    }
-  }
-
-  showCoachReplayButton(pending.audio_base64 ? '▶ Tap to hear reply' : '▶ Tap to hear spoken reply');
-  return false;
 }
 
 function cacheSpeechVoices() {
@@ -220,7 +102,6 @@ try {
   document.addEventListener('mousedown', prime, onceOpts);
   document.addEventListener('click', prime, onceOpts);
   document.addEventListener('keydown', prime, { once: true });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { try { unlockAudioOnce(); } catch (e) {} } });
   if ('speechSynthesis' in window && window.speechSynthesis && typeof window.speechSynthesis.onvoiceschanged !== 'undefined') {
     window.speechSynthesis.onvoiceschanged = () => { cacheSpeechVoices(); };
   }
@@ -237,18 +118,7 @@ function base64ToBlobUrl(b64, mime) {
   return URL.createObjectURL(blob);
 }
 
-
-function shouldPreferSpeechOnMobile() {
-  try {
-    const ua = String(navigator.userAgent || '');
-    return /iPhone|iPad|iPod|Android/i.test(ua);
-  } catch (e) {
-    return false;
-  }
-}
-
 function chooseSpeechVoice() {
-
   const voices = cacheSpeechVoices();
   if (!voices || !voices.length) return null;
   const lower = (s) => String(s || '').toLowerCase();
@@ -276,47 +146,30 @@ async function speakTextFallback(text) {
     try { synth.resume(); } catch (e) {}
     const utter = new SpeechSynthesisUtterance(String(text));
     const voice = chooseSpeechVoice();
-    if (voice) utter.voice = voice;
+    if (voice) voice && (utter.voice = voice);
     if (voice && voice.lang && !utter.lang) utter.lang = voice.lang;
     else utter.lang = 'en-US';
     utter.rate = 1;
     utter.pitch = 1;
     utter.volume = 1;
-
     return await new Promise((resolve) => {
       let done = false;
-      let started = false;
       const finish = (ok) => { if (done) return; done = true; resolve(!!ok); };
-      utter.onstart = () => { started = true; };
       utter.onend = () => finish(true);
       utter.onerror = () => finish(false);
       try { synth.speak(utter); } catch (e) { finish(false); return; }
-      setTimeout(() => finish(started), 2200);
+      setTimeout(() => finish(true), Math.max(1500, Math.min(8000, String(text).length * 45)));
     });
   } catch (e) {
     return false;
   }
 }
 
-
 async function playAssistantAudio(j) {
-  const payload = {
-    audio_base64: j && j.audio_base64 ? j.audio_base64 : null,
-    audio_mime_type: j && j.audio_mime_type ? j.audio_mime_type : 'audio/mpeg',
-    reply: j && j.reply ? j.reply : ''
-  };
-
-  const ios = isIOSPlaybackDevice();
-  __coachPendingPlayback = payload;
-
-  if (ios) {
-    showCoachReplayButton(payload.audio_base64 ? '▶ Tap to hear reply' : '▶ Tap to hear spoken reply');
-  }
-
-  if (payload.audio_base64) {
+  if (j && j.audio_base64) {
     let url = null;
     try {
-      url = base64ToBlobUrl(payload.audio_base64, payload.audio_mime_type || 'audio/mpeg');
+      url = base64ToBlobUrl(j.audio_base64, j.audio_mime_type || 'audio/mpeg');
       const audio = ensureCoachAudioElement();
       try {
         audio.pause();
@@ -326,94 +179,48 @@ async function playAssistantAudio(j) {
         audio.muted = false;
         audio.volume = 1;
         audio.autoplay = true;
-        audio.controls = !!ios;
-        audio.playsInline = true;
-        audio.setAttribute('playsinline', '');
-        audio.setAttribute('webkit-playsinline', '');
-        if (ios) {
-          audio.style.opacity = '1';
-          audio.style.pointerEvents = 'auto';
-          audio.style.left = '12px';
-          audio.style.bottom = '146px';
-          audio.style.width = 'calc(100vw - 24px)';
-          audio.style.maxWidth = '420px';
-          audio.style.height = '40px';
-          audio.style.zIndex = '99998';
-        }
       } catch (e) {}
       audio.src = url;
       audio.load();
-
       const cleanup = () => {
         if (url) URL.revokeObjectURL(url);
         url = null;
       };
-      audio.onended = () => { cleanup(); if (!ios) { hideCoachReplayButton(); __coachPendingPlayback = null; } };
+      audio.onended = cleanup;
       audio.onerror = cleanup;
-
       const waitUntilReady = () => new Promise((resolve) => {
         if (audio.readyState >= 2) { resolve(); return; }
         const done = () => {
           audio.removeEventListener('canplay', done);
           audio.removeEventListener('loadeddata', done);
-          audio.removeEventListener('canplaythrough', done);
           resolve();
         };
         audio.addEventListener('canplay', done, { once: true });
         audio.addEventListener('loadeddata', done, { once: true });
-        audio.addEventListener('canplaythrough', done, { once: true });
-        setTimeout(done, 900);
+        setTimeout(done, 300);
       });
-
       const playOnce = async () => {
         try {
           await waitUntilReady();
-          const p = audio.play();
-          if (p && typeof p.then === 'function') await p;
-          return !audio.paused;
+          await audio.play();
+          return true;
         } catch (e) {
           return false;
         }
       };
-
-      if (await playOnce()) {
-        if (!ios) {
-          hideCoachReplayButton();
-          __coachPendingPlayback = null;
-        } else {
-          showCoachReplayButton('▶ Replay reply');
-        }
-        return true;
-      }
-
+      if (await playOnce()) return true;
       try { if (typeof unlockAudioOnce === 'function') unlockAudioOnce(); } catch (e) {}
-      if (await playOnce()) {
-        if (!ios) {
-          hideCoachReplayButton();
-          __coachPendingPlayback = null;
-        } else {
-          showCoachReplayButton('▶ Replay reply');
-        }
-        return true;
-      }
-
+      if (await playOnce()) return true;
       cleanup();
-    } catch (e) {}
-  }
-
-  if (!ios && payload.reply) {
-    const ok = await speakTextFallback(payload.reply);
-    if (ok) {
-      hideCoachReplayButton();
-      __coachPendingPlayback = null;
-      return true;
+    } catch (e) {
+      if (url) { try { URL.revokeObjectURL(url); } catch (_) {} }
     }
   }
-
-  showCoachReplayButton(payload.audio_base64 ? '▶ Tap to hear reply' : '▶ Tap to hear spoken reply');
+  if (j && j.reply) {
+    return await speakTextFallback(j.reply);
+  }
   return false;
 }
-
 // --- end cross-browser helpers ---
 
 // Expose helpers globally.
@@ -3398,7 +3205,7 @@ async function sendVoiceFoodMessage() {
       }
 
       // Fire-and-forget audio (do not block the queue on full playback)
-      try { if (getAutoPlaybackEnabled() && typeof playAssistantAudio === 'function') { await playAssistantAudio(j); } } catch (e) {}
+      try { await playAssistantAudio(j); } catch (e) {}
 
     } catch (e) {
       // Keep the queue alive even if one request fails
@@ -3796,7 +3603,7 @@ async function sendChat(opts) {
 
     // Only auto-speak when the message came from coach voice mode.
     // Try returned TTS audio first, and fall back to browser speech synthesis if no audio is returned.
-    if (getAutoPlaybackEnabled() && typeof playAssistantAudio === 'function') {
+    if (from_voice && typeof playAssistantAudio === 'function') {
       await playAssistantAudio({ audio_base64: j.audio_base64 || null, audio_mime_type: (j.audio_mime_type || 'audio/mpeg'), reply: j.reply });
     }
 
@@ -4203,19 +4010,16 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
   function getCoachVoiceMode() {
     return localStorage.getItem('coachVoiceMode') === '1';
   }
-  // Global autoplay helper
-function getAutoPlaybackEnabled() {
-  try {
-    if (typeof getCoachVoiceMode === 'function') return !!getCoachVoiceMode();
-  } catch (e) {}
-window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
-
-  try {
-    return localStorage.getItem('coachVoiceMode') === '1';
-  } catch (e) {
-    return false;
+  
+  function getAutoPlaybackEnabled() {
+    try {
+      return localStorage.getItem('coachVoiceMode') === '1' || localStorage.getItem('coachVoiceMode') === 'true';
+    } catch (e) {
+      return false;
+    }
   }
-}
+  window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
+  
   function setCoachListeningOverlay(isOn) {
     const overlay = document.getElementById('coachListeningOverlay');
     const pill = document.getElementById('coachListeningPill');
@@ -4236,7 +4040,11 @@ window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
       };
       fr.readAsDataURL(blob);
     });
-    const r = await apiFetch('audio-transcribe', { audio_base64: b64, mime: blob.type || 'audio/webm' });
+    const r = await fetch('/.netlify/functions/audio-transcribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audio_base64: b64, mime: blob.type || 'audio/webm' })
+    }).then(r => r.json()).catch(() => ({}));
     return (r && r.text ? String(r.text) : '').trim();
   }
 
@@ -4317,23 +4125,6 @@ window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
             try {
               if (typeof transcribeAudioFallback === 'function') {
                 text = await transcribeAudioFallback(blob);
-              } else {
-                const reader = new FileReader();
-                const b64 = await new Promise((res, rej) => {
-                  reader.onloadend = () => {
-                    try {
-                      res(String(reader.result || '').split(',')[1] || '');
-                    } catch (e) { rej(e); }
-                  };
-                  reader.onerror = rej;
-                  reader.readAsDataURL(blob);
-                });
-                const r = await fetch('/.netlify/functions/audio-transcribe', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ audio_base64: b64, mime: blob.type || 'audio/webm' })
-                }).then(r => r.json()).catch(() => ({}));
-                text = (r && r.text ? String(r.text) : '').trim();
               }
             } catch (e) {
               text = '';
@@ -4345,7 +4136,7 @@ window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
         };
         mr.onerror = (e) => {
           cleanup();
-          reject(new Error(e.error?.message || 'Recording error'));
+          reject(new Error((e && e.error && e.error.message) || 'Recording error'));
         };
       });
 
@@ -5145,10 +4936,10 @@ function initCoachVoiceModeSettings() {
   if (!t) return;
   const cur = localStorage.getItem('coachVoiceMode') === '1';
   t.checked = cur;
-  if (s) s.textContent = cur ? 'Voice mode is ON. Coach button uses voice input and reply audio auto-plays.' : 'Voice mode is OFF. Coach opens the textbox and reply audio does not auto-play.';
+  if (s) s.textContent = cur ? 'Voice mode is ON.' : 'Voice mode is OFF.';
   t.addEventListener('change', () => {
     localStorage.setItem('coachVoiceMode', t.checked ? '1' : '0');
-    if (s) s.textContent = t.checked ? 'Voice mode is ON. Coach button uses voice input and reply audio auto-plays.' : 'Voice mode is OFF. Coach opens the textbox and reply audio does not auto-play.';
+    if (s) s.textContent = t.checked ? 'Voice mode is ON.' : 'Voice mode is OFF.';
   });
 }
 
@@ -5911,32 +5702,7 @@ function entryFriendlyName(e) {
       if (s) return (s.length > 44 ? s.slice(0, 44).trim() + '…' : s);
     }
 
-    if (rx) {
-      const direct =
-        rx.description || rx.food_name || rx.product_name || rx.name || rx.title || rx.item ||
-        (Array.isArray(rx.items) && rx.items[0] && (rx.items[0].name || rx.items[0].title || rx.items[0].description)) ||
-        (Array.isArray(rx.foods) && rx.foods[0] && (rx.foods[0].name || rx.foods[0].title || rx.foods[0].description));
-      if (direct && String(direct).trim()) {
-        const s = String(direct).trim().replace(/\s+/g,' ');
-        const bad = ['plate estimate','meal','food entry','estimate','snack','drink'];
-        if (!bad.includes(s.toLowerCase())) {
-          return (s.length > 44 ? s.slice(0, 44).trim() + '…' : s);
-        }
-      }
-    }
-
-    if (rx && rx.source === 'voice' && rx.raw_user_message && String(rx.raw_user_message).trim()) {
-      const s = String(rx.raw_user_message).trim().replace(/^(log|add|track|record)\s+/i,'').replace(/^(i\s+(had|ate|drank)\s+)/i,'').replace(/\s+/g,' ');
-      if (s) return (s.length > 44 ? s.slice(0, 44).trim() + '…' : s);
-    }
-
-    if (rx && (rx.source === 'plate_photo' || rx.estimated === true)) {
-      if (rx.notes && String(rx.notes).trim()) {
-        const s = String(rx.notes).trim().replace(/^logged\s+/i,'').replace(/^estimate\s*:\s*/i,'').replace(/\s+/g,' ');
-        if (s) return (s.length > 44 ? s.slice(0, 44).trim() + '…' : s);
-      }
-      return 'Food entry';
-    }
+    if (rx && (rx.source === 'plate_photo' || rx.estimated === true)) return 'Plate estimate';
 
     // 4) Manual quick add
     if (rx && rx.source === 'manual') return 'Quick add';
