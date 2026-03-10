@@ -136,6 +136,40 @@ async function getLastLoggedVoiceEntryToday(userId, entryDate) {
   }
 }
 
+
+function deriveVoiceFoodLabel(message, se) {
+  const candidates = [
+    se && se.description,
+    se && se.name,
+    se && se.food_name,
+    se && se.product_name,
+    se && se.item,
+    se && se.notes
+  ].map(v => String(v || "").trim()).filter(Boolean);
+
+  for (const c of candidates) {
+    const lc = c.toLowerCase();
+    if (lc && !["plate estimate", "meal", "food entry", "estimate", "snack", "drink"].includes(lc)) {
+      return c.slice(0, 60);
+    }
+  }
+
+  const raw = String(message || "").trim()
+    .replace(/^(log|add|track|record)\s+/i, "")
+    .replace(/^(i\s+(had|ate|drank)\s+)/i, "")
+    .replace(/^(for\s+(breakfast|lunch|dinner|snack)\s*[,:-]?\s*)/i, "")
+    .replace(/^(it\s+was\s+)/i, "")
+    .replace(/[.?!]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!raw) return "Food entry";
+
+  const clipped = raw.length > 60 ? raw.slice(0, 60).trim() : raw;
+  return clipped.charAt(0).toUpperCase() + clipped.slice(1);
+}
+
+
 exports.handler = async (event, context) => {
   const auth = await requireUser(event, context);
   if (!auth.ok) return auth.response;
@@ -191,7 +225,12 @@ Rules:
 - If the user says another one, same as before, one more, or had it again, use the recent logged entry as context to create a new entry rather than rejecting it as already logged.
 - Only avoid logging when the user explicitly says they are correcting, replacing, undoing, or referring to a previous entry without consuming it again.
 - Keep reply <= 2 sentences.
-- suggested_entry.description should be <= 60 chars.`;
+- suggested_entry.description should be the ACTUAL food/item name the user ate or drank, not a generic label.
+- Good examples: "Core Power Elite chocolate protein shake", "2 scrambled eggs", "Turkey sandwich".
+- Bad examples: "Plate estimate", "Meal", "Food entry", "Estimate".
+- suggested_entry.description should be <= 60 chars.
+- If the item is branded or specific, preserve the specific name the user said.
+- If unsure, use the closest real food name from the user message, never a generic placeholder.`;
 
   const input = [
     { role: "system", content: prompt },
@@ -227,11 +266,17 @@ Rules:
     const limit = await enforceFoodEntryLimit(userId, entry_date);
     if (!limit.ok) return limit.response;
 
+    const derived_label = deriveVoiceFoodLabel(message, se);
+
     const raw_extraction = {
       source: "voice",
       confidence: "low",
       estimated: true,
-      notes: String(se.description || se.notes || "").slice(0, 180)
+      description: derived_label,
+      food_name: derived_label,
+      item: derived_label,
+      notes: derived_label,
+      raw_user_message: String(message || "").slice(0, 180)
     };
 
     const ins = await query(
@@ -250,6 +295,12 @@ Rules:
     );
 
     logged_entry = ins.rows && ins.rows[0] ? ins.rows[0] : null;
+    if (logged_entry && logged_entry.raw_extraction && typeof logged_entry.raw_extraction === 'object') {
+      logged_entry.raw_extraction.description = logged_entry.raw_extraction.description || derived_label;
+      logged_entry.raw_extraction.food_name = logged_entry.raw_extraction.food_name || derived_label;
+      logged_entry.raw_extraction.item = logged_entry.raw_extraction.item || derived_label;
+      logged_entry.raw_extraction.notes = logged_entry.raw_extraction.notes || derived_label;
+    }
 
     // Referral reward: only for signed-in users.
     try {
