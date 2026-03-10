@@ -373,13 +373,43 @@ global.playAssistantAudio = playAssistantAudio;
 
     async function startUpgradeCheckout(interval) {
       try {
-        setStatus('Creating Stripe checkout link…');
-        trackEvent('upgrade_click', { interval });
-        const out = await api('create-checkout-session-public', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interval, device_id: getOrCreateDeviceId() }) });
+        setStatus('Opening checkout…');
+        try { trackEvent('upgrade_click', { interval }); } catch (_) {}
+
+        const which = interval === 'year' || interval === 'yearly' ? 'yearly' : 'monthly';
+
+        // Prefer the direct Stripe links returned by billing-status.
+        try {
+          const billing = await api('billing-status');
+          const direct = billing && billing.upgrade_links
+            ? (which === 'yearly' ? billing.upgrade_links.yearly : billing.upgrade_links.monthly)
+            : '';
+          if (direct) {
+            window.location.href = direct;
+            return;
+          }
+        } catch (_) {}
+
+        // Fallback to public checkout session creation only if direct links are unavailable.
+        const out = await api('create-checkout-session-public', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            interval: which === 'yearly' ? 'year' : 'month',
+            device_id: getOrCreateDeviceId()
+          })
+        });
+
         if (out?.url) {
           window.location.href = out.url;
           return;
         }
+
+        setStatus((out && (out.error || out.message)) || 'Upgrade link unavailable. Please try again.');
+      } catch (e) {
+        setStatus(e && e.message ? e.message : 'Could not start checkout');
+      }
+    }
         setStatus('Upgrade link unavailable. Please try again.');
       } catch (e) {
         setStatus(e.message || 'Could not start checkout');
