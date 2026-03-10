@@ -5028,6 +5028,30 @@ function initSettingsTabs_v37() {
 
 }
 
+function getRolloverLocalSettings() {
+  try {
+    const hasLocal = localStorage.getItem('rollover_settings_initialized') === '1';
+    const enabled = localStorage.getItem('rollover_enabled') === '1';
+    const rawCap = parseInt(localStorage.getItem('rollover_cap') || '500', 10);
+    return {
+      hasLocal,
+      enabled,
+      cap: Number.isFinite(rawCap) && rawCap > 0 ? rawCap : 500
+    };
+  } catch (e) {
+    return { hasLocal: false, enabled: false, cap: 500 };
+  }
+}
+
+function setRolloverLocalSettings(enabled, cap) {
+  try {
+    const n = parseInt(cap || '500', 10);
+    localStorage.setItem('rollover_settings_initialized', '1');
+    localStorage.setItem('rollover_enabled', enabled ? '1' : '0');
+    localStorage.setItem('rollover_cap', String(Number.isFinite(n) && n > 0 ? n : 500));
+  } catch (e) {}
+}
+
 function initRolloverCaloriesSettings() {
   const toggle = document.getElementById('rolloverToggle');
   const capInput = document.getElementById('rolloverCap');
@@ -5035,29 +5059,86 @@ function initRolloverCaloriesSettings() {
   const saveBtn = document.getElementById('rolloverSaveBtn');
   if (!toggle || !capInput || !saveBtn) return;
 
-  async function load() {
+  function renderStatus(mode) {
+    if (!status) return;
+    if (mode === 'saving') status.textContent = 'Saving…';
+    else if (mode === 'local') status.textContent = toggle.checked ? 'Rollover is enabled. (local)' : 'Rollover is disabled. (local)';
+    else if (mode === 'saved') status.textContent = 'Saved.';
+    else if (mode === 'saved-local') status.textContent = 'Saved locally.';
+    else status.textContent = toggle.checked ? 'Rollover is enabled.' : 'Rollover is disabled.';
+  }
+
+  function applyLocal() {
+    const local = getRolloverLocalSettings();
+    toggle.checked = !!local.enabled;
+    capInput.value = String(local.cap || 500);
+    renderStatus(local.hasLocal ? 'default' : 'local');
+    return local;
+  }
+
+  async function syncToServer() {
+    const cap = parseInt(capInput.value || '500', 10) || 500;
+    setRolloverLocalSettings(toggle.checked, cap);
     try {
-      const j = await api('nutrition-settings-get');
-      toggle.checked = !!j.rollover_enabled;
-      capInput.value = String(j.rollover_cap ?? 500);
-      status.textContent = toggle.checked ? 'Rollover is enabled.' : 'Rollover is disabled.';
+      const j = await api('nutrition-settings-set', {
+        rollover_enabled: toggle.checked,
+        rollover_cap: cap
+      });
+      renderStatus(j && j.ok ? 'saved' : 'default');
+      try { await loadGoal(); await refreshToday(); } catch (e) {}
     } catch (e) {
-      status.textContent = 'Failed to load rollover settings.';
+      renderStatus('saved-local');
     }
   }
 
-  saveBtn.addEventListener('click', async () => {
-    status.textContent = 'Saving…';
-    try {
-      const cap = parseInt(capInput.value || '500', 10);
-      const j = await api('nutrition-settings-set', { rollover_enabled: toggle.checked, rollover_cap: cap });
-      status.textContent = j.ok ? 'Saved.' : 'Save failed.';
-      // refresh goal so UI reflects effective calories (server truth)
-      try { await loadGoal(); await refreshToday(); } catch(e) {}
-    } catch (e) {
-      status.textContent = 'Save failed.';
+  async function load() {
+    const local = applyLocal();
+
+    // If the user already chose a local value, keep that as the visible source of truth.
+    if (local && local.hasLocal) {
+      return;
     }
-  });
+
+    try {
+      const j = await api('nutrition-settings-get');
+      const enabled = !!j.rollover_enabled;
+      const cap = parseInt(j.rollover_cap ?? 500, 10) || 500;
+      toggle.checked = enabled;
+      capInput.value = String(cap);
+      setRolloverLocalSettings(enabled, cap);
+      renderStatus('default');
+    } catch (e) {
+      renderStatus('local');
+    }
+  }
+
+  if (!toggle.__rolloverLocalBound) {
+    toggle.__rolloverLocalBound = true;
+    toggle.addEventListener('change', async () => {
+      setRolloverLocalSettings(toggle.checked, capInput.value || 500);
+      renderStatus('default');
+      await syncToServer();
+    });
+  }
+
+  if (!capInput.__rolloverLocalBound) {
+    capInput.__rolloverLocalBound = true;
+    capInput.addEventListener('input', () => {
+      setRolloverLocalSettings(toggle.checked, capInput.value || 500);
+    });
+    capInput.addEventListener('change', async () => {
+      setRolloverLocalSettings(toggle.checked, capInput.value || 500);
+      await syncToServer();
+    });
+  }
+
+  if (!saveBtn.__rolloverLocalBound) {
+    saveBtn.__rolloverLocalBound = true;
+    saveBtn.addEventListener('click', async () => {
+      renderStatus('saving');
+      await syncToServer();
+    });
+  }
 
   load();
 }
