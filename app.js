@@ -282,6 +282,7 @@ const VIEW_SPAN_PAST_DAYS_KEY = 'caloriTrackerViewSpanPastDaysV1';
 const VIEW_SPAN_FUTURE_DAYS_KEY = 'caloriTrackerViewSpanFutureDaysV1';
 
 const PENDING_REFERRAL_CODE_KEY = 'caloriPendingReferralCodeV1';
+const PENDING_OPEN_REFERRAL_SHARE_KEY = 'caloriPendingOpenReferralShareV1';
 
 function captureReferralCodeFromUrl() {
   try {
@@ -302,6 +303,21 @@ function captureReferralCodeFromUrl() {
 }
 
 captureReferralCodeFromUrl();
+
+function markPendingReferralShare() {
+  try { localStorage.setItem(PENDING_OPEN_REFERRAL_SHARE_KEY, '1'); } catch {}
+}
+function clearPendingReferralShare() {
+  try { localStorage.removeItem(PENDING_OPEN_REFERRAL_SHARE_KEY); } catch {}
+}
+async function maybeOpenPendingReferralShare() {
+  try {
+    if (!currentUser) return;
+    if (localStorage.getItem(PENDING_OPEN_REFERRAL_SHARE_KEY) !== '1') return;
+    clearPendingReferralShare();
+    await openReferralShare();
+  } catch {}
+}
 
 function generateDeviceId() {
   try {
@@ -995,7 +1011,10 @@ async function openReferralShare() {
   try {
     const link = await fetchReferralLink();
     const input = el('referralLinkInput');
-    if (input) input.value = link;
+    if (input) {
+      input.value = link;
+      try { input.focus(); input.select(); } catch {}
+    }
     if (status) status.innerText = '';
   } catch (e) {
     if (status) status.innerText = e?.message || String(e);
@@ -1026,6 +1045,8 @@ function bindAiLimitAndReferralUI() {
   if (inviteBtn) inviteBtn.onclick = () => {
     // Referrals require an account, so prompt sign-in if needed.
     if (!currentUser) {
+      markPendingReferralShare();
+      setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
       openIdentityModal('signup');
       return;
     }
@@ -4082,6 +4103,7 @@ if (typeof netlifyIdentity !== 'undefined') {
         .then(async () => {
           await completePendingFreePlanSignup();
           await claimPendingReferralIfSignedIn();
+          await maybeOpenPendingReferralShare();
         })
         .catch(e => setStatus(e.message));
       return;
@@ -4106,6 +4128,7 @@ if (typeof netlifyIdentity !== 'undefined') {
     .then(async () => {
       await completePendingFreePlanSignup();
       await claimPendingReferralIfSignedIn();
+      await maybeOpenPendingReferralShare();
     })
     .catch(e => setStatus(e.message));
 
