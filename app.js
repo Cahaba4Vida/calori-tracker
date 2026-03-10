@@ -2517,28 +2517,39 @@ async function loadGoal() {
   el('todayCarbsGoal').innerText = fmtGoal(macroGoals.carbs_g);
   el('todayFatGoal').innerText = fmtGoal(macroGoals.fat_g);
 
-  el('goalInput').value = j.daily_calories ?? '';
-  el('proteinGoalInput').value = macroGoals.protein_g ?? '';
-  el('carbsGoalInput').value = macroGoals.carbs_g ?? '';
-  el('fatGoalInput').value = macroGoals.fat_g ?? '';
+  const goalInputEl = el('goalInput');
+  const proteinGoalInputEl = el('proteinGoalInput');
+  const carbsGoalInputEl = el('carbsGoalInput');
+  const fatGoalInputEl = el('fatGoalInput');
+  const goalDisplayEl = el('goalDisplay');
+
+  if (goalInputEl) goalInputEl.value = j.daily_calories ?? '';
+  if (proteinGoalInputEl) proteinGoalInputEl.value = macroGoals.protein_g ?? '';
+  if (carbsGoalInputEl) carbsGoalInputEl.value = macroGoals.carbs_g ?? '';
+  if (fatGoalInputEl) fatGoalInputEl.value = macroGoals.fat_g ?? '';
 
   const parts = [`Calories: ${j.daily_calories ?? '—'}`];
   if (macroGoals.protein_g != null) parts.push(`Protein: ${macroGoals.protein_g}g`);
   if (macroGoals.carbs_g != null) parts.push(`Carbs: ${macroGoals.carbs_g}g`);
   if (macroGoals.fat_g != null) parts.push(`Fat: ${macroGoals.fat_g}g`);
-  el('goalDisplay').innerText = parts.join(' • ');
+  if (goalDisplayEl) goalDisplayEl.innerText = parts.join(' • ');
   renderAiPlanSummary();
 
   return j.daily_calories ?? null;
 }
 
 async function saveGoal() {
-  const vRaw = el('goalInput').value;
+  const goalInputEl = el('goalInput');
+  if (!goalInputEl) return null;
+
+  const vRaw = goalInputEl.value;
   const v = Number(vRaw);
   if (!vRaw || !Number.isFinite(v) || v < 0) throw new Error('Calories goal must be a number >= 0.');
 
   const asOptional = (id) => {
-    const raw = (el(id).value || '').trim();
+    const node = el(id);
+    if (!node) return null;
+    const raw = (node.value || '').trim();
     if (raw === '') return null;
     const n = Number(raw);
     if (!Number.isFinite(n) || n < 0) throw new Error('Macro goals must be numbers >= 0.');
@@ -3500,7 +3511,8 @@ function bindUI() {
   const resetMockBtn = el('resetMockBtn');
   if (enterMockBtn) enterMockBtn.onclick = () => initAuthedSession().catch(e => setStatus(e.message));
   if (resetMockBtn) resetMockBtn.onclick = () => { resetMockState(); setStatus('Local demo data reset. Starting fresh onboarding…'); initAuthedSession().catch(e => setStatus(e.message)); };
-  el('saveGoalBtn').onclick = () => saveGoal().catch(e => setStatus(e.message));
+  const saveGoalBtn = el('saveGoalBtn');
+  if (saveGoalBtn) saveGoalBtn.onclick = () => saveGoal().catch(e => setStatus(e.message));
   const unifiedPhotoInputIds = ['photoModeCameraInput'];
   unifiedPhotoInputIds.forEach((id) => {
     const node = el(id);
