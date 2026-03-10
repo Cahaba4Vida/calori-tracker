@@ -3971,7 +3971,7 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
   bindClick('settingsSignInBtn', () => openIdentityModal('login'));
 
   bindClick('addFoodPhotoBtn', () => showAddFoodPanel('addFoodPhotoPanel'));
-  bindClick('addFoodVoiceBtn', () => { voiceFollowUpCount = 0; showAddFoodPanel('addFoodVoicePanel'); });
+  bindClick('addFoodVoiceBtn', () => { try { stopVoiceRecognition(); } catch (e) {} voiceAutoSendPending = false; voiceIsListening = false; updateVoiceToggleLabel(); voiceFollowUpCount = 0; showAddFoodPanel('addFoodVoicePanel'); });
   bindClick('addFoodQuickFillBtn', () => showAddFoodPanel('addFoodQuickFillPanel'));
   bindClick('addFoodManualBtn', () => showAddFoodPanel('addFoodManualPanel'));
   bindClick('addFoodOverlay', () => showAddFoodPanel(null));
@@ -3983,48 +3983,81 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
   bindClick('photoPlateBtn', () => { activePhotoMode = 'plate'; const n = el('photoModeCameraInput'); if (n) n.click(); });
 
   window.__voiceToggleHandler = window.__voiceToggleHandler || (async () => {
-    // Guard against duplicate invocations (e.g., multiple click delegates / rapid double-click)
-    if (window.__voiceToggleInFlight) return;
-    window.__voiceToggleInFlight = true;
-    unlockAudioOnce();
+  // Guard against duplicate invocations (e.g., multiple click delegates / rapid double-click)
+  if (window.__voiceToggleInFlight) return;
+  window.__voiceToggleInFlight = true;
+  unlockAudioOnce();
+  try {
+    // Prime mic permission
     try {
-      // Prime mic permission (some browsers show SpeechRecognition 'listening' but never deliver results without an explicit getUserMedia grant)
-      try {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          stream.getTracks().forEach((t) => t.stop());
-        }
-      } catch (e) {
-        // We'll still try SpeechRecognition; if it fails, onerror will surface details.
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((t) => t.stop());
       }
-      const recognition = ensureVoiceRecognition();
-      if (!recognition) {
-        setStatus('Voice recognition is not available on this browser. Type your meal details instead.');
-        return;
-      }
-      if (voiceIsListening) {
-        stopVoiceRecognition();
-        return;
-      }
+    } catch (e) {}
+
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isMobileSafari = /Safari/i.test(ua) && !/Chrome|CriOS|FxiOS|EdgiOS|Edg|OPiOS/i.test(ua);
+
+    if (voiceIsListening) {
+      try { stopVoiceRecognition(); } catch (e) {}
+      voiceAutoSendPending = false;
+      voiceIsListening = false;
+      updateVoiceToggleLabel();
+      setStatus('');
+      return;
+    }
+
+    // On iPhone/mobile Safari, use the same stable shared capture path as coach voice.
+    if (isIOS || isMobileSafari) {
+      voiceAutoSendPending = false;
       voiceIsListening = true;
-      voiceAutoSendPending = true;
       updateVoiceToggleLabel();
       setStatus('Listening…');
       try {
-        recognition.start();
-        // Provide immediate visual feedback even if permission prompt is suppressed
         const out = el('voiceFoodOutput');
         if (out && !out.innerText.trim()) out.innerText = 'Listening…';
+        const text = await captureVoiceOnce();
+        voiceIsListening = false;
+        updateVoiceToggleLabel();
+        setStatus('');
+        if (!text) return;
+        const input = el('voiceFoodInput');
+        if (input) input.value = String(text || '').trim();
+        await sendVoiceFoodMessage();
       } catch (e) {
         voiceIsListening = false;
         voiceAutoSendPending = false;
         updateVoiceToggleLabel();
         setStatus(`Unable to start voice input: ${e && e.message ? e.message : e}`);
       }
-    } finally {
-      window.__voiceToggleInFlight = false;
+      return;
     }
-  });
+
+    const recognition = ensureVoiceRecognition();
+    if (!recognition) {
+      setStatus('Voice recognition is not available on this browser. Type your meal details instead.');
+      return;
+    }
+    voiceIsListening = true;
+    voiceAutoSendPending = true;
+    updateVoiceToggleLabel();
+    setStatus('Listening…');
+    try {
+      recognition.start();
+      const out = el('voiceFoodOutput');
+      if (out && !out.innerText.trim()) out.innerText = 'Listening…';
+    } catch (e) {
+      voiceIsListening = false;
+      voiceAutoSendPending = false;
+      updateVoiceToggleLabel();
+      setStatus(`Unable to start voice input: ${e && e.message ? e.message : e}`);
+    }
+  } finally {
+    window.__voiceToggleInFlight = false;
+  }
+});
   bindClick('voiceToggleBtn', window.__voiceToggleHandler);
   if (!window.__voiceDelegateInstalled) {
     window.__voiceDelegateInstalled = true;
@@ -4266,6 +4299,10 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
   if (coachFab) {
     coachFab.onclick = async () => {
       if (getCoachVoiceMode()) {
+        try { stopVoiceRecognition(); } catch (e) {}
+        voiceAutoSendPending = false;
+        voiceIsListening = false;
+        updateVoiceToggleLabel();
         setCoachListeningOverlay(true);
         try {
           const text = await captureVoiceOnce();
