@@ -27,12 +27,6 @@ function normalizeAudioMime(mime) {
   return m;
 }
 
-
-function isIOSDevice() {
-  const ua = navigator.userAgent || '';
-  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-
 function ensureCoachAudioElement() {
   if (__coachAudioEl) return __coachAudioEl;
   const audio = document.createElement('audio');
@@ -42,17 +36,8 @@ function ensureCoachAudioElement() {
     audio.playsInline = true;
     audio.setAttribute('playsinline', '');
     audio.setAttribute('webkit-playsinline', '');
-    audio.setAttribute('x-webkit-airplay', 'allow');
-    audio.muted = false;
-    audio.volume = 1;
   } catch (e) {}
-  audio.style.position = 'fixed';
-  audio.style.left = '-9999px';
-  audio.style.bottom = '0';
-  audio.style.width = '1px';
-  audio.style.height = '1px';
-  audio.style.opacity = '0.01';
-  audio.style.pointerEvents = 'none';
+  audio.style.display = 'none';
   document.body.appendChild(audio);
   __coachAudioEl = audio;
   return audio;
@@ -96,20 +81,15 @@ function unlockAudioOnce() {
       gain.gain.value = 0.0001;
       osc.connect(gain).connect(ctx.destination);
       osc.start();
-      osc.stop(ctx.currentTime + 0.02);
+      osc.stop(ctx.currentTime + 0.01);
     }
   } catch (e) {}
   try {
     const audio = ensureCoachAudioElement();
-    audio.muted = false;
-    audio.volume = 1;
-    audio.src = 'data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAFAAAGYQCA' ;
-    const p = audio.play();
-    if (p && typeof p.then === 'function') p.then(() => {
-      try { audio.pause(); } catch (e) {}
-      try { audio.currentTime = 0; } catch (e) {}
-      try { audio.removeAttribute('src'); audio.load(); } catch (e) {}
-    }).catch(() => {});
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.catch === 'function') playPromise.catch(() => {});
+    try { audio.pause(); } catch (e) {}
+    try { audio.removeAttribute('src'); audio.load(); } catch (e) {}
   } catch (e) {}
   try { primeSpeechSynthesis(); } catch (e) {}
 }
@@ -202,11 +182,10 @@ async function speakTextFallback(text) {
 
 
 async function playAssistantAudio(j) {
-  const isIOS = isIOSDevice();
-
   if (j && j.audio_base64) {
-    let objectUrl = null;
+    let url = null;
     try {
+      url = base64ToBlobUrl(j.audio_base64, j.audio_mime_type || 'audio/mpeg');
       const audio = ensureCoachAudioElement();
       try {
         audio.pause();
@@ -220,13 +199,15 @@ async function playAssistantAudio(j) {
         audio.setAttribute('playsinline', '');
         audio.setAttribute('webkit-playsinline', '');
       } catch (e) {}
-
-      const src = isIOS
-        ? ('data:' + (j.audio_mime_type || 'audio/mpeg') + ';base64,' + j.audio_base64)
-        : (objectUrl = base64ToBlobUrl(j.audio_base64, j.audio_mime_type || 'audio/mpeg'));
-
-      audio.src = src;
+      audio.src = url;
       audio.load();
+
+      const cleanup = () => {
+        if (url) URL.revokeObjectURL(url);
+        url = null;
+      };
+      audio.onended = cleanup;
+      audio.onerror = cleanup;
 
       const waitUntilReady = () => new Promise((resolve) => {
         if (audio.readyState >= 2) { resolve(); return; }
@@ -239,37 +220,26 @@ async function playAssistantAudio(j) {
         audio.addEventListener('canplay', done, { once: true });
         audio.addEventListener('loadeddata', done, { once: true });
         audio.addEventListener('canplaythrough', done, { once: true });
-        setTimeout(done, isIOS ? 1200 : 600);
+        setTimeout(done, 600);
       });
-
-      const cleanup = () => {
-        if (objectUrl) {
-          try { URL.revokeObjectURL(objectUrl); } catch (e) {}
-          objectUrl = null;
-        }
-      };
-      audio.onended = cleanup;
-      audio.onerror = cleanup;
 
       const playOnce = async () => {
         try {
           await waitUntilReady();
-          try { if (typeof unlockAudioOnce === 'function') unlockAudioOnce(); } catch (e) {}
           const p = audio.play();
           if (p && typeof p.then === 'function') await p;
-          await new Promise(r => setTimeout(r, isIOS ? 250 : 120));
-          return !audio.paused && (audio.currentTime > 0 || !isIOS);
+          return !audio.paused;
         } catch (e) {
           return false;
         }
       };
 
       if (await playOnce()) return true;
-      await new Promise(r => setTimeout(r, 150));
+      try { if (typeof unlockAudioOnce === 'function') unlockAudioOnce(); } catch (e) {}
       if (await playOnce()) return true;
       cleanup();
     } catch (e) {
-      if (objectUrl) { try { URL.revokeObjectURL(objectUrl); } catch (_) {} }
+      if (url) { try { URL.revokeObjectURL(url); } catch (_) {} }
     }
   }
 
@@ -278,13 +248,6 @@ async function playAssistantAudio(j) {
   }
   return false;
 }
-
-
-try {
-  document.addEventListener('touchend', unlockAudioOnce, { passive: true });
-  document.addEventListener('click', unlockAudioOnce, { passive: true });
-  document.addEventListener('keydown', unlockAudioOnce, { passive: true });
-} catch (e) {}
 
 // --- end cross-browser helpers ---
 
@@ -3270,7 +3233,7 @@ async function sendVoiceFoodMessage() {
       }
 
       // Fire-and-forget audio (do not block the queue on full playback)
-      try { await playAssistantAudio(j); } catch (e) {}
+      try { if (getAutoPlaybackEnabled() && typeof playAssistantAudio === 'function') { await playAssistantAudio(j); } } catch (e) {}
 
     } catch (e) {
       // Keep the queue alive even if one request fails
@@ -3668,7 +3631,7 @@ async function sendChat(opts) {
 
     // Only auto-speak when the message came from coach voice mode.
     // Try returned TTS audio first, and fall back to browser speech synthesis if no audio is returned.
-    if (from_voice && typeof playAssistantAudio === 'function') {
+    if (getAutoPlaybackEnabled() && typeof playAssistantAudio === 'function') {
       await playAssistantAudio({ audio_base64: j.audio_base64 || null, audio_mime_type: (j.audio_mime_type || 'audio/mpeg'), reply: j.reply });
     }
 
@@ -4073,6 +4036,9 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
   // Floating coach button toggles the chat window.
   // Coach voice mode (stored locally). When enabled, FAB starts voice capture instead of opening the textbox UI.
   function getCoachVoiceMode() {
+    return localStorage.getItem('coachVoiceMode') === '1';
+  }
+  function getAutoPlaybackEnabled() {
     return localStorage.getItem('coachVoiceMode') === '1';
   }
   function setCoachListeningOverlay(isOn) {
@@ -4903,10 +4869,10 @@ function initCoachVoiceModeSettings() {
   if (!t) return;
   const cur = localStorage.getItem('coachVoiceMode') === '1';
   t.checked = cur;
-  if (s) s.textContent = cur ? 'Voice mode is ON.' : 'Voice mode is OFF.';
+  if (s) s.textContent = cur ? 'Voice mode is ON. Coach button uses voice input and reply audio auto-plays.' : 'Voice mode is OFF. Coach opens the textbox and reply audio does not auto-play.';
   t.addEventListener('change', () => {
     localStorage.setItem('coachVoiceMode', t.checked ? '1' : '0');
-    if (s) s.textContent = t.checked ? 'Voice mode is ON.' : 'Voice mode is OFF.';
+    if (s) s.textContent = t.checked ? 'Voice mode is ON. Coach button uses voice input and reply audio auto-plays.' : 'Voice mode is OFF. Coach opens the textbox and reply audio does not auto-play.';
   });
 }
 
