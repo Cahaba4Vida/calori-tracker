@@ -163,8 +163,8 @@ exports.handler = async (event, context) => {
   // Help the model avoid re-logging prior items when the user restates them.
   const lastLogged = await getLastLoggedVoiceEntryToday(userId, today);
   const lastLoggedSummary = lastLogged
-    ? `Already logged today in this voice flow (most recent): ${JSON.stringify(lastLogged)}`
-    : "Already logged today in this voice flow (most recent): none";
+    ? `Recent logged entry today for context only (do NOT suppress intentional re-logs): ${JSON.stringify(lastLogged)}`
+    : "Recent logged entry today for context only (do NOT suppress intentional re-logs): none";
 
   const prompt = `You help users log food from voice descriptions.
 Return ONLY JSON with this exact shape:
@@ -186,8 +186,10 @@ ${lastLoggedSummary}
 Rules:
 - If user describes a meal, estimate calories/macros.
 - If user is unclear, ask ONE follow-up question and set needs_follow_up=true.
-- VERY IMPORTANT: Each new user message should be treated as an incremental update. If the user repeats foods that were already logged earlier in this conversation/today (often by restating the previous meal), DO NOT include those repeated foods again in suggested_entry. Only include NEW foods not already logged.
-- If the user message contains no new foods (only repeats what was already logged), set suggested_entry=null and reply that it was already logged.
+- VERY IMPORTANT: Do NOT suppress a food just because it appears similar to something logged earlier today or earlier in this conversation.
+- Users often intentionally log the same item multiple times in a day. If the user clearly says they had, drank, logged, or want to add the item again, treat it as a NEW entry and include it in suggested_entry.
+- If the user says another one, same as before, one more, or had it again, use the recent logged entry as context to create a new entry rather than rejecting it as already logged.
+- Only avoid logging when the user explicitly says they are correcting, replacing, undoing, or referring to a previous entry without consuming it again.
 - Keep reply <= 2 sentences.
 - suggested_entry.description should be <= 60 chars.`;
 

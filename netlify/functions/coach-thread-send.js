@@ -1,3 +1,4 @@
+
 const { json, getDenverDateISO } = require("./_util");
 const { requireUser } = require("./_auth");
 const { ensureUserProfile, query } = require("./_db");
@@ -77,9 +78,7 @@ async function insertMessage(threadId, role, content) {
   );
 }
 
-async function loadHistory(threadId, limit = 16) {
-  // Fetch most recent messages, then reverse to chronological order.
-  // Using ORDER BY ASC with LIMIT would keep only the oldest messages and drop the newest turn.
+async function loadHistory(threadId, limit = 20) {
   const r = await query(
     `select role, content
      from coach_messages
@@ -99,20 +98,53 @@ async function buildFoodContext(userId, date) {
     [userId, date]
   );
 
-  const totalCalories = entries.rows.reduce((s, x) => s + (x.calories || 0), 0);
-  const goalR = await query("select daily_calories from calorie_goals where user_id=$1", [userId]);
-  const goal = goalR.rows[0]?.daily_calories ?? null;
+  const totalCalories = entries.rows.reduce((s, x) => s + (Number(x.calories) || 0), 0);
+  const totalProtein = entries.rows.reduce((s, x) => s + (Number(x.protein_g) || 0), 0);
+  const totalCarbs = entries.rows.reduce((s, x) => s + (Number(x.carbs_g) || 0), 0);
+  const totalFat = entries.rows.reduce((s, x) => s + (Number(x.fat_g) || 0), 0);
+
+  const [goalR, profileR, latestWeightR, recentWeightsR] = await Promise.all([
+    query("select daily_calories from calorie_goals where user_id=$1", [userId]),
+    query(`select macro_protein_g, macro_carbs_g, macro_fat_g, current_weight_lbs, target_weight_lbs, goal_weight_lbs, activity_level, goal_mode
+           from user_profiles where user_id=$1 limit 1`, [userId]),
+    query(`select entry_date::text as entry_date, weight_lbs::float8 as weight_lbs
+           from daily_weights where user_id=$1 order by entry_date desc limit 1`, [userId]),
+    query(`select entry_date::text as entry_date, weight_lbs::float8 as weight_lbs
+           from daily_weights where user_id=$1 order by entry_date desc limit 7`, [userId])
+  ]);
+
+  const goalCalories = goalR.rows[0]?.daily_calories ?? null;
+  const p = profileR.rows[0] || {};
+  const latestWeight = latestWeightR.rows[0] || null;
+  const weightRows = (recentWeightsR.rows || []).slice().reverse();
+
+  let weightTrend = "unknown";
+  if (weightRows.length >= 2) {
+    const first = Number(weightRows[0].weight_lbs);
+    const last = Number(weightRows[weightRows.length - 1].weight_lbs);
+    if (Number.isFinite(first) && Number.isFinite(last)) {
+      const delta = Math.round((last - first) * 10) / 10;
+      weightTrend = delta === 0 ? "flat" : `${delta > 0 ? '+' : ''}${delta} lbs over last ${weightRows.length} weigh-ins`;
+    }
+  }
 
   const lines = [];
   lines.push(`Date (America/Denver): ${date}`);
-  lines.push(`Goal calories: ${goal ?? "not set"}`);
-  lines.push(`Total calories logged: ${totalCalories}`);
-  lines.push("Food entries (chronological):");
-  for (const e of entries.rows) {
-    const note = e.raw_extraction && e.raw_extraction.notes ? String(e.raw_extraction.notes) : "";
-    lines.push(`- ${e.calories} cal` + (e.protein_g != null ? ` (P${e.protein_g} C${e.carbs_g} F${e.fat_g})` : "") + (note ? ` — ${note}` : ""));
+  lines.push(`Goal calories: ${goalCalories ?? "not set"}`);
+  lines.push(`Today's totals so far: calories=${totalCalories}, protein_g=${Math.round(totalProtein)}, carbs_g=${Math.round(totalCarbs)}, fat_g=${Math.round(totalFat)}`);
+  lines.push(`Macro goals: protein_g=${p.macro_protein_g ?? "not set"}, carbs_g=${p.macro_carbs_g ?? "not set"}, fat_g=${p.macro_fat_g ?? "not set"}`);
+  lines.push(`Weight context: latest_weight_lbs=${latestWeight?.weight_lbs ?? p.current_weight_lbs ?? "unknown"}, target_weight_lbs=${p.target_weight_lbs ?? p.goal_weight_lbs ?? "unknown"}, goal_mode=${p.goal_mode ?? "unknown"}, activity_level=${p.activity_level ?? "unknown"}, trend=${weightTrend}`);
+  lines.push("Recent food entries today (most recent last, for context only — do not recite unless asked):");
+  const recent = entries.rows.slice(-6);
+  if (!recent.length) {
+    lines.push("- none logged today");
+  } else {
+    for (const e of recent) {
+      const note = e.raw_extraction && e.raw_extraction.notes ? String(e.raw_extraction.notes) : "";
+      lines.push(`- ${e.calories} cal${e.protein_g != null ? ` (P${e.protein_g} C${e.carbs_g} F${e.fat_g})` : ""}${note ? ` — ${note}` : ""}`);
+    }
   }
-  return { totalCalories, goal, lines };
+  return { lines };
 }
 
 exports.handler = async (event, context) => {
@@ -131,7 +163,6 @@ exports.handler = async (event, context) => {
   const aiLimit = await enforceAiActionLimit(userId, getDenverDateISO(new Date()), "coach");
   if (!aiLimit.ok) return aiLimit.response;
 
-  // Thread management (reuse if active in last 12 hours)
   let threadId = body.thread_id ? String(body.thread_id) : null;
   let thread = await getThreadForUser(userId, threadId);
   if (!thread) {
@@ -153,19 +184,21 @@ exports.handler = async (event, context) => {
   const foodCtx = await buildFoodContext(userId, date);
   const system = [
     "You are a friendly, motivating nutrition coach.",
-    "Maintain conversational continuity across turns; refer back to what the user said previously when helpful.",
-    "Ground advice in the provided food log; if data is missing, say so.",
+    "Keep a natural ongoing conversation across turns instead of restarting each reply.",
+    "Answer the user's actual question first.",
+    "Use the provided goals, weight data, and food logs when relevant, but do NOT recite the full log unless the user explicitly asks for a recap.",
+    "Do not repeat previously listed foods back to the user unless needed for a specific explanation.",
+    "Reference trends, calorie progress, macro progress, weight progress, or patterns only when they genuinely help the answer.",
+    "If there is not enough data, say that briefly instead of inventing details.",
     "Avoid medical claims; provide general wellness guidance.",
-    "Keep replies concise and conversational: 2–4 short sentences.",
-    "Prefer specific, actionable suggestions."
+    "Keep replies concise and conversational: usually 2-4 short sentences, occasionally 5 if needed.",
+    "When useful, include one practical next step or insight."
   ].join("\n");
 
-  const history = await loadHistory(threadId, 18);
-
-  // Build OpenAI input: system context + food log as a system message, then conversation history.
+  const history = await loadHistory(threadId, 20);
   const input = [];
   input.push({ role: "system", content: system });
-  input.push({ role: "system", content: ["DATA:", ...foodCtx.lines].join("\n") });
+  input.push({ role: "system", content: ["USER DATA:", ...foodCtx.lines].join("\n") });
   for (const m of history) {
     const role = (m.role === "assistant" || m.role === "user") ? m.role : "user";
     input.push({ role, content: String(m.content || "") });
@@ -179,7 +212,7 @@ exports.handler = async (event, context) => {
   const reply = (outputText(resp) || "").trim() || "I couldn't generate a reply.";
   await insertMessage(threadId, "assistant", reply);
 
-  const wantAudio = body.want_audio !== false; // default true (voice mode uses it; typed can ignore)
+  const wantAudio = body.want_audio !== false;
   const audio_base64 = wantAudio ? await createCoachAudio(reply) : null;
 
   return json(200, {
