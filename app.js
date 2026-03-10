@@ -23,16 +23,27 @@ function normalizeAudioMime(mime) {
 }
 
 function ensureCoachAudioElement() {
-  if (__coachAudioEl) return __coachAudioEl;
+  if (__coachAudioEl && __coachAudioEl.isConnected) return __coachAudioEl;
   const audio = document.createElement('audio');
   try {
     audio.preload = 'auto';
     audio.autoplay = false;
+    audio.controls = false;
     audio.playsInline = true;
     audio.setAttribute('playsinline', '');
     audio.setAttribute('webkit-playsinline', '');
+    audio.muted = false;
+    audio.volume = 1;
   } catch (e) {}
-  audio.style.display = 'none';
+  // iPhone Safari is more reliable with an off-screen real element than display:none
+  audio.style.position = 'fixed';
+  audio.style.left = '-9999px';
+  audio.style.bottom = '0';
+  audio.style.width = '1px';
+  audio.style.height = '1px';
+  audio.style.opacity = '0.01';
+  audio.style.pointerEvents = 'none';
+  audio.style.zIndex = '-1';
   document.body.appendChild(audio);
   __coachAudioEl = audio;
   return audio;
@@ -141,7 +152,7 @@ async function speakTextFallback(text) {
     try { synth.resume(); } catch (e) {}
     const utter = new SpeechSynthesisUtterance(String(text));
     const voice = chooseSpeechVoice();
-    if (voice) voice && (utter.voice = voice);
+    if (voice) utter.voice = voice;
     if (voice && voice.lang && !utter.lang) utter.lang = voice.lang;
     else utter.lang = 'en-US';
     utter.rate = 1;
@@ -149,11 +160,13 @@ async function speakTextFallback(text) {
     utter.volume = 1;
     return await new Promise((resolve) => {
       let done = false;
+      let started = false;
       const finish = (ok) => { if (done) return; done = true; resolve(!!ok); };
+      utter.onstart = () => { started = true; };
       utter.onend = () => finish(true);
       utter.onerror = () => finish(false);
       try { synth.speak(utter); } catch (e) { finish(false); return; }
-      setTimeout(() => finish(true), Math.max(1500, Math.min(8000, String(text).length * 45)));
+      setTimeout(() => finish(started), Math.max(1800, Math.min(9000, String(text).length * 45)));
     });
   } catch (e) {
     return false;
@@ -166,46 +179,83 @@ async function playAssistantAudio(j) {
     try {
       url = base64ToBlobUrl(j.audio_base64, j.audio_mime_type || 'audio/mpeg');
       const audio = ensureCoachAudioElement();
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
       try {
+        audio.onended = null;
+        audio.onerror = null;
+        audio.onplaying = null;
         audio.pause();
-        audio.currentTime = 0;
       } catch (e) {}
+      try { audio.removeAttribute('src'); } catch (e) {}
+      try { audio.load(); } catch (e) {}
+
       try {
+        audio.currentTime = 0;
         audio.muted = false;
         audio.volume = 1;
         audio.autoplay = true;
+        audio.playsInline = true;
+        audio.setAttribute('playsinline', '');
+        audio.setAttribute('webkit-playsinline', '');
       } catch (e) {}
+
       audio.src = url;
       audio.load();
+
       const cleanup = () => {
         if (url) URL.revokeObjectURL(url);
         url = null;
       };
-      audio.onended = cleanup;
-      audio.onerror = cleanup;
+
       const waitUntilReady = () => new Promise((resolve) => {
         if (audio.readyState >= 2) { resolve(); return; }
         const done = () => {
           audio.removeEventListener('canplay', done);
           audio.removeEventListener('loadeddata', done);
+          audio.removeEventListener('canplaythrough', done);
           resolve();
         };
         audio.addEventListener('canplay', done, { once: true });
         audio.addEventListener('loadeddata', done, { once: true });
-        setTimeout(done, 300);
+        audio.addEventListener('canplaythrough', done, { once: true });
+        setTimeout(done, isIOS ? 900 : 450);
       });
+
       const playOnce = async () => {
         try {
           await waitUntilReady();
-          await audio.play();
-          return true;
+          let started = false;
+          const startedPromise = new Promise((resolve) => {
+            const ok = () => { started = true; resolve(true); };
+            audio.addEventListener('playing', ok, { once: true });
+            audio.addEventListener('play', ok, { once: true });
+            setTimeout(() => resolve(false), isIOS ? 1200 : 600);
+          });
+          const p = audio.play();
+          if (p && typeof p.then === 'function') {
+            try { await p; } catch (e) {}
+          }
+          const eventStarted = await startedPromise;
+          return !!(eventStarted || (!audio.paused && audio.currentTime >= 0));
         } catch (e) {
           return false;
         }
       };
-      if (await playOnce()) return true;
+
+      if (await playOnce()) {
+        audio.onended = cleanup;
+        audio.onerror = cleanup;
+        return true;
+      }
+
       try { if (typeof unlockAudioOnce === 'function') unlockAudioOnce(); } catch (e) {}
-      if (await playOnce()) return true;
+      if (await playOnce()) {
+        audio.onended = cleanup;
+        audio.onerror = cleanup;
+        return true;
+      }
+
       cleanup();
     } catch (e) {
       if (url) { try { URL.revokeObjectURL(url); } catch (_) {} }
