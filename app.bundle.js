@@ -102,6 +102,7 @@ try {
   document.addEventListener('mousedown', prime, onceOpts);
   document.addEventListener('click', prime, onceOpts);
   document.addEventListener('keydown', prime, { once: true });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { try { unlockAudioOnce(); } catch (e) {} } });
   if ('speechSynthesis' in window && window.speechSynthesis && typeof window.speechSynthesis.onvoiceschanged !== 'undefined') {
     window.speechSynthesis.onvoiceschanged = () => { cacheSpeechVoices(); };
   }
@@ -118,7 +119,18 @@ function base64ToBlobUrl(b64, mime) {
   return URL.createObjectURL(blob);
 }
 
+
+function shouldPreferSpeechOnMobile() {
+  try {
+    const ua = String(navigator.userAgent || '');
+    return /iPhone|iPad|iPod|Android/i.test(ua);
+  } catch (e) {
+    return false;
+  }
+}
+
 function chooseSpeechVoice() {
+
   const voices = cacheSpeechVoices();
   if (!voices || !voices.length) return null;
   const lower = (s) => String(s || '').toLowerCase();
@@ -165,8 +177,17 @@ async function speakTextFallback(text) {
   }
 }
 
+
 async function playAssistantAudio(j) {
+  const preferSpeechFirst = shouldPreferSpeechOnMobile();
+  if (preferSpeechFirst && j && j.reply) {
+    try {
+      const ok = await speakTextFallback(j.reply);
+      if (ok) return true;
+    } catch (e) {}
+  }
   if (j && j.audio_base64) {
+
     let url = null;
     try {
       url = base64ToBlobUrl(j.audio_base64, j.audio_mime_type || 'audio/mpeg');
@@ -216,11 +237,13 @@ async function playAssistantAudio(j) {
       if (url) { try { URL.revokeObjectURL(url); } catch (_) {} }
     }
   }
+
   if (j && j.reply) {
     return await speakTextFallback(j.reply);
   }
   return false;
 }
+
 // --- end cross-browser helpers ---
 
 // Expose helpers globally.
