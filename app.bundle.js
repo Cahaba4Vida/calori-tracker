@@ -27,6 +27,12 @@ function normalizeAudioMime(mime) {
   return m;
 }
 
+
+function isIOSDevice() {
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
 function ensureCoachAudioElement() {
   if (__coachAudioEl) return __coachAudioEl;
   const audio = document.createElement('audio');
@@ -36,8 +42,17 @@ function ensureCoachAudioElement() {
     audio.playsInline = true;
     audio.setAttribute('playsinline', '');
     audio.setAttribute('webkit-playsinline', '');
+    audio.setAttribute('x-webkit-airplay', 'allow');
+    audio.muted = false;
+    audio.volume = 1;
   } catch (e) {}
-  audio.style.display = 'none';
+  audio.style.position = 'fixed';
+  audio.style.left = '-9999px';
+  audio.style.bottom = '0';
+  audio.style.width = '1px';
+  audio.style.height = '1px';
+  audio.style.opacity = '0.01';
+  audio.style.pointerEvents = 'none';
   document.body.appendChild(audio);
   __coachAudioEl = audio;
   return audio;
@@ -81,15 +96,20 @@ function unlockAudioOnce() {
       gain.gain.value = 0.0001;
       osc.connect(gain).connect(ctx.destination);
       osc.start();
-      osc.stop(ctx.currentTime + 0.01);
+      osc.stop(ctx.currentTime + 0.02);
     }
   } catch (e) {}
   try {
     const audio = ensureCoachAudioElement();
-    const playPromise = audio.play();
-    if (playPromise && typeof playPromise.catch === 'function') playPromise.catch(() => {});
-    try { audio.pause(); } catch (e) {}
-    try { audio.removeAttribute('src'); audio.load(); } catch (e) {}
+    audio.muted = false;
+    audio.volume = 1;
+    audio.src = 'data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAFAAAGYQCA' ;
+    const p = audio.play();
+    if (p && typeof p.then === 'function') p.then(() => {
+      try { audio.pause(); } catch (e) {}
+      try { audio.currentTime = 0; } catch (e) {}
+      try { audio.removeAttribute('src'); audio.load(); } catch (e) {}
+    }).catch(() => {});
   } catch (e) {}
   try { primeSpeechSynthesis(); } catch (e) {}
 }
@@ -182,10 +202,11 @@ async function speakTextFallback(text) {
 
 
 async function playAssistantAudio(j) {
+  const isIOS = isIOSDevice();
+
   if (j && j.audio_base64) {
-    let url = null;
+    let objectUrl = null;
     try {
-      url = base64ToBlobUrl(j.audio_base64, j.audio_mime_type || 'audio/mpeg');
       const audio = ensureCoachAudioElement();
       try {
         audio.pause();
@@ -199,15 +220,13 @@ async function playAssistantAudio(j) {
         audio.setAttribute('playsinline', '');
         audio.setAttribute('webkit-playsinline', '');
       } catch (e) {}
-      audio.src = url;
-      audio.load();
 
-      const cleanup = () => {
-        if (url) URL.revokeObjectURL(url);
-        url = null;
-      };
-      audio.onended = cleanup;
-      audio.onerror = cleanup;
+      const src = isIOS
+        ? ('data:' + (j.audio_mime_type || 'audio/mpeg') + ';base64,' + j.audio_base64)
+        : (objectUrl = base64ToBlobUrl(j.audio_base64, j.audio_mime_type || 'audio/mpeg'));
+
+      audio.src = src;
+      audio.load();
 
       const waitUntilReady = () => new Promise((resolve) => {
         if (audio.readyState >= 2) { resolve(); return; }
@@ -220,26 +239,37 @@ async function playAssistantAudio(j) {
         audio.addEventListener('canplay', done, { once: true });
         audio.addEventListener('loadeddata', done, { once: true });
         audio.addEventListener('canplaythrough', done, { once: true });
-        setTimeout(done, 600);
+        setTimeout(done, isIOS ? 1200 : 600);
       });
+
+      const cleanup = () => {
+        if (objectUrl) {
+          try { URL.revokeObjectURL(objectUrl); } catch (e) {}
+          objectUrl = null;
+        }
+      };
+      audio.onended = cleanup;
+      audio.onerror = cleanup;
 
       const playOnce = async () => {
         try {
           await waitUntilReady();
+          try { if (typeof unlockAudioOnce === 'function') unlockAudioOnce(); } catch (e) {}
           const p = audio.play();
           if (p && typeof p.then === 'function') await p;
-          return !audio.paused;
+          await new Promise(r => setTimeout(r, isIOS ? 250 : 120));
+          return !audio.paused && (audio.currentTime > 0 || !isIOS);
         } catch (e) {
           return false;
         }
       };
 
       if (await playOnce()) return true;
-      try { if (typeof unlockAudioOnce === 'function') unlockAudioOnce(); } catch (e) {}
+      await new Promise(r => setTimeout(r, 150));
       if (await playOnce()) return true;
       cleanup();
     } catch (e) {
-      if (url) { try { URL.revokeObjectURL(url); } catch (_) {} }
+      if (objectUrl) { try { URL.revokeObjectURL(objectUrl); } catch (_) {} }
     }
   }
 
@@ -248,6 +278,13 @@ async function playAssistantAudio(j) {
   }
   return false;
 }
+
+
+try {
+  document.addEventListener('touchend', unlockAudioOnce, { passive: true });
+  document.addEventListener('click', unlockAudioOnce, { passive: true });
+  document.addEventListener('keydown', unlockAudioOnce, { passive: true });
+} catch (e) {}
 
 // --- end cross-browser helpers ---
 
@@ -5639,8 +5676,16 @@ function entryFriendlyName(e) {
         (Array.isArray(rx.foods) && rx.foods[0] && (rx.foods[0].name || rx.foods[0].title || rx.foods[0].description));
       if (direct && String(direct).trim()) {
         const s = String(direct).trim().replace(/\s+/g,' ');
-        return (s.length > 44 ? s.slice(0, 44).trim() + '…' : s);
+        const bad = ['plate estimate','meal','food entry','estimate','snack','drink'];
+        if (!bad.includes(s.toLowerCase())) {
+          return (s.length > 44 ? s.slice(0, 44).trim() + '…' : s);
+        }
       }
+    }
+
+    if (rx && rx.source === 'voice' && rx.raw_user_message && String(rx.raw_user_message).trim()) {
+      const s = String(rx.raw_user_message).trim().replace(/^(log|add|track|record)\s+/i,'').replace(/^(i\s+(had|ate|drank)\s+)/i,'').replace(/\s+/g,' ');
+      if (s) return (s.length > 44 ? s.slice(0, 44).trim() + '…' : s);
     }
 
     if (rx && (rx.source === 'plate_photo' || rx.estimated === true)) {
