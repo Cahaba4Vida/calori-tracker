@@ -1,4 +1,13 @@
 
+function apiFetch(fn, body) {
+  return fetch(`/.netlify/functions/${fn}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {})
+  }).then(r => r.json());
+}
+
+
 window.startTrial = async function(interval="month"){
   const deviceId = localStorage.getItem("device_id") || (crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
   localStorage.setItem("device_id", deviceId);
@@ -4227,11 +4236,7 @@ window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
       };
       fr.readAsDataURL(blob);
     });
-    const r = await fetch('/.netlify/functions/audio-transcribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ audio_base64: b64, mime: blob.type || 'audio/webm' })
-    }).then(r => r.json()).catch(() => ({}));
+    const r = await apiFetch('audio-transcribe', { audio_base64: b64, mime: blob.type || 'audio/webm' });
     return (r && r.text ? String(r.text) : '').trim();
   }
 
@@ -4257,7 +4262,6 @@ window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
       const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       let stopped = false;
 
-      // Simple silence auto-stop using WebAudio RMS.
       const Ctx = window.AudioContext || window.webkitAudioContext;
       const ctx = Ctx ? new Ctx() : null;
       const source = ctx ? ctx.createMediaStreamSource(stream) : null;
@@ -4267,7 +4271,7 @@ window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
         source.connect(analyser);
       }
       const data = analyser ? new Uint8Array(analyser.fftSize) : null;
-
+      const startAt = Date.now();
       let lastLoud = Date.now();
       const SILENCE_MS = 1200;
       const MAX_MS = 15000;
@@ -4277,45 +4281,67 @@ window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
         try { if (ctx) ctx.close(); } catch (e) {}
       }
 
-      function check() {
+      function tick() {
         if (stopped) return;
-        if (!analyser || !data) {
-          const now = Date.now();
-          if (now - startAt > 4000) {
-            stopped = true;
-            try { mr.stop(); } catch (e) {}
-          } else {
-            requestAnimationFrame(check);
-          }
-          return;
-        }
-        analyser.getByteTimeDomainData(data);
-        let sum = 0;
-        for (let i = 0; i < data.length; i++) {
-          const v = (data[i] - 128) / 128;
-          sum += v * v;
-        }
-        const rms = Math.sqrt(sum / data.length);
-        if (rms > 0.03) lastLoud = Date.now();
         const now = Date.now();
+
+        if (analyser && data) {
+          analyser.getByteTimeDomainData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / data.length);
+          if (rms > 0.03) lastLoud = now;
+        }
+
         if (now - lastLoud > SILENCE_MS || now - startAt > MAX_MS) {
           stopped = true;
           try { mr.stop(); } catch (e) {}
-        } else {
-          requestAnimationFrame(check);
+          return;
         }
+        requestAnimationFrame(tick);
       }
 
-      mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
-      const startAt = Date.now();
+      mr.ondataavailable = (e) => {
+        if (e.data && e.data.size) chunks.push(e.data);
+      };
+
       const stoppedPromise = new Promise((resolve, reject) => {
         mr.onstop = async () => {
           try {
             cleanup();
             const blob = new Blob(chunks, { type: mr.mimeType || mimeType || 'audio/webm' });
-            const text = await transcribeAudioFallback(blob);
-            resolve(text);
-          } catch (e) { reject(e); }
+            let text = '';
+            try {
+              if (typeof transcribeAudioFallback === 'function') {
+                text = await transcribeAudioFallback(blob);
+              } else {
+                const reader = new FileReader();
+                const b64 = await new Promise((res, rej) => {
+                  reader.onloadend = () => {
+                    try {
+                      res(String(reader.result || '').split(',')[1] || '');
+                    } catch (e) { rej(e); }
+                  };
+                  reader.onerror = rej;
+                  reader.readAsDataURL(blob);
+                });
+                const r = await fetch('/.netlify/functions/audio-transcribe', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ audio_base64: b64, mime: blob.type || 'audio/webm' })
+                }).then(r => r.json()).catch(() => ({}));
+                text = (r && r.text ? String(r.text) : '').trim();
+              }
+            } catch (e) {
+              text = '';
+            }
+            resolve(String(text || '').trim());
+          } catch (e) {
+            reject(e);
+          }
         };
         mr.onerror = (e) => {
           cleanup();
@@ -4324,11 +4350,10 @@ window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
       });
 
       mr.start();
-      requestAnimationFrame(check);
+      requestAnimationFrame(tick);
       return await stoppedPromise;
     }
 
-    // Warm microphone permission first so repeated voice presses are more reliable.
     try {
       const warm = await navigator.mediaDevices.getUserMedia({ audio: true });
       warm.getTracks().forEach(t => t.stop());
@@ -4339,7 +4364,6 @@ window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
     const isEdge = ua.includes('Edg');
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-    // Safari / Edge are more reliable with recorder transcription here.
     if (isSafari || isEdge || !SR) {
       return await recordAndTranscribeVoice();
     }
@@ -4348,21 +4372,21 @@ window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
       let finished = false;
       let finalText = '';
       let rec = null;
+      let timeout = null;
 
-      const finish = async (text, useFallback) => {
+      const finish = async (text, fallback) => {
         if (finished) return;
         finished = true;
+        try { if (timeout) clearTimeout(timeout); } catch (e) {}
         try { if (rec) rec.onresult = rec.onerror = rec.onend = null; } catch (e) {}
         try { if (rec) rec.stop(); } catch (e) {}
-        if (useFallback) {
+
+        if (fallback) {
           try {
             const t = await recordAndTranscribeVoice();
             resolve(String(t || '').trim());
             return;
-          } catch (e) {
-            resolve(String(text || '').trim());
-            return;
-          }
+          } catch (e) {}
         }
         resolve(String(text || '').trim());
       };
@@ -4371,23 +4395,25 @@ window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
         rec = new SR();
         rec.continuous = false;
         rec.interimResults = false;
+        rec.maxAlternatives = 1;
         rec.lang = 'en-US';
 
-        const timeout = setTimeout(() => { finish(finalText, true); }, 4500);
+        timeout = setTimeout(() => { finish(finalText, true); }, 4500);
 
         rec.onresult = (e) => {
-          finalText = Array.from(e.results || []).map(r => r[0]?.transcript || '').join(' ').trim();
-          clearTimeout(timeout);
+          try {
+            finalText = Array.from(e.results || [])
+              .map(r => r && r[0] && r[0].transcript ? r[0].transcript : '')
+              .join(' ')
+              .trim();
+          } catch (e) {
+            finalText = '';
+          }
           finish(finalText, false);
         };
-        rec.onerror = () => {
-          clearTimeout(timeout);
-          finish(finalText, true);
-        };
-        rec.onend = () => {
-          clearTimeout(timeout);
-          finish(finalText, !finalText);
-        };
+
+        rec.onerror = () => finish(finalText, true);
+        rec.onend = () => finish(finalText, !finalText);
         rec.start();
       } catch (e) {
         finish('', true);
