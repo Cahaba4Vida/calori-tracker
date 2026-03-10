@@ -282,7 +282,6 @@ const VIEW_SPAN_PAST_DAYS_KEY = 'caloriTrackerViewSpanPastDaysV1';
 const VIEW_SPAN_FUTURE_DAYS_KEY = 'caloriTrackerViewSpanFutureDaysV1';
 
 const PENDING_REFERRAL_CODE_KEY = 'caloriPendingReferralCodeV1';
-const PENDING_OPEN_REFERRAL_SHARE_KEY = 'caloriPendingOpenReferralShareV1';
 
 function captureReferralCodeFromUrl() {
   try {
@@ -303,21 +302,6 @@ function captureReferralCodeFromUrl() {
 }
 
 captureReferralCodeFromUrl();
-
-function markPendingReferralShare() {
-  try { localStorage.setItem(PENDING_OPEN_REFERRAL_SHARE_KEY, '1'); } catch {}
-}
-function clearPendingReferralShare() {
-  try { localStorage.removeItem(PENDING_OPEN_REFERRAL_SHARE_KEY); } catch {}
-}
-async function maybeOpenPendingReferralShare() {
-  try {
-    if (!currentUser) return;
-    if (localStorage.getItem(PENDING_OPEN_REFERRAL_SHARE_KEY) !== '1') return;
-    clearPendingReferralShare();
-    await openReferralShare();
-  } catch {}
-}
 
 function generateDeviceId() {
   try {
@@ -1011,10 +995,7 @@ async function openReferralShare() {
   try {
     const link = await fetchReferralLink();
     const input = el('referralLinkInput');
-    if (input) {
-      input.value = link;
-      try { input.focus(); input.select(); } catch {}
-    }
+    if (input) input.value = link;
     if (status) status.innerText = '';
   } catch (e) {
     if (status) status.innerText = e?.message || String(e);
@@ -1026,152 +1007,75 @@ function showAiLimitModal() {
 }
 
 function bindAiLimitAndReferralUI() {
-  function stopEvt(e) {
-    if (!e) return;
-    try { e.preventDefault(); } catch {}
-    try { e.stopPropagation(); } catch {}
-    try { e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch {}
-  }
+  const closeA = el('aiLimitCloseBtn');
+  if (closeA) closeA.onclick = () => setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
+  const overlayA = el('aiLimitOverlay');
+  if (overlayA) overlayA.onclick = () => setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
 
-  function handleUpgradeClick(e) {
-    stopEvt(e);
+  const upgradeBtn = el('aiLimitUpgradeBtn');
+  if (upgradeBtn) upgradeBtn.onclick = () => {
+    // If the user isn't signed in yet, open the signup/login flow first.
     if (!currentUser) {
       openIdentityModal('signup');
-      return false;
+      return;
     }
     setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
-    setTimeout(() => {
-      try { goToUpgradeFlow(); } catch (e) {}
-    }, 10);
-    return false;
-  }
-
-  function handleInviteClick(e) {
-    stopEvt(e);
+    goToUpgradeFlow();
+  };
+  const inviteBtn = el('aiLimitInviteBtn');
+  if (inviteBtn) inviteBtn.onclick = () => {
+    // Referrals require an account, so prompt sign-in if needed.
     if (!currentUser) {
-      markPendingReferralShare();
-      setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
       openIdentityModal('signup');
-      return false;
+      return;
     }
     openReferralShare();
-    return false;
-  }
+  };
 
-  function handleCloseAiLimit(e) {
-    stopEvt(e);
-    setModalVisible('aiLimitOverlay', 'aiLimitSheet', false);
-    return false;
-  }
+  const closeR = el('referralCloseBtn');
+  if (closeR) closeR.onclick = () => setModalVisible('referralOverlay', 'referralSheet', false);
+  const overlayR = el('referralOverlay');
+  if (overlayR) overlayR.onclick = () => setModalVisible('referralOverlay', 'referralSheet', false);
 
-  function handleCloseReferral(e) {
-    stopEvt(e);
-    setModalVisible('referralOverlay', 'referralSheet', false);
-    return false;
-  }
-
-  function bindTap(elm, handler, flagName) {
-    if (!elm || elm[flagName]) return;
-    elm[flagName] = true;
-    elm.onclick = handler;
-    elm.addEventListener('pointerup', handler, { passive: false });
-    elm.addEventListener('touchend', handler, { passive: false });
-  }
-
-  function wireDirectHandlers() {
-    bindTap(el('aiLimitCloseBtn'), handleCloseAiLimit, '__boundAiLimit');
-    bindTap(el('aiLimitUpgradeBtn'), handleUpgradeClick, '__boundAiLimit');
-    bindTap(el('aiLimitInviteBtn'), handleInviteClick, '__boundAiLimit');
-    bindTap(el('referralCloseBtn'), handleCloseReferral, '__boundReferral');
-
-    const overlayA = el('aiLimitOverlay');
-    if (overlayA && !overlayA.__boundAiLimitOverlay) {
-      overlayA.__boundAiLimitOverlay = true;
-      overlayA.onclick = handleCloseAiLimit;
-      overlayA.addEventListener('pointerup', handleCloseAiLimit, { passive: false });
-      overlayA.addEventListener('touchend', handleCloseAiLimit, { passive: false });
+  const copyBtn = el('referralCopyBtn');
+  if (copyBtn) copyBtn.onclick = async () => {
+    const input = el('referralLinkInput');
+    const link = input ? String(input.value || '') : '';
+    const status = el('referralStatus');
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        // Fallback
+        window.prompt('Copy your referral link:', link);
+      }
+      if (status) status.innerText = 'Copied!';
+      setTimeout(() => { if (status && status.innerText === 'Copied!') status.innerText = ''; }, 1500);
+    } catch (e) {
+      if (status) status.innerText = 'Could not copy. Please tap and hold to copy.';
     }
+  };
 
-    const overlayR = el('referralOverlay');
-    if (overlayR && !overlayR.__boundReferralOverlay) {
-      overlayR.__boundReferralOverlay = true;
-      overlayR.onclick = handleCloseReferral;
-      overlayR.addEventListener('pointerup', handleCloseReferral, { passive: false });
-      overlayR.addEventListener('touchend', handleCloseReferral, { passive: false });
+  const shareBtn = el('referralShareBtn');
+  if (shareBtn) shareBtn.onclick = async () => {
+    const input = el('referralLinkInput');
+    const link = input ? String(input.value || '') : '';
+    const status = el('referralStatus');
+    const msg = `I've been using this AI calorie tracker and it's the easiest one I've tried. Use my link and we both get 1 month of Premium free. ${link}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ text: msg, url: link });
+        if (status) status.innerText = '';
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(msg);
+        if (status) status.innerText = 'Copied share message!';
+      } else {
+        window.prompt('Share this message:', msg);
+      }
+    } catch (e) {
+      if (status) status.innerText = 'Share cancelled.';
     }
-
-    const copyBtn = el('referralCopyBtn');
-    if (copyBtn && !copyBtn.__boundReferralCopy) {
-      copyBtn.__boundReferralCopy = true;
-      const copyHandler = async (e) => {
-        stopEvt(e);
-        const input = el('referralLinkInput');
-        const link = input ? String(input.value || '') : '';
-        const status = el('referralStatus');
-        try {
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(link);
-          } else {
-            window.prompt('Copy your referral link:', link);
-          }
-          if (status) status.innerText = 'Copied!';
-          setTimeout(() => { if (status && status.innerText === 'Copied!') status.innerText = ''; }, 1500);
-        } catch (e) {
-          if (status) status.innerText = 'Could not copy. Please tap and hold to copy.';
-        }
-        return false;
-      };
-      copyBtn.onclick = copyHandler;
-      copyBtn.addEventListener('pointerup', copyHandler, { passive: false });
-      copyBtn.addEventListener('touchend', copyHandler, { passive: false });
-    }
-
-    const shareBtn = el('referralShareBtn');
-    if (shareBtn && !shareBtn.__boundReferralShare) {
-      shareBtn.__boundReferralShare = true;
-      const shareHandler = async (e) => {
-        stopEvt(e);
-        const input = el('referralLinkInput');
-        const link = input ? String(input.value || '') : '';
-        const status = el('referralStatus');
-        const msg = `I've been using this AI calorie tracker and it's the easiest one I've tried. Use my link and we both get 1 month of Premium free. ${link}`;
-        try {
-          if (navigator.share) {
-            await navigator.share({ text: msg, url: link });
-            if (status) status.innerText = 'Shared!';
-            setTimeout(() => { if (status && status.innerText === 'Shared!') status.innerText = ''; }, 1500);
-          } else {
-            window.prompt('Share this referral link:', link);
-          }
-        } catch (e) {
-          if (status) status.innerText = 'Could not share automatically. Please copy the link below.';
-        }
-        return false;
-      };
-      shareBtn.onclick = shareHandler;
-      shareBtn.addEventListener('pointerup', shareHandler, { passive: false });
-      shareBtn.addEventListener('touchend', shareHandler, { passive: false });
-    }
-  }
-
-  wireDirectHandlers();
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', wireDirectHandlers, { once: true });
-  } else {
-    setTimeout(wireDirectHandlers, 0);
-  }
-
-  if (!document.__boundAiLimitDelegation) {
-    document.__boundAiLimitDelegation = true;
-    document.addEventListener('click', (e) => {
-      const t = e.target;
-      if (!t || !t.closest) return;
-      if (t.closest('#aiLimitUpgradeBtn')) return handleUpgradeClick(e);
-      if (t.closest('#aiLimitInviteBtn')) return handleInviteClick(e);
-      if (t.closest('#aiLimitCloseBtn')) return handleCloseAiLimit(e);
-      if (t.closest('#referralCloseBtn')) return handleCloseReferral(e);
-    }, true);
-  }
+  };
 }
 
 
@@ -1243,6 +1147,19 @@ function applySectionState(bodyId, buttonId, collapsed, collapseText = 'Collapse
 
 function restoreSectionState(bodyId, buttonId, collapseText = 'Collapse', expandText = 'Expand', fallbackCollapsed = false) {
   applySectionState(bodyId, buttonId, getPanelCollapsed(bodyId, fallbackCollapsed), collapseText, expandText);
+}
+
+function setCoachChatOpenPersisted(isOpen) {
+  const card = el('coachChatCard');
+  const fab = el('coachFab');
+  if (card) card.classList.toggle('open', !!isOpen);
+  if (fab) fab.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  setPanelCollapsed('coachChatCard', !isOpen);
+}
+
+function restoreCoachChatOpenPersisted() {
+  const collapsed = getPanelCollapsed('coachChatCard', true);
+  setCoachChatOpenPersisted(!collapsed);
 }
 
 function toggleSection(bodyId, buttonId, collapseText = 'Collapse', expandText = 'Expand') {
@@ -2645,39 +2562,28 @@ async function loadGoal() {
   el('todayCarbsGoal').innerText = fmtGoal(macroGoals.carbs_g);
   el('todayFatGoal').innerText = fmtGoal(macroGoals.fat_g);
 
-  const goalInputEl = el('goalInput');
-  const proteinGoalInputEl = el('proteinGoalInput');
-  const carbsGoalInputEl = el('carbsGoalInput');
-  const fatGoalInputEl = el('fatGoalInput');
-  const goalDisplayEl = el('goalDisplay');
-
-  if (goalInputEl) goalInputEl.value = j.daily_calories ?? '';
-  if (proteinGoalInputEl) proteinGoalInputEl.value = macroGoals.protein_g ?? '';
-  if (carbsGoalInputEl) carbsGoalInputEl.value = macroGoals.carbs_g ?? '';
-  if (fatGoalInputEl) fatGoalInputEl.value = macroGoals.fat_g ?? '';
+  el('goalInput').value = j.daily_calories ?? '';
+  el('proteinGoalInput').value = macroGoals.protein_g ?? '';
+  el('carbsGoalInput').value = macroGoals.carbs_g ?? '';
+  el('fatGoalInput').value = macroGoals.fat_g ?? '';
 
   const parts = [`Calories: ${j.daily_calories ?? '—'}`];
   if (macroGoals.protein_g != null) parts.push(`Protein: ${macroGoals.protein_g}g`);
   if (macroGoals.carbs_g != null) parts.push(`Carbs: ${macroGoals.carbs_g}g`);
   if (macroGoals.fat_g != null) parts.push(`Fat: ${macroGoals.fat_g}g`);
-  if (goalDisplayEl) goalDisplayEl.innerText = parts.join(' • ');
+  el('goalDisplay').innerText = parts.join(' • ');
   renderAiPlanSummary();
 
   return j.daily_calories ?? null;
 }
 
 async function saveGoal() {
-  const goalInputEl = el('goalInput');
-  if (!goalInputEl) return null;
-
-  const vRaw = goalInputEl.value;
+  const vRaw = el('goalInput').value;
   const v = Number(vRaw);
   if (!vRaw || !Number.isFinite(v) || v < 0) throw new Error('Calories goal must be a number >= 0.');
 
   const asOptional = (id) => {
-    const node = el(id);
-    if (!node) return null;
-    const raw = (node.value || '').trim();
+    const raw = (el(id).value || '').trim();
     if (raw === '') return null;
     const n = Number(raw);
     if (!Number.isFinite(n) || n < 0) throw new Error('Macro goals must be numbers >= 0.');
@@ -3639,8 +3545,7 @@ function bindUI() {
   const resetMockBtn = el('resetMockBtn');
   if (enterMockBtn) enterMockBtn.onclick = () => initAuthedSession().catch(e => setStatus(e.message));
   if (resetMockBtn) resetMockBtn.onclick = () => { resetMockState(); setStatus('Local demo data reset. Starting fresh onboarding…'); initAuthedSession().catch(e => setStatus(e.message)); };
-  const saveGoalBtn = el('saveGoalBtn');
-  if (saveGoalBtn) saveGoalBtn.onclick = () => saveGoal().catch(e => setStatus(e.message));
+  el('saveGoalBtn').onclick = () => saveGoal().catch(e => setStatus(e.message));
   const unifiedPhotoInputIds = ['photoModeCameraInput'];
   unifiedPhotoInputIds.forEach((id) => {
     const node = el(id);
@@ -3954,17 +3859,14 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
     }, true);
   }
 
-  bindClick('toggleDailyGoalsBtn', () => toggleSection('dailyGoalsBody', 'toggleDailyGoalsBtn'));
   bindClick('toggleAddFoodBtn', () => toggleSection('addFoodBody', 'toggleAddFoodBtn'));
-  restoreSectionState('dailyGoalsBody', 'toggleDailyGoalsBtn');
+
   restoreSectionState('addFoodBody', 'toggleAddFoodBtn');
+  restoreCoachChatOpenPersisted();
   // Coach chat is now opened/closed via a floating button (bottom-right).
   // Keep the existing "Hide" button as a close control.
   bindClick('chatToggleBtn', () => {
-    const card = el('coachChatCard');
-    if (card) card.classList.remove('open');
-    const fab = el('coachFab');
-    if (fab) fab.setAttribute('aria-expanded', 'false');
+    setCoachChatOpenPersisted(false);
   });
   bindClick('upgradeMonthlyBtn', () => billingController && billingController.startUpgradeCheckout('monthly'));
   bindClick('upgradeYearlyBtn', () => billingController && billingController.startUpgradeCheckout('yearly'));
@@ -3979,11 +3881,9 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
       if (!card) return;
       const isOpen = card.classList.contains('open');
       if (isOpen) {
-        card.classList.remove('open');
-        coachFab.setAttribute('aria-expanded', 'false');
+        setCoachChatOpenPersisted(false);
       } else {
-        card.classList.add('open');
-        coachFab.setAttribute('aria-expanded', 'true');
+        setCoachChatOpenPersisted(true);
         // focus input for fast typing
         const input = el('chatInput');
         if (input) input.focus();
@@ -3994,9 +3894,7 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
   // Close coach chat with Escape
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    const card = el('coachChatCard');
-    if (card) card.classList.remove('open');
-    if (coachFab) coachFab.setAttribute('aria-expanded', 'false');
+    setCoachChatOpenPersisted(false);
   });
 }
 
@@ -4178,7 +4076,6 @@ if (typeof netlifyIdentity !== 'undefined') {
         .then(async () => {
           await completePendingFreePlanSignup();
           await claimPendingReferralIfSignedIn();
-          await maybeOpenPendingReferralShare();
         })
         .catch(e => setStatus(e.message));
       return;
@@ -4203,7 +4100,6 @@ if (typeof netlifyIdentity !== 'undefined') {
     .then(async () => {
       await completePendingFreePlanSignup();
       await claimPendingReferralIfSignedIn();
-      await maybeOpenPendingReferralShare();
     })
     .catch(e => setStatus(e.message));
 
