@@ -51,6 +51,7 @@ function ensureCoachReplayButton() {
   btn.style.left = '50%';
   btn.style.transform = 'translateX(-50%)';
   btn.style.bottom = '92px';
+  btn.style.minHeight = '48px';
   btn.style.zIndex = '99999';
   btn.style.padding = '12px 16px';
   btn.style.borderRadius = '999px';
@@ -61,6 +62,7 @@ function ensureCoachReplayButton() {
   btn.style.fontWeight = '600';
   btn.style.boxShadow = '0 8px 24px rgba(0,0,0,.2)';
   btn.style.display = 'none';
+  btn.style.webkitAppearance = 'none';
   btn.style.maxWidth = 'calc(100vw - 32px)';
   btn.style.whiteSpace = 'nowrap';
   btn.onclick = async () => {
@@ -80,11 +82,13 @@ function showCoachReplayButton(label) {
 function hideCoachReplayButton() {
   const btn = ensureCoachReplayButton();
   btn.style.display = 'none';
+  btn.style.webkitAppearance = 'none';
 }
 
 async function tryPlayPendingReply(fromTap) {
   const pending = __coachPendingPlayback;
   if (!pending) return false;
+  const ios = isIOSPlaybackDevice();
 
   if (pending.audio_base64) {
     let url = null;
@@ -96,6 +100,17 @@ async function tryPlayPendingReply(fromTap) {
         audio.currentTime = 0;
       } catch (e) {}
       audio.src = url;
+      audio.controls = !!ios;
+      if (ios) {
+        audio.style.opacity = '1';
+        audio.style.pointerEvents = 'auto';
+        audio.style.left = '12px';
+        audio.style.bottom = '146px';
+        audio.style.width = 'calc(100vw - 24px)';
+        audio.style.maxWidth = '420px';
+        audio.style.height = '40px';
+        audio.style.zIndex = '99998';
+      }
       audio.load();
       try {
         if (fromTap && typeof unlockAudioOnce === 'function') unlockAudioOnce();
@@ -103,14 +118,7 @@ async function tryPlayPendingReply(fromTap) {
       const p = audio.play();
       if (p && typeof p.then === 'function') await p;
       if (!audio.paused) {
-        hideCoachReplayButton();
-        __coachPendingPlayback = null;
-        const cleanup = () => {
-          if (url) URL.revokeObjectURL(url);
-          url = null;
-        };
-        audio.onended = cleanup;
-        audio.onerror = cleanup;
+        showCoachReplayButton('▶ Replay reply');
         return true;
       }
     } catch (e) {
@@ -121,13 +129,12 @@ async function tryPlayPendingReply(fromTap) {
   if (pending.reply) {
     const ok = await speakTextFallback(pending.reply);
     if (ok) {
-      hideCoachReplayButton();
-      __coachPendingPlayback = null;
+      showCoachReplayButton('▶ Replay reply');
       return true;
     }
   }
 
-  showCoachReplayButton('▶ Tap to hear reply');
+  showCoachReplayButton(pending.audio_base64 ? '▶ Tap to hear reply' : '▶ Tap to hear spoken reply');
   return false;
 }
 
@@ -270,10 +277,23 @@ async function speakTextFallback(text) {
 
 
 async function playAssistantAudio(j) {
-  if (j && j.audio_base64) {
+  const payload = {
+    audio_base64: j && j.audio_base64 ? j.audio_base64 : null,
+    audio_mime_type: j && j.audio_mime_type ? j.audio_mime_type : 'audio/mpeg',
+    reply: j && j.reply ? j.reply : ''
+  };
+
+  const ios = isIOSPlaybackDevice();
+  __coachPendingPlayback = payload;
+
+  if (ios) {
+    showCoachReplayButton(payload.audio_base64 ? '▶ Tap to hear reply' : '▶ Tap to hear spoken reply');
+  }
+
+  if (payload.audio_base64) {
     let url = null;
     try {
-      url = base64ToBlobUrl(j.audio_base64, j.audio_mime_type || 'audio/mpeg');
+      url = base64ToBlobUrl(payload.audio_base64, payload.audio_mime_type || 'audio/mpeg');
       const audio = ensureCoachAudioElement();
       try {
         audio.pause();
@@ -283,9 +303,20 @@ async function playAssistantAudio(j) {
         audio.muted = false;
         audio.volume = 1;
         audio.autoplay = true;
+        audio.controls = !!ios;
         audio.playsInline = true;
         audio.setAttribute('playsinline', '');
         audio.setAttribute('webkit-playsinline', '');
+        if (ios) {
+          audio.style.opacity = '1';
+          audio.style.pointerEvents = 'auto';
+          audio.style.left = '12px';
+          audio.style.bottom = '146px';
+          audio.style.width = 'calc(100vw - 24px)';
+          audio.style.maxWidth = '420px';
+          audio.style.height = '40px';
+          audio.style.zIndex = '99998';
+        }
       } catch (e) {}
       audio.src = url;
       audio.load();
@@ -294,7 +325,7 @@ async function playAssistantAudio(j) {
         if (url) URL.revokeObjectURL(url);
         url = null;
       };
-      audio.onended = cleanup;
+      audio.onended = () => { cleanup(); if (!ios) { hideCoachReplayButton(); __coachPendingPlayback = null; } };
       audio.onerror = cleanup;
 
       const waitUntilReady = () => new Promise((resolve) => {
@@ -323,32 +354,32 @@ async function playAssistantAudio(j) {
       };
 
       if (await playOnce()) {
-        hideCoachReplayButton();
-        __coachPendingPlayback = null;
+        if (!ios) {
+          hideCoachReplayButton();
+          __coachPendingPlayback = null;
+        } else {
+          showCoachReplayButton('▶ Replay reply');
+        }
         return true;
       }
 
       try { if (typeof unlockAudioOnce === 'function') unlockAudioOnce(); } catch (e) {}
       if (await playOnce()) {
-        hideCoachReplayButton();
-        __coachPendingPlayback = null;
+        if (!ios) {
+          hideCoachReplayButton();
+          __coachPendingPlayback = null;
+        } else {
+          showCoachReplayButton('▶ Replay reply');
+        }
         return true;
       }
 
       cleanup();
-    } catch (e) {
-      if (url) { try { URL.revokeObjectURL(url); } catch (_) {} }
-    }
+    } catch (e) {}
   }
 
-  __coachPendingPlayback = {
-    audio_base64: j && j.audio_base64 ? j.audio_base64 : null,
-    audio_mime_type: j && j.audio_mime_type ? j.audio_mime_type : 'audio/mpeg',
-    reply: j && j.reply ? j.reply : ''
-  };
-
-  if (j && j.reply) {
-    const ok = await speakTextFallback(j.reply);
+  if (!ios && payload.reply) {
+    const ok = await speakTextFallback(payload.reply);
     if (ok) {
       hideCoachReplayButton();
       __coachPendingPlayback = null;
@@ -356,7 +387,7 @@ async function playAssistantAudio(j) {
     }
   }
 
-  showCoachReplayButton('▶ Tap to hear reply');
+  showCoachReplayButton(payload.audio_base64 ? '▶ Tap to hear reply' : '▶ Tap to hear spoken reply');
   return false;
 }
 
