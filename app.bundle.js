@@ -4227,7 +4227,11 @@ window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
       };
       fr.readAsDataURL(blob);
     });
-    const r = await apiFetch('audio-transcribe', { audio_base64: b64, mime: blob.type || 'audio/webm' });
+    const r = await fetch('/.netlify/functions/audio-transcribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audio_base64: b64, mime: blob.type || 'audio/webm' })
+    }).then(r => r.json()).catch(() => ({}));
     return (r && r.text ? String(r.text) : '').trim();
   }
 
