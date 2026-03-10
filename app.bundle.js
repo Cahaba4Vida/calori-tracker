@@ -14,9 +14,11 @@ window.startTrial = async function(interval="month"){
 
 (function initAppBilling(global) {
 
-// --- iOS Safari audio unlock + playback helpers (prevents autoplay blocking) ---
+// --- Cross-browser coach voice playback helpers (Safari + Chrome + iOS autoplay safe) ---
 let __audioUnlocked = false;
 let __coachAudioEl = null;
+let __speechPrimed = false;
+let __speechVoices = [];
 
 function normalizeAudioMime(mime) {
   const m = String(mime || '').toLowerCase();
@@ -30,6 +32,7 @@ function ensureCoachAudioElement() {
   const audio = document.createElement('audio');
   try {
     audio.preload = 'auto';
+    audio.autoplay = false;
     audio.playsInline = true;
     audio.setAttribute('playsinline', '');
     audio.setAttribute('webkit-playsinline', '');
@@ -40,15 +43,38 @@ function ensureCoachAudioElement() {
   return audio;
 }
 
+function cacheSpeechVoices() {
+  try {
+    if (!('speechSynthesis' in window)) return [];
+    const voices = window.speechSynthesis.getVoices() || [];
+    if (voices && voices.length) __speechVoices = voices.slice();
+  } catch (e) {}
+  return __speechVoices;
+}
+
+function primeSpeechSynthesis() {
+  if (__speechPrimed || !('speechSynthesis' in window)) return;
+  __speechPrimed = true;
+  try {
+    cacheSpeechVoices();
+    const synth = window.speechSynthesis;
+    const utter = new SpeechSynthesisUtterance(' ');
+    utter.volume = 0;
+    utter.rate = 1;
+    utter.pitch = 1;
+    synth.cancel();
+    synth.speak(utter);
+    setTimeout(() => { try { synth.cancel(); } catch (e) {} }, 0);
+  } catch (e) {}
+}
+
 function unlockAudioOnce() {
   if (__audioUnlocked) return;
   __audioUnlocked = true;
-  // WebAudio unlock (counts as user-gesture initiated if called from a click/tap handler)
   try {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (AC) {
       const ctx = new AC();
-      // resume is important on iOS
       ctx.resume().catch(() => {});
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -58,7 +84,6 @@ function unlockAudioOnce() {
       osc.stop(ctx.currentTime + 0.01);
     }
   } catch (e) {}
-  // Prime a persistent <audio> element while we still have a user gesture.
   try {
     const audio = ensureCoachAudioElement();
     const playPromise = audio.play();
@@ -66,7 +91,24 @@ function unlockAudioOnce() {
     try { audio.pause(); } catch (e) {}
     try { audio.removeAttribute('src'); audio.load(); } catch (e) {}
   } catch (e) {}
+  try { primeSpeechSynthesis(); } catch (e) {}
 }
+
+try {
+  const onceOpts = { passive: true, once: true };
+  const prime = () => { try { unlockAudioOnce(); } catch (e) {} };
+  document.addEventListener('touchstart', prime, onceOpts);
+  document.addEventListener('pointerdown', prime, onceOpts);
+  document.addEventListener('mousedown', prime, onceOpts);
+  document.addEventListener('click', prime, onceOpts);
+  document.addEventListener('keydown', prime, { once: true });
+  if ('speechSynthesis' in window && window.speechSynthesis && typeof window.speechSynthesis.onvoiceschanged !== 'undefined') {
+    window.speechSynthesis.onvoiceschanged = () => { cacheSpeechVoices(); };
+  }
+  cacheSpeechVoices();
+} catch (e) {}
+
+window.unlockAudioOnce = unlockAudioOnce;
 
 function base64ToBlobUrl(b64, mime) {
   const bin = atob(b64);
@@ -74,6 +116,53 @@ function base64ToBlobUrl(b64, mime) {
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   const blob = new Blob([bytes], { type: normalizeAudioMime(mime) });
   return URL.createObjectURL(blob);
+}
+
+function chooseSpeechVoice() {
+  const voices = cacheSpeechVoices();
+  if (!voices || !voices.length) return null;
+  const lower = (s) => String(s || '').toLowerCase();
+  const preferredNames = [
+    'samantha', 'google us english', 'google uk english female', 'google uk english male',
+    'ava', 'aria', 'zira', 'daniel', 'alex', 'karen', 'serena', 'victoria'
+  ];
+  for (const name of preferredNames) {
+    const match = voices.find(v => lower(v.name) === name);
+    if (match) return match;
+  }
+  const english = voices.find(v => /^en([_-]|$)/i.test(v.lang || ''));
+  if (english) return english;
+  return voices[0] || null;
+}
+
+async function speakTextFallback(text) {
+  if (!text || !('speechSynthesis' in window)) return false;
+  try {
+    primeSpeechSynthesis();
+    cacheSpeechVoices();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    const synth = window.speechSynthesis;
+    try { synth.cancel(); } catch (e) {}
+    try { synth.resume(); } catch (e) {}
+    const utter = new SpeechSynthesisUtterance(String(text));
+    const voice = chooseSpeechVoice();
+    if (voice) voice && (utter.voice = voice);
+    if (voice && voice.lang && !utter.lang) utter.lang = voice.lang;
+    else utter.lang = 'en-US';
+    utter.rate = 1;
+    utter.pitch = 1;
+    utter.volume = 1;
+    return await new Promise((resolve) => {
+      let done = false;
+      const finish = (ok) => { if (done) return; done = true; resolve(!!ok); };
+      utter.onend = () => finish(true);
+      utter.onerror = () => finish(false);
+      try { synth.speak(utter); } catch (e) { finish(false); return; }
+      setTimeout(() => finish(true), Math.max(1500, Math.min(8000, String(text).length * 45)));
+    });
+  } catch (e) {
+    return false;
+  }
 }
 
 async function playAssistantAudio(j) {
@@ -99,8 +188,20 @@ async function playAssistantAudio(j) {
       };
       audio.onended = cleanup;
       audio.onerror = cleanup;
+      const waitUntilReady = () => new Promise((resolve) => {
+        if (audio.readyState >= 2) { resolve(); return; }
+        const done = () => {
+          audio.removeEventListener('canplay', done);
+          audio.removeEventListener('loadeddata', done);
+          resolve();
+        };
+        audio.addEventListener('canplay', done, { once: true });
+        audio.addEventListener('loadeddata', done, { once: true });
+        setTimeout(done, 300);
+      });
       const playOnce = async () => {
         try {
+          await waitUntilReady();
           await audio.play();
           return true;
         } catch (e) {
@@ -110,28 +211,17 @@ async function playAssistantAudio(j) {
       if (await playOnce()) return true;
       try { if (typeof unlockAudioOnce === 'function') unlockAudioOnce(); } catch (e) {}
       if (await playOnce()) return true;
-      // fall through to speech synthesis if browser blocks direct audio playback
       cleanup();
     } catch (e) {
-      if (url) {
-        try { URL.revokeObjectURL(url); } catch (_) {}
-      }
-      // fall through to speech synthesis
+      if (url) { try { URL.revokeObjectURL(url); } catch (_) {} }
     }
   }
-  if (j && j.reply && 'speechSynthesis' in window) {
-    try {
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(j.reply);
-      utter.rate = 1;
-      utter.pitch = 1;
-      window.speechSynthesis.speak(utter);
-      return true;
-    } catch (e) {}
+  if (j && j.reply) {
+    return await speakTextFallback(j.reply);
   }
   return false;
 }
-// --- end iOS helpers ---
+// --- end cross-browser helpers ---
 
 // Expose helpers globally.
 // app.bundle.js is assembled from multiple IIFEs; later sections run outside
