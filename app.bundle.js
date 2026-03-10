@@ -158,19 +158,22 @@ async function speakTextFallback(text) {
     try { synth.resume(); } catch (e) {}
     const utter = new SpeechSynthesisUtterance(String(text));
     const voice = chooseSpeechVoice();
-    if (voice) voice && (utter.voice = voice);
+    if (voice) utter.voice = voice;
     if (voice && voice.lang && !utter.lang) utter.lang = voice.lang;
     else utter.lang = 'en-US';
     utter.rate = 1;
     utter.pitch = 1;
     utter.volume = 1;
+
     return await new Promise((resolve) => {
       let done = false;
+      let started = false;
       const finish = (ok) => { if (done) return; done = true; resolve(!!ok); };
+      utter.onstart = () => { started = true; };
       utter.onend = () => finish(true);
       utter.onerror = () => finish(false);
       try { synth.speak(utter); } catch (e) { finish(false); return; }
-      setTimeout(() => finish(true), Math.max(1500, Math.min(8000, String(text).length * 45)));
+      setTimeout(() => finish(started), 2200);
     });
   } catch (e) {
     return false;
@@ -179,15 +182,7 @@ async function speakTextFallback(text) {
 
 
 async function playAssistantAudio(j) {
-  const preferSpeechFirst = shouldPreferSpeechOnMobile();
-  if (preferSpeechFirst && j && j.reply) {
-    try {
-      const ok = await speakTextFallback(j.reply);
-      if (ok) return true;
-    } catch (e) {}
-  }
   if (j && j.audio_base64) {
-
     let url = null;
     try {
       url = base64ToBlobUrl(j.audio_base64, j.audio_mime_type || 'audio/mpeg');
@@ -200,35 +195,45 @@ async function playAssistantAudio(j) {
         audio.muted = false;
         audio.volume = 1;
         audio.autoplay = true;
+        audio.playsInline = true;
+        audio.setAttribute('playsinline', '');
+        audio.setAttribute('webkit-playsinline', '');
       } catch (e) {}
       audio.src = url;
       audio.load();
+
       const cleanup = () => {
         if (url) URL.revokeObjectURL(url);
         url = null;
       };
       audio.onended = cleanup;
       audio.onerror = cleanup;
+
       const waitUntilReady = () => new Promise((resolve) => {
         if (audio.readyState >= 2) { resolve(); return; }
         const done = () => {
           audio.removeEventListener('canplay', done);
           audio.removeEventListener('loadeddata', done);
+          audio.removeEventListener('canplaythrough', done);
           resolve();
         };
         audio.addEventListener('canplay', done, { once: true });
         audio.addEventListener('loadeddata', done, { once: true });
-        setTimeout(done, 300);
+        audio.addEventListener('canplaythrough', done, { once: true });
+        setTimeout(done, 600);
       });
+
       const playOnce = async () => {
         try {
           await waitUntilReady();
-          await audio.play();
-          return true;
+          const p = audio.play();
+          if (p && typeof p.then === 'function') await p;
+          return !audio.paused;
         } catch (e) {
           return false;
         }
       };
+
       if (await playOnce()) return true;
       try { if (typeof unlockAudioOnce === 'function') unlockAudioOnce(); } catch (e) {}
       if (await playOnce()) return true;
@@ -5627,7 +5632,24 @@ function entryFriendlyName(e) {
       if (s) return (s.length > 44 ? s.slice(0, 44).trim() + '…' : s);
     }
 
-    if (rx && (rx.source === 'plate_photo' || rx.estimated === true)) return 'Plate estimate';
+    if (rx) {
+      const direct =
+        rx.description || rx.food_name || rx.product_name || rx.name || rx.title || rx.item ||
+        (Array.isArray(rx.items) && rx.items[0] && (rx.items[0].name || rx.items[0].title || rx.items[0].description)) ||
+        (Array.isArray(rx.foods) && rx.foods[0] && (rx.foods[0].name || rx.foods[0].title || rx.foods[0].description));
+      if (direct && String(direct).trim()) {
+        const s = String(direct).trim().replace(/\s+/g,' ');
+        return (s.length > 44 ? s.slice(0, 44).trim() + '…' : s);
+      }
+    }
+
+    if (rx && (rx.source === 'plate_photo' || rx.estimated === true)) {
+      if (rx.notes && String(rx.notes).trim()) {
+        const s = String(rx.notes).trim().replace(/^logged\s+/i,'').replace(/^estimate\s*:\s*/i,'').replace(/\s+/g,' ');
+        if (s) return (s.length > 44 ? s.slice(0, 44).trim() + '…' : s);
+      }
+      return 'Food entry';
+    }
 
     // 4) Manual quick add
     if (rx && rx.source === 'manual') return 'Quick add';
