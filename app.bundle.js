@@ -3938,85 +3938,33 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
     window.__voiceToggleInFlight = true;
     unlockAudioOnce();
     try {
-      // Prime mic permission
+      // Prime mic permission (some browsers show SpeechRecognition 'listening' but never deliver results without an explicit getUserMedia grant)
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           stream.getTracks().forEach((t) => t.stop());
         }
-      } catch (e) {}
-
-      const ua = navigator.userAgent || '';
-      const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      const isMobileSafari = /Safari/i.test(ua) && !/Chrome|CriOS|FxiOS|EdgiOS|Edg|OPiOS/i.test(ua);
-
-      if (voiceIsListening) {
-        try { stopVoiceRecognition(); } catch (e) {}
-        voiceAutoSendPending = false;
-        setStatus('');
-        return;
+      } catch (e) {
+        // We'll still try SpeechRecognition; if it fails, onerror will surface details.
       }
-
-      // On iPhone / mobile Safari, bypass browser speech recognition entirely.
-      // Use the same stable capture flow as coach voice mode.
-      if (isIOS || isMobileSafari) {
-        voiceIsListening = true;
-        voiceAutoSendPending = false;
-        updateVoiceToggleLabel();
-        setStatus('Listening…');
-        const out = el('voiceFoodOutput');
-        if (out && !out.innerText.trim()) out.innerText = 'Listening…';
-        try {
-          const text = await captureVoiceOnce();
-          voiceIsListening = false;
-          updateVoiceToggleLabel();
-          setStatus('');
-          if (!text) return;
-          const input = el('voiceFoodInput');
-          if (input) input.value = String(text || '').trim();
-          await sendVoiceFoodMessage();
-        } catch (e) {
-          voiceIsListening = false;
-          voiceAutoSendPending = false;
-          updateVoiceToggleLabel();
-          setStatus(e && e.message ? e.message : String(e));
-        }
-        return;
-      }
-
       const recognition = ensureVoiceRecognition();
       if (!recognition) {
-        // No browser SR available: use stable shared recorder/transcription path.
-        try {
-          voiceIsListening = true;
-          voiceAutoSendPending = false;
-          updateVoiceToggleLabel();
-          setStatus('Listening…');
-          const text = await captureVoiceOnce();
-          voiceIsListening = false;
-          updateVoiceToggleLabel();
-          setStatus('');
-          if (!text) return;
-          const input = el('voiceFoodInput');
-          if (input) input.value = String(text || '').trim();
-          await sendVoiceFoodMessage();
-        } catch (e) {
-          voiceIsListening = false;
-          voiceAutoSendPending = false;
-          updateVoiceToggleLabel();
-          setStatus(e && e.message ? e.message : String(e));
-        }
+        setStatus('Voice recognition is not available on this browser. Type your meal details instead.');
         return;
       }
-
+      if (voiceIsListening) {
+        stopVoiceRecognition();
+        return;
+      }
       voiceIsListening = true;
       voiceAutoSendPending = true;
       updateVoiceToggleLabel();
       setStatus('Listening…');
       try {
         recognition.start();
-        const out2 = el('voiceFoodOutput');
-        if (out2 && !out2.innerText.trim()) out2.innerText = 'Listening…';
+        // Provide immediate visual feedback even if permission prompt is suppressed
+        const out = el('voiceFoodOutput');
+        if (out && !out.innerText.trim()) out.innerText = 'Listening…';
       } catch (e) {
         voiceIsListening = false;
         voiceAutoSendPending = false;
@@ -4081,16 +4029,7 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
   // Always start hidden on boot (prevents accidental stuck blur).
   setCoachListeningOverlay(false);
 
-  
-function apiFetch(fn, body) {
-  return api(fn, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body || {})
-  });
-}
-
-async function transcribeAudioFallback(blob) {
+  async function transcribeAudioFallback(blob) {
     const b64 = await new Promise((resolve, reject) => {
       const fr = new FileReader();
       fr.onerror = () => reject(new Error('Failed to read audio'));
@@ -4101,98 +4040,175 @@ async function transcribeAudioFallback(blob) {
       };
       fr.readAsDataURL(blob);
     });
-    const r = await api('audio-transcribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audio_base64: b64, mime: blob.type || 'audio/webm' }) });
+    const r = await apiFetch('audio-transcribe', { audio_base64: b64, mime: blob.type || 'audio/webm' });
     return (r && r.text ? String(r.text) : '').trim();
   }
 
   async function captureVoiceOnce() {
-    // Prefer built-in SpeechRecognition if available; fallback to MediaRecorder + server transcription.
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) {
-      return await new Promise((resolve, reject) => {
-        try {
-          const rec = new SR();
-          rec.continuous = false;
-          rec.interimResults = false;
-          rec.lang = 'en-US';
-          rec.onresult = (e) => {
-            const t = Array.from(e.results || []).map(r => r[0]?.transcript || '').join(' ').trim();
-            resolve(t);
-          };
-          rec.onerror = (e) => reject(new Error(e.error || 'SpeechRecognition error'));
-          rec.onend = () => {}; // silence auto-stops
-          rec.start();
-        } catch (e) { reject(e); }
-      });
-    }
-
-    // Fallback: MediaRecorder
-    if (!navigator.mediaDevices || !window.MediaRecorder) throw new Error('Voice is not supported in this browser.');
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const chunks = [];
-    const mr = new MediaRecorder(stream);
-    let stopped = false;
-
-    // Simple silence auto-stop using WebAudio RMS.
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const source = ctx.createMediaStreamSource(stream);
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 2048;
-    source.connect(analyser);
-    const data = new Uint8Array(analyser.fftSize);
-
-    let lastLoud = Date.now();
-    const SILENCE_MS = 1200;
-    const MAX_MS = 15000;
-
-    function check() {
-      if (stopped) return;
-      analyser.getByteTimeDomainData(data);
-      // compute RMS-ish
-      let sum = 0;
-      for (let i = 0; i < data.length; i++) {
-        const v = (data[i] - 128) / 128;
-        sum += v * v;
+    async function recordAndTranscribeVoice() {
+      if (!navigator.mediaDevices || !window.MediaRecorder) {
+        throw new Error('Voice is not supported in this browser.');
       }
-      const rms = Math.sqrt(sum / data.length);
-      if (rms > 0.03) lastLoud = Date.now();
-      const now = Date.now();
-      if (now - lastLoud > SILENCE_MS || now - startAt > MAX_MS) {
-        try { mr.stop(); } catch (e) {}
-        stopped = true;
-      } else {
-        requestAnimationFrame(check);
-      }
-    }
 
-    mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
-    const startAt = Date.now();
-    const stoppedPromise = new Promise((resolve, reject) => {
-      mr.onstop = async () => {
-        try {
-          stream.getTracks().forEach(t => t.stop());
-          try { await ctx.close(); } catch (e) {}
-          const blob = new Blob(chunks, { type: mr.mimeType || 'audio/webm' });
-          const text = await transcribeAudioFallback(blob);
-          resolve(text);
-        } catch (e) { reject(e); }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const chunks = [];
+      const mimeCandidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+      let mimeType = '';
+      try {
+        for (const t of mimeCandidates) {
+          if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) {
+            mimeType = t;
+            break;
+          }
+        }
+      } catch (e) {}
+
+      const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      let stopped = false;
+
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      const ctx = Ctx ? new Ctx() : null;
+      const source = ctx ? ctx.createMediaStreamSource(stream) : null;
+      const analyser = ctx ? ctx.createAnalyser() : null;
+      if (source && analyser) {
+        analyser.fftSize = 2048;
+        source.connect(analyser);
+      }
+      const data = analyser ? new Uint8Array(analyser.fftSize) : null;
+
+      const startAt = Date.now();
+      let lastLoud = Date.now();
+      const SILENCE_MS = 1200;
+      const MAX_MS = 15000;
+
+      function cleanup() {
+        try { stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+        try { if (ctx) ctx.close(); } catch (e) {}
+      }
+
+      function tick() {
+        if (stopped) return;
+        const now = Date.now();
+
+        if (analyser && data) {
+          analyser.getByteTimeDomainData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / data.length);
+          if (rms > 0.03) lastLoud = now;
+        }
+
+        if (now - lastLoud > SILENCE_MS || now - startAt > MAX_MS) {
+          stopped = true;
+          try { mr.stop(); } catch (e) {}
+          return;
+        }
+        requestAnimationFrame(tick);
+      }
+
+      mr.ondataavailable = (e) => {
+        if (e.data && e.data.size) chunks.push(e.data);
       };
-      mr.onerror = (e) => reject(new Error(e.error?.message || 'Recording error'));
-    });
 
-    mr.start();
-    requestAnimationFrame(check);
-    return await stoppedPromise;
+      const stoppedPromise = new Promise((resolve, reject) => {
+        mr.onstop = async () => {
+          try {
+            cleanup();
+            const blob = new Blob(chunks, { type: mr.mimeType || mimeType || 'audio/webm' });
+            const text = await transcribeAudioFallback(blob);
+            resolve(String(text || '').trim());
+          } catch (e) {
+            reject(e);
+          }
+        };
+        mr.onerror = (e) => {
+          cleanup();
+          reject(new Error(e.error?.message || 'Recording error'));
+        };
+      });
+
+      mr.start();
+      requestAnimationFrame(tick);
+      return await stoppedPromise;
+    }
+
+    // Warm permission first. This improves repeat captures on mobile browsers.
+    try {
+      const warm = await navigator.mediaDevices.getUserMedia({ audio: true });
+      warm.getTracks().forEach(t => t.stop());
+    } catch (e) {}
+
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isSafari = /Safari/i.test(ua) && !/Chrome|CriOS|FxiOS|EdgiOS|Edg|OPiOS/i.test(ua);
+    const isEdge = ua.includes('Edg');
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    // Mobile Safari / Edge are more reliable with recorder transcription.
+    if (isIOS || isSafari || isEdge || !SR) {
+      return await recordAndTranscribeVoice();
+    }
+
+    return await new Promise((resolve) => {
+      let finished = false;
+      let finalText = '';
+      let rec = null;
+      let timeout = null;
+
+      const finish = async (text, fallback) => {
+        if (finished) return;
+        finished = true;
+        try { if (timeout) clearTimeout(timeout); } catch (e) {}
+        try { if (rec) rec.onresult = rec.onerror = rec.onend = null; } catch (e) {}
+        try { if (rec) rec.stop(); } catch (e) {}
+
+        if (fallback) {
+          try {
+            const t = await recordAndTranscribeVoice();
+            resolve(String(t || '').trim());
+            return;
+          } catch (e) {}
+        }
+        resolve(String(text || '').trim());
+      };
+
+      try {
+        rec = new SR();
+        rec.continuous = false;
+        rec.interimResults = false;
+        rec.maxAlternatives = 1;
+        rec.lang = 'en-US';
+
+        timeout = setTimeout(() => { finish(finalText, true); }, 4500);
+
+        rec.onresult = (e) => {
+          try {
+            finalText = Array.from(e.results || [])
+              .map(r => r && r[0] && r[0].transcript ? r[0].transcript : '')
+              .join(' ')
+              .trim();
+          } catch (e) {
+            finalText = '';
+          }
+          finish(finalText, false);
+        };
+
+        rec.onerror = () => finish(finalText, true);
+        rec.onend = () => finish(finalText, !finalText);
+        rec.start();
+      } catch (e) {
+        finish('', true);
+      }
+    });
   }
 
   const coachFab = el('coachFab');
   if (coachFab) {
     coachFab.onclick = async () => {
       if (getCoachVoiceMode()) {
-        try { stopVoiceRecognition(); } catch (e) {}
-        voiceAutoSendPending = false;
-        voiceIsListening = false;
-        updateVoiceToggleLabel();
         setCoachListeningOverlay(true);
         try {
           const text = await captureVoiceOnce();
