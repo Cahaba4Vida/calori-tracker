@@ -3679,85 +3679,33 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
     window.__voiceToggleInFlight = true;
     unlockAudioOnce();
     try {
-      // Prime mic permission
+      // Prime mic permission (some browsers show SpeechRecognition 'listening' but never deliver results without an explicit getUserMedia grant)
       try {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           stream.getTracks().forEach((t) => t.stop());
         }
-      } catch (e) {}
-
-      const ua = navigator.userAgent || '';
-      const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      const isMobileSafari = /Safari/i.test(ua) && !/Chrome|CriOS|FxiOS|EdgiOS|Edg|OPiOS/i.test(ua);
-
-      if (voiceIsListening) {
-        try { stopVoiceRecognition(); } catch (e) {}
-        voiceAutoSendPending = false;
-        setStatus('');
-        return;
+      } catch (e) {
+        // We'll still try SpeechRecognition; if it fails, onerror will surface details.
       }
-
-      // On iPhone / mobile Safari, bypass browser speech recognition entirely.
-      // Use the same stable capture flow as coach voice mode.
-      if (isIOS || isMobileSafari) {
-        voiceIsListening = true;
-        voiceAutoSendPending = false;
-        updateVoiceToggleLabel();
-        setStatus('Listening…');
-        const out = el('voiceFoodOutput');
-        if (out && !out.innerText.trim()) out.innerText = 'Listening…';
-        try {
-          const text = await captureVoiceOnce();
-          voiceIsListening = false;
-          updateVoiceToggleLabel();
-          setStatus('');
-          if (!text) return;
-          const input = el('voiceFoodInput');
-          if (input) input.value = String(text || '').trim();
-          await sendVoiceFoodMessage();
-        } catch (e) {
-          voiceIsListening = false;
-          voiceAutoSendPending = false;
-          updateVoiceToggleLabel();
-          setStatus(e && e.message ? e.message : String(e));
-        }
-        return;
-      }
-
       const recognition = ensureVoiceRecognition();
       if (!recognition) {
-        // No browser SR available: use stable shared recorder/transcription path.
-        try {
-          voiceIsListening = true;
-          voiceAutoSendPending = false;
-          updateVoiceToggleLabel();
-          setStatus('Listening…');
-          const text = await captureVoiceOnce();
-          voiceIsListening = false;
-          updateVoiceToggleLabel();
-          setStatus('');
-          if (!text) return;
-          const input = el('voiceFoodInput');
-          if (input) input.value = String(text || '').trim();
-          await sendVoiceFoodMessage();
-        } catch (e) {
-          voiceIsListening = false;
-          voiceAutoSendPending = false;
-          updateVoiceToggleLabel();
-          setStatus(e && e.message ? e.message : String(e));
-        }
+        setStatus('Voice recognition is not available on this browser. Type your meal details instead.');
         return;
       }
-
+      if (voiceIsListening) {
+        stopVoiceRecognition();
+        return;
+      }
       voiceIsListening = true;
       voiceAutoSendPending = true;
       updateVoiceToggleLabel();
       setStatus('Listening…');
       try {
         recognition.start();
-        const out2 = el('voiceFoodOutput');
-        if (out2 && !out2.innerText.trim()) out2.innerText = 'Listening…';
+        // Provide immediate visual feedback even if permission prompt is suppressed
+        const out = el('voiceFoodOutput');
+        if (out && !out.innerText.trim()) out.innerText = 'Listening…';
       } catch (e) {
         voiceIsListening = false;
         voiceAutoSendPending = false;
