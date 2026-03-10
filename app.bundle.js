@@ -1,20 +1,39 @@
 
 window.startTrial = async function(interval="month"){
+  const which = interval === "year" || interval === "yearly" ? "yearly" : "monthly";
+
+  // First choice: use the already-working Stripe upgrade links from billing-status.
+  try {
+    const billing = await api('billing-status');
+    const direct = billing && billing.upgrade_links
+      ? (which === "yearly" ? billing.upgrade_links.yearly : billing.upgrade_links.monthly)
+      : "";
+    if (direct) {
+      window.location.href = direct;
+      return;
+    }
+  } catch (_) {}
+
+  // Fallback: try public checkout session creation.
   const deviceId = localStorage.getItem("device_id") || (crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
   localStorage.setItem("device_id", deviceId);
-  const res = await fetch("/.netlify/functions/create-checkout-session-public",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({device_id:deviceId, interval})
-  });
-  const data = await res.json().catch(()=>({}));
-  if(data && data.url){ window.location.href=data.url; return; }
-  const msg = (data && (data.error || data.message)) || "Could not start checkout.";
   try {
-    const statusEl = document.getElementById('status');
-    if (statusEl) statusEl.innerText = msg;
-  } catch (_) {}
-  alert(msg);
+    const res = await fetch("/.netlify/functions/create-checkout-session-public",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({device_id:deviceId, interval: which === "yearly" ? "year" : "month"})
+    });
+    const data = await res.json().catch(()=>({}));
+    if(data && data.url){ window.location.href=data.url; return; }
+    const msg = (data && (data.error || data.message)) || "Could not start checkout.";
+    try {
+      const statusEl = document.getElementById('status');
+      if (statusEl) statusEl.innerText = msg;
+    } catch (_) {}
+    alert(msg);
+  } catch (e) {
+    alert("Could not start checkout.");
+  }
 };
 
 (function initAppBilling(global) {
