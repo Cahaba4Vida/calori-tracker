@@ -4194,9 +4194,19 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
   function getCoachVoiceMode() {
     return localStorage.getItem('coachVoiceMode') === '1';
   }
-  function getAutoPlaybackEnabled() {
+  // Global autoplay helper
+function getAutoPlaybackEnabled() {
+  try {
+    if (typeof getCoachVoiceMode === 'function') return !!getCoachVoiceMode();
+  } catch (e) {}
+window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
+
+  try {
     return localStorage.getItem('coachVoiceMode') === '1';
+  } catch (e) {
+    return false;
   }
+}
   function setCoachListeningOverlay(isOn) {
     const overlay = document.getElementById('coachListeningOverlay');
     const pill = document.getElementById('coachListeningPill');

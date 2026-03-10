@@ -1,3 +1,17 @@
+// Global autoplay helper
+function getAutoPlaybackEnabled() {
+  try {
+    if (typeof getCoachVoiceMode === 'function') return !!getCoachVoiceMode();
+  } catch (e) {}
+window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
+
+  try {
+    return localStorage.getItem('coachVoiceMode') === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
 console.log("APP_VERSION v12");
 
 // --- Cross-browser coach voice playback helpers (Safari + Chrome + iOS autoplay safe) ---
