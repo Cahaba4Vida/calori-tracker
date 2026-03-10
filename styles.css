@@ -1650,3 +1650,42 @@ body.invertedTheme .aiGlobalLoadingCard {
   .onbV2LoadingVideo{width:95px;max-height:120px;}
   .onbV2LoadingVideoSecondary{width:190px;}
 }
+
+
+/* Make the AETHON banner fill the full header panel */
+.appHeader {
+  padding: 0 !important;
+  gap: 0 !important;
+  overflow: hidden;
+}
+
+.appHeader .headerBrand,
+.appHeader .brand,
+.appHeader .heroBanner,
+.appHeader .hero-banner {
+  width: 100%;
+  display: block;
+  line-height: 0;
+  margin: 0;
+}
+
+.appHeader .headerBrand img,
+.appHeader .brand img,
+.appHeader .heroBanner img,
+.appHeader .hero-banner img,
+.appHeader img.headerBrand,
+.appHeader img.brand,
+.appHeader img.heroBanner,
+.appHeader img.hero-banner {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 104px;
+  object-fit: cover;
+  border-radius: 14px;
+  margin: 0;
+}
+
+.appHeader .auth {
+  padding: 10px 12px;
+}
