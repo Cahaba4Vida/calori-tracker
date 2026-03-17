@@ -3415,7 +3415,10 @@ async function sendVoiceFoodMessage() {
       }
 
       // Fire-and-forget audio (do not block the queue on full playback)
-      try { await playAssistantAudio(j); } catch (e) {}
+      try {
+        const spoke = await playAssistantAudio(j);
+        if (!spoke) { try { setStatus('Audio playback unavailable on this device.'); setTimeout(() => { try { setStatus(''); } catch (_) {} }, 1200); } catch (_) {} }
+      } catch (e) {}
 
     } catch (e) {
       // Keep the queue alive even if one request fails
@@ -3814,7 +3817,8 @@ async function sendChat(opts) {
     // Only auto-speak when the message came from coach voice mode.
     // Try returned TTS audio first, and fall back to browser speech synthesis if no audio is returned.
     if (from_voice && typeof playAssistantAudio === 'function') {
-      await playAssistantAudio({ audio_base64: j.audio_base64 || null, audio_mime_type: (j.audio_mime_type || 'audio/mpeg'), reply: j.reply });
+      const spoke = await playAssistantAudio({ audio_base64: j.audio_base64 || null, audio_mime_type: (j.audio_mime_type || 'audio/mpeg'), reply: j.reply });
+      if (!spoke) { try { setStatus('Audio playback unavailable on this device.'); setTimeout(() => { try { setStatus(''); } catch (_) {} }, 1200); } catch (_) {} }
     }
 
     // Clear typed input after send so we never re-send stale text.
