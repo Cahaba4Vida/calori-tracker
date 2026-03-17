@@ -1,23 +1,39 @@
 
 window.startTrial = async function(interval="month"){
   const which = interval === "year" || interval === "yearly" ? "yearly" : "monthly";
-  const DEFAULT_MONTHLY = 'https://buy.stripe.com/eVqbIUci9aZidBB9qg8bS0b';
-  const DEFAULT_YEARLY = 'https://buy.stripe.com/aFadR22Hz7N6app1XO8bS0c';
 
-  // Prefer links returned by billing-status if available
+  // First choice: use the already-working Stripe upgrade links from billing-status.
   try {
     const billing = await api('billing-status');
     const direct = billing && billing.upgrade_links
       ? (which === "yearly" ? billing.upgrade_links.yearly : billing.upgrade_links.monthly)
-      : '';
+      : "";
     if (direct) {
       window.location.href = direct;
       return;
     }
   } catch (_) {}
 
-  // Hard fallback to known Stripe links
-  window.location.href = which === "yearly" ? DEFAULT_YEARLY : DEFAULT_MONTHLY;
+  // Fallback: try public checkout session creation.
+  const deviceId = localStorage.getItem("device_id") || (crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+  localStorage.setItem("device_id", deviceId);
+  try {
+    const res = await fetch("/.netlify/functions/create-checkout-session-public",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({device_id:deviceId, interval: which === "yearly" ? "year" : "month"})
+    });
+    const data = await res.json().catch(()=>({}));
+    if(data && data.url){ window.location.href=data.url; return; }
+    const msg = (data && (data.error || data.message)) || "Could not start checkout.";
+    try {
+      const statusEl = document.getElementById('status');
+      if (statusEl) statusEl.innerText = msg;
+    } catch (_) {}
+    alert(msg);
+  } catch (e) {
+    alert("Could not start checkout.");
+  }
 };
 
 (function initAppBilling(global) {
@@ -357,27 +373,16 @@ global.playAssistantAudio = playAssistantAudio;
 
     async function startUpgradeCheckout(interval) {
       try {
-        setStatus('Opening checkout…');
-        try { trackEvent('upgrade_click', { interval }); } catch (_) {}
-
-        const which = interval === 'year' || interval === 'yearly' ? 'yearly' : 'monthly';
-        const DEFAULT_MONTHLY = 'https://buy.stripe.com/eVqbIUci9aZidBB9qg8bS0b';
-        const DEFAULT_YEARLY = 'https://buy.stripe.com/aFadR22Hz7N6app1XO8bS0c';
-
-        try {
-          const billing = await api('billing-status');
-          const direct = billing && billing.upgrade_links
-            ? (which === 'yearly' ? billing.upgrade_links.yearly : billing.upgrade_links.monthly)
-            : '';
-          if (direct) {
-            window.location.href = direct;
-            return;
-          }
-        } catch (_) {}
-
-        window.location.href = which === 'yearly' ? DEFAULT_YEARLY : DEFAULT_MONTHLY;
+        setStatus('Creating Stripe checkout link…');
+        trackEvent('upgrade_click', { interval });
+        const out = await api('create-checkout-session-public', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interval, device_id: getOrCreateDeviceId() }) });
+        if (out?.url) {
+          window.location.href = out.url;
+          return;
+        }
+        setStatus('Upgrade link unavailable. Please try again.');
       } catch (e) {
-        setStatus((e && e.message) ? e.message : 'Could not start checkout');
+        setStatus(e.message || 'Could not start checkout');
       }
     }
 
@@ -3375,7 +3380,7 @@ async function sendVoiceFoodMessage() {
   if (!message) return;
 
   const out = el('voiceFoodOutput');
-  const cleanedVoiceOut = String(out.innerText || '').replace(/^Listening…\s*/,'').trim();
+  const cleanedVoiceOut = String(out.innerText || '').replace(/^Listening…\s*/, '').trim();
   out.innerText = `${cleanedVoiceOut ? `${cleanedVoiceOut}\n\n` : ''}You: ${message}`;
   input.value = '';
 
@@ -3415,10 +3420,7 @@ async function sendVoiceFoodMessage() {
       }
 
       // Fire-and-forget audio (do not block the queue on full playback)
-      try {
-        const spoke = await playAssistantAudio(j);
-        if (!spoke) { try { setStatus('Audio playback unavailable on this device.'); setTimeout(() => { try { setStatus(''); } catch (_) {} }, 1200); } catch (_) {} }
-      } catch (e) {}
+      try { await playAssistantAudio(j); } catch (e) {}
 
     } catch (e) {
       // Keep the queue alive even if one request fails
@@ -3817,8 +3819,7 @@ async function sendChat(opts) {
     // Only auto-speak when the message came from coach voice mode.
     // Try returned TTS audio first, and fall back to browser speech synthesis if no audio is returned.
     if (from_voice && typeof playAssistantAudio === 'function') {
-      const spoke = await playAssistantAudio({ audio_base64: j.audio_base64 || null, audio_mime_type: (j.audio_mime_type || 'audio/mpeg'), reply: j.reply });
-      if (!spoke) { try { setStatus('Audio playback unavailable on this device.'); setTimeout(() => { try { setStatus(''); } catch (_) {} }, 1200); } catch (_) {} }
+      await playAssistantAudio({ audio_base64: j.audio_base64 || null, audio_mime_type: (j.audio_mime_type || 'audio/mpeg'), reply: j.reply });
     }
 
     // Clear typed input after send so we never re-send stale text.
@@ -4266,17 +4267,8 @@ function bindUI() {
     if (typeof getCoachVoiceMode === 'function') return !!getCoachVoiceMode();
   } catch (e) {}
   try {
-    return localStorage.getItem('coachVoiceMode') === '1';
-  } catch (e) {
-    return false;
-  }
-}
-function getAutoPlaybackEnabled() {
-  try {
-    if (typeof getCoachVoiceMode === 'function') return !!getCoachVoiceMode();
-  } catch (e) {}
-  try {
-    return localStorage.getItem('coachVoiceMode') === '1';
+    const raw = localStorage.getItem('coachVoiceMode');
+    return raw === '1' || raw === 'true';
   } catch (e) {
     return false;
   }
