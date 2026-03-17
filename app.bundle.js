@@ -4262,9 +4262,16 @@ function bindUI() {
   }
   
   function getAutoPlaybackEnabled() {
-    try {
-      return localStorage.getItem('coachVoiceMode') === '1' || localStorage.getItem('coachVoiceMode') === 'true';
-    } catch (e) {
+  try {
+    if (typeof getCoachVoiceMode === 'function') return !!getCoachVoiceMode();
+  } catch (e) {}
+  try {
+    return localStorage.getItem('coachVoiceMode') === '1';
+  } catch (e) {
+    return false;
+  }
+}
+window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;catch (e) {
       return false;
     }
   }
