@@ -16,25 +16,25 @@ function pickBaseUrl(event) {
 
 exports.handler = async (event) => {
   try {
-    if (event.httpMethod !== 'POST') return json({ ok: false, error: 'Method not allowed' }, 405);
+    if (event.httpMethod !== 'POST') return json(405, { ok: false, error: 'Method not allowed' });
 
     const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-    if (!STRIPE_SECRET_KEY) return json({ ok: false, error: 'Missing STRIPE_SECRET_KEY' }, 500);
+    if (!STRIPE_SECRET_KEY) return json(500, { ok: false, error: 'Missing STRIPE_SECRET_KEY' });
 
     const body = JSON.parse(event.body || '{}');
     const interval = body.interval === 'year' || body.interval === 'yearly' ? 'year' : 'month';
     const deviceId = body.device_id || getHeader(event, 'x-device-id') || getHeader(event, 'X-Device-Id');
     const email = String(body.email || '').trim().toLowerCase();
     const onboardingCheckout = !!body.onboarding_checkout;
-    if (!deviceId) return json({ ok: false, error: 'Missing device_id' }, 400);
-    if (onboardingCheckout && !email) return json({ ok: false, error: 'Email is required to continue to checkout.' }, 400);
+    if (!deviceId) return json(400, { ok: false, error: 'Missing device_id' });
+    if (onboardingCheckout && !email) return json(400, { ok: false, error: 'Email is required to continue to checkout.' });
 
     const pricing = await getPlanConfig();
     const amount = interval === 'year'
       ? Number(pricing.yearly_price_cents || Math.round(Number(pricing.yearly_price_usd || 50) * 100))
       : Number(pricing.monthly_price_cents || Math.round(Number(pricing.monthly_price_usd || 5) * 100));
 
-    if (!amount || amount < 50) return json({ ok: false, error: 'Invalid pricing' }, 400);
+    if (!amount || amount < 50) return json(400, { ok: false, error: 'Invalid pricing' });
 
     const base = pickBaseUrl(event);
     const successUrl = body.success_url || process.env.CHECKOUT_SUCCESS_URL || (base ? `${base}/?checkout=success${onboardingCheckout ? '&setup_account=1' : ''}` : `/?checkout=success${onboardingCheckout ? '&setup_account=1' : ''}`);
@@ -72,15 +72,15 @@ exports.handler = async (event) => {
 
     const session = await sessionResp.json().catch(() => ({}));
     if (!sessionResp.ok) {
-      return json({
+      return json(sessionResp.status || 500, {
         ok: false,
         error: session?.error?.message || 'Stripe error',
         details: session || null
-      }, sessionResp.status || 500);
+      });
     }
 
-    return json({ ok: true, url: session.url, id: session.id });
+    return json(200, { ok: true, url: session.url, id: session.id });
   } catch (e) {
-    return json({ ok: false, error: e.message || String(e) }, 500);
+    return json(500, { ok: false, error: e.message || String(e) });
   }
 };
