@@ -33,6 +33,10 @@ exports.handler = async (event, context) => {
       yearly: ent.pricing?.yearly_upgrade_url || DEFAULTS.yearly_upgrade_url,
       manage: ent.pricing?.manage_subscription_url || null
     },
+    can_manage_subscription: !!(
+      (ent && ent.is_premium && ent.premium_source === 'subscription') ||
+      (ent && ent.pricing && ent.pricing.manage_subscription_url)
+    ),
     limits: {
       food_entries_per_day: ent.limits.food_entries_per_day,
       ai_actions_per_day: ent.limits.ai_actions_per_day,

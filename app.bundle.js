@@ -1,39 +1,23 @@
 
 window.startTrial = async function(interval="month"){
   const which = interval === "year" || interval === "yearly" ? "yearly" : "monthly";
+  const DEFAULT_MONTHLY = 'https://buy.stripe.com/eVqbIUci9aZidBB9qg8bS0b';
+  const DEFAULT_YEARLY = 'https://buy.stripe.com/aFadR22Hz7N6app1XO8bS0c';
 
-  // First choice: use the already-working Stripe upgrade links from billing-status.
+  // Prefer links returned by billing-status if available
   try {
     const billing = await api('billing-status');
     const direct = billing && billing.upgrade_links
       ? (which === "yearly" ? billing.upgrade_links.yearly : billing.upgrade_links.monthly)
-      : "";
+      : '';
     if (direct) {
       window.location.href = direct;
       return;
     }
   } catch (_) {}
 
-  // Fallback: try public checkout session creation.
-  const deviceId = localStorage.getItem("device_id") || (crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
-  localStorage.setItem("device_id", deviceId);
-  try {
-    const res = await fetch("/.netlify/functions/create-checkout-session-public",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({device_id:deviceId, interval: which === "yearly" ? "year" : "month"})
-    });
-    const data = await res.json().catch(()=>({}));
-    if(data && data.url){ window.location.href=data.url; return; }
-    const msg = (data && (data.error || data.message)) || "Could not start checkout.";
-    try {
-      const statusEl = document.getElementById('status');
-      if (statusEl) statusEl.innerText = msg;
-    } catch (_) {}
-    alert(msg);
-  } catch (e) {
-    alert("Could not start checkout.");
-  }
+  // Hard fallback to known Stripe links
+  window.location.href = which === "yearly" ? DEFAULT_YEARLY : DEFAULT_MONTHLY;
 };
 
 (function initAppBilling(global) {
@@ -318,7 +302,13 @@ global.playAssistantAudio = playAssistantAudio;
     }
 
     function renderBillingStatus() {
-      const tier = billingState?.plan_tier === 'premium' ? 'Premium' : 'Free';
+      let tier = 'Free';
+      if (billingState?.plan_tier === 'premium' || billingState?.is_premium) {
+        if (billingState?.premium_source === 'subscription') tier = 'Premium';
+        else if (billingState?.premium_source === 'admin_pass') tier = 'Premium Pass';
+        else if (billingState?.premium_source === 'referral_bonus') tier = 'Premium Bonus';
+        else tier = 'Premium';
+      }
       const limits = billingState?.limits;
       const usage = billingState?.usage_today;
 
@@ -359,7 +349,10 @@ global.playAssistantAudio = playAssistantAudio;
       }
 
       if (exportBtn) exportBtn.disabled = !billingState?.is_premium;
-      if (manageBtn) manageBtn.disabled = !billingState?.is_premium;
+      if (manageBtn) {
+        const canManage = !!(billingState?.can_manage_subscription || billingState?.upgrade_links?.manage || billingState?.is_premium);
+        manageBtn.disabled = !canManage;
+      }
     }
 
     async function loadBillingStatus() {
@@ -373,30 +366,54 @@ global.playAssistantAudio = playAssistantAudio;
 
     async function startUpgradeCheckout(interval) {
       try {
-        setStatus('Creating Stripe checkout link…');
-        trackEvent('upgrade_click', { interval });
-        const out = await api('create-checkout-session-public', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interval, device_id: getOrCreateDeviceId() }) });
-        if (out?.url) {
-          window.location.href = out.url;
-          return;
-        }
-        setStatus('Upgrade link unavailable. Please try again.');
+        setStatus('Opening checkout…');
+        try { trackEvent('upgrade_click', { interval }); } catch (_) {}
+
+        const which = interval === 'year' || interval === 'yearly' ? 'yearly' : 'monthly';
+        const DEFAULT_MONTHLY = 'https://buy.stripe.com/eVqbIUci9aZidBB9qg8bS0b';
+        const DEFAULT_YEARLY = 'https://buy.stripe.com/aFadR22Hz7N6app1XO8bS0c';
+
+        try {
+          const billing = await api('billing-status');
+          const direct = billing && billing.upgrade_links
+            ? (which === 'yearly' ? billing.upgrade_links.yearly : billing.upgrade_links.monthly)
+            : '';
+          if (direct) {
+            window.location.href = direct;
+            return;
+          }
+        } catch (_) {}
+
+        window.location.href = which === 'yearly' ? DEFAULT_YEARLY : DEFAULT_MONTHLY;
       } catch (e) {
-        setStatus(e.message || 'Could not start checkout');
+        setStatus((e && e.message) ? e.message : 'Could not start checkout');
       }
     }
 
     async function openManageSubscription() {
       try {
+        setStatus('Opening subscription management…');
         trackEvent('manage_subscription_click');
+
         const out = await api('manage-subscription', { method: 'POST' });
         if (out?.url) {
           window.location.href = out.url;
           return;
         }
+
+        try {
+          const billing = billingState || await api('billing-status');
+          const direct = billing && billing.upgrade_links ? billing.upgrade_links.manage : '';
+          if (direct) {
+            window.location.href = direct;
+            return;
+          }
+        } catch (_) {}
+
         setStatus('Manage subscription is not available right now.');
       } catch (e) {
-        setStatus(e.message || 'Could not open subscription management');
+        const msg = e && e.message ? e.message : 'Could not open subscription management';
+        setStatus(msg);
       }
     }
 
@@ -909,11 +926,13 @@ function renderProgressCard() {
     if (u && u.link) {
       box.classList.remove('hidden');
       descEl.textContent = u.description || '';
-      linkEl.href = u.link;
+      linkEl.href = 'https://zachedwardsllc.com';
+      linkEl.textContent = 'Check out developer site >';
     } else {
       box.classList.add('hidden');
       descEl.textContent = '';
-      linkEl.href = '#';
+      linkEl.href = 'https://zachedwardsllc.com';
+      linkEl.textContent = 'Check out developer site >';
     }
   }
 }
@@ -3380,8 +3399,7 @@ async function sendVoiceFoodMessage() {
   if (!message) return;
 
   const out = el('voiceFoodOutput');
-  const cleanedVoiceOut = String(out.innerText || '').replace(/^Listening…\s*/, '').trim();
-  out.innerText = `${cleanedVoiceOut ? `${cleanedVoiceOut}\n\n` : ''}You: ${message}`;
+  out.innerText = `${out.innerText ? `${out.innerText}\n\n` : ''}You: ${message}`;
   input.value = '';
 
   // Queue the request so history is always up-to-date and replies never overlap/out-of-order
@@ -4263,17 +4281,13 @@ function bindUI() {
   }
   
   function getAutoPlaybackEnabled() {
-  try {
-    if (typeof getCoachVoiceMode === 'function') return !!getCoachVoiceMode();
-  } catch (e) {}
-  try {
-    const raw = localStorage.getItem('coachVoiceMode');
-    return raw === '1' || raw === 'true';
-  } catch (e) {
-    return false;
+    try {
+      return localStorage.getItem('coachVoiceMode') === '1' || localStorage.getItem('coachVoiceMode') === 'true';
+    } catch (e) {
+      return false;
+    }
   }
-}
-window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
+  window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
   
   function setCoachListeningOverlay(isOn) {
     const overlay = document.getElementById('coachListeningOverlay');

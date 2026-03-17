@@ -8,177 +8,29 @@ const crypto = require("crypto");
 
 const OPENAI_AUDIO_URL = "https://api.openai.com/v1/audio/speech";
 
-const FOOD_MODEL = process.env.OPENAI_FOOD_MODEL || "gpt-4.1";
-const FOOD_SEARCH_MODEL = process.env.OPENAI_FOOD_SEARCH_MODEL || FOOD_MODEL;
-
-function countRecentAssistantFoodFollowUps(history) {
-  const recent = Array.isArray(history) ? history.slice(-8) : [];
-  let count = 0;
-  for (const h of recent) {
-    if (!h || h.role !== "assistant") continue;
-    const t = String(h.text || "").trim().toLowerCase();
-    if (!t) continue;
-    if (
-      t.endsWith("?") ||
-      t.includes("how many") ||
-      t.includes("what size") ||
-      t.includes("which one") ||
-      t.includes("what brand") ||
-      t.includes("what restaurant") ||
-      t.includes("how much") ||
-      t.includes("ounces") ||
-      t.includes("servings")
-    ) {
-      count += 1;
-    }
-  }
-  return count;
-}
-
-function shouldTrySearchForFood(message, history) {
-  const text = String(message || "").trim();
-  if (!text) return false;
-  const recent = Array.isArray(history) ? history.slice(-6).map(h => String(h.text || "").toLowerCase()).join(" ") : "";
-
-  const brandish =
-    /\b(from|at)\s+[a-z]/i.test(text) ||
-    /\b(chipotle|starbucks|subway|mcdonald'?s|taco bell|wendy'?s|burger king|chick-fil-a|fairlife|core power|quest|gatorade|powerade|protein bar|protein shake|premier protein|muscle milk|celsius|monster|red bull|panera|costa vida|mo'?betta|cafe rio)\b/i.test(text) ||
-    /\b(menu|restaurant|packaged|bottle|can|bar|shake|drink|latte|frappuccino|burrito bowl|sandwich)\b/i.test(text);
-
-  const enoughSpecificity =
-    text.split(/\s+/).length >= 3 ||
-    /\d/.test(text) ||
-    /\b(small|medium|large|venti|grande|tall|oz|ounce|ounces|gram|grams|serving|servings|scoop|scoops)\b/i.test(text);
-
-  const looksLikeFollowupAnswerOnly =
-    text.split(/\s+/).length <= 4 &&
-    !brandish &&
-    recent.includes("how many");
-
-  return brandish && enoughSpecificity && !looksLikeFollowupAnswerOnly;
-}
-
-function extractFoodContextHint(history) {
-  const recent = Array.isArray(history) ? history.slice(-8) : [];
-  const joined = recent
-    .filter(h => h && h.role === "user")
-    .map(h => String(h.text || "").trim())
-    .filter(Boolean)
-    .join(" \n ");
-
-  const candidates = [];
-  const brandMatches = joined.match(/\b(Chick-fil-A|Chipotle|Starbucks|Subway|McDonald's|McDonalds|Taco Bell|Wendy's|Wendys|Burger King|Panera|Costa Vida|Cafe Rio|Mo'Betta|MoBetta|Core Power|Fairlife|Premier Protein|Quest|Muscle Milk)\b/gi) || [];
-  for (const m of brandMatches) candidates.push(m);
-
-  const fromAtMatches = joined.match(/\b(?:from|at)\s+([A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+){0,3})/g) || [];
-  for (const m of fromAtMatches) candidates.push(m.replace(/^\b(?:from|at)\s+/i, ''));
-
-  const categoryMatches = joined.match(/\b(grilled chicken sandwich|deluxe sandwich|spicy chicken sandwich|burrito bowl|protein shake|sandwich|burger|fries|nuggets|wrap|salad|latte|drink)\b/gi) || [];
-  for (const m of categoryMatches) candidates.push(m);
-
-  const uniq = [];
-  for (const c of candidates) {
-    const s = String(c || "").trim();
-    if (!s) continue;
-    if (!uniq.some(u => u.toLowerCase() == s.toLowerCase())) uniq.push(s);
-  }
-  return uniq.slice(-3).join(" | ");
-}
-
-function buildFoodResolutionMessage(message, history) {
-  const text = String(message || "").trim();
-  const hint = extractFoodContextHint(history);
-  const shortAnswer = text.split(/\s+/).length <= 6;
-
-  if (!hint) return { resolvedMessage: text, contextHint: "" };
-
-  if (shortAnswer && !/\b(chick|chipotle|starbucks|subway|mcdonald|taco|wendy|burger king|panera|costa vida|cafe rio|core power|fairlife|quest|premier|muscle milk)\b/i.test(text)) {
-    return {
-      resolvedMessage: `${text}\nEarlier established food context: ${hint}`,
-      contextHint: hint
-    };
-  }
-
-  return { resolvedMessage: text, contextHint: hint };
-}
-
-async function runFoodExtraction({ prompt, history, message, useSearch = false }) {
-  const input = [
-    { role: "system", content: prompt },
-    ...history.map(h => ({ role: h.role, content: h.text }))
-  ];
-
-  const payload = {
-    model: useSearch ? FOOD_SEARCH_MODEL : FOOD_MODEL,
-    input,
-    text: { format: { type: "json_object" } }
-  };
-
-  if (useSearch) {
-    payload.tools = [{ type: "web_search_preview" }];
-    payload.tool_choice = "auto";
-  }
-
-  const resp = await responsesCreate(payload);
-  const raw = outputText(resp);
-  return JSON.parse(raw);
-}
-
-
 function hoursBetween(a, b) {
   return Math.abs(a.getTime() - b.getTime()) / (1000 * 60 * 60);
 }
 
 async function createVoiceAudio(text) {
   const key = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_TTS_MODEL || "gpt-4o-mini-tts";
-  const voice = process.env.OPENAI_TTS_VOICE || "alloy";
   if (!key || !text) return null;
-
-  async function tryRequest(body) {
-    try {
-      const r = await fetch(OPENAI_AUDIO_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${key}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body)
-      });
-      if (!r.ok) return null;
-      const arr = await r.arrayBuffer();
-      const b64 = Buffer.from(arr).toString("base64");
-      return b64 || null;
-    } catch {
-      return null;
-    }
-  }
-
-  const clipped = String(text).slice(0, 900);
-
-  let audio = await tryRequest({
-    model,
-    voice,
-    response_format: "mp3",
-    input: clipped
+  const r = await fetch(OPENAI_AUDIO_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini-tts",
+      voice: "alloy",
+      format: "mp3",
+      input: text.slice(0, 800)
+    })
   });
-  if (audio) return audio;
-
-  audio = await tryRequest({
-    model,
-    voice,
-    format: "mp3",
-    input: clipped
-  });
-  if (audio) return audio;
-
-  audio = await tryRequest({
-    model: "tts-1",
-    voice,
-    response_format: "mp3",
-    input: clipped
-  });
-  return audio;
+  if (!r.ok) return null;
+  const arr = await r.arrayBuffer();
+  return Buffer.from(arr).toString("base64");
 }
 
 async function getThreadForUser(userId, threadId) {
@@ -348,9 +200,6 @@ exports.handler = async (event, context) => {
     ? `Recent logged entry today for context only (do NOT suppress intentional re-logs): ${JSON.stringify(lastLogged)}`
     : "Recent logged entry today for context only (do NOT suppress intentional re-logs): none";
 
-  const followUpCount = countRecentAssistantFoodFollowUps(history);
-  const allowMoreFollowUps = followUpCount < 2;
-
   const prompt = `You help users log food from voice descriptions.
 Return ONLY JSON with this exact shape:
 {
@@ -361,56 +210,45 @@ Return ONLY JSON with this exact shape:
     "protein_g": number|null,
     "carbs_g": number|null,
     "fat_g": number|null,
-    "description": "short label",
-    "notes": "brief assumptions or lookup basis"
+    "description": "short label"
   }|null
 }
 
 Context:
 ${lastLoggedSummary}
-recent_follow_up_questions_asked=${followUpCount}
-- IMPORTANT: If the user's latest answer is a short follow-up answer, combine it with restaurant/brand/menu context already established earlier in the thread.
-- Example: earlier context says Chick-fil-A, and the current answer is grilled chicken sandwich -> resolve it as Chick-fil-A grilled chicken sandwich, not a generic sandwich.
-- When earlier thread context gives the restaurant/brand, preserve that in suggested_entry.description and notes.
 
 Rules:
-- Main goal: accurately log the user's food with as little friction as possible.
-- Ask a follow-up ONLY when the estimate would otherwise be too vague to trust.
-- You may ask up to TWO follow-up questions total across this thread. If recent_follow_up_questions_asked >= 2, do NOT ask another follow-up; give your best estimate instead.
-- Good reasons to ask a follow-up: unknown quantity, unknown size, unknown restaurant item choice, unknown brand when brand changes calories materially.
-- Bad reasons to ask a follow-up: tiny uncertainty that does not materially change the estimate.
-- If the food is branded, restaurant-specific, or packaged and the user gave enough specifics, use the available search/tooling if present to improve accuracy instead of guessing.
+- If user describes a meal, estimate calories/macros.
+- If user is unclear, ask ONE follow-up question and set needs_follow_up=true.
 - VERY IMPORTANT: Do NOT suppress a food just because it appears similar to something logged earlier today or earlier in this conversation.
 - Users often intentionally log the same item multiple times in a day. If the user clearly says they had, drank, logged, or want to add the item again, treat it as a NEW entry and include it in suggested_entry.
 - If the user says another one, same as before, one more, or had it again, use the recent logged entry as context to create a new entry rather than rejecting it as already logged.
 - Only avoid logging when the user explicitly says they are correcting, replacing, undoing, or referring to a previous entry without consuming it again.
 - Keep reply <= 2 sentences.
-- Follow-up questions should be short and highly specific.
 - suggested_entry.description should be the ACTUAL food/item name the user ate or drank, not a generic label.
 - Good examples: "Core Power Elite chocolate protein shake", "2 scrambled eggs", "Turkey sandwich".
 - Bad examples: "Plate estimate", "Meal", "Food entry", "Estimate".
 - suggested_entry.description should be <= 60 chars.
 - If the item is branded or specific, preserve the specific name the user said.
-- If unsure, use the closest real food name from the user message, never a generic placeholder.
-- notes should be brief: brand / size / assumptions / search basis.
-- Prefer being approximately right over confidently specific when evidence is weak.`;
+- If unsure, use the closest real food name from the user message, never a generic placeholder.`;
 
+  const input = [
+    { role: "system", content: prompt },
+    ...history.map(h => ({ role: h.role, content: h.text }))
+  ];
+
+  const resp = await responsesCreate({
+    model: "gpt-4.1-mini",
+    input,
+    text: { format: { type: "json_object" } }
+  });
+
+  const raw = outputText(resp);
   let data;
   try {
-    const resolved = buildFoodResolutionMessage(message, history);
-    const useSearch = shouldTrySearchForFood(resolved.resolvedMessage, history) || !!resolved.contextHint;
-    data = await runFoodExtraction({ prompt, history, message: resolved.resolvedMessage, useSearch });
-  } catch (e) {
-    try {
-      const resolved = buildFoodResolutionMessage(message, history);
-      data = await runFoodExtraction({ prompt, history, message: resolved.resolvedMessage, useSearch: false });
-    } catch {
-      return json(502, { error: "Model did not return valid JSON" });
-    }
-  }
-
-  if (!allowMoreFollowUps && data && data.needs_follow_up) {
-    data.needs_follow_up = false;
+    data = JSON.parse(raw);
+  } catch {
+    return json(502, { error: "Model did not return valid JSON", raw });
   }
 
   let logged_entry = null;
@@ -428,8 +266,7 @@ Rules:
     const limit = await enforceFoodEntryLimit(userId, entry_date);
     if (!limit.ok) return limit.response;
 
-    const resolved = buildFoodResolutionMessage(message, history);
-    const derived_label = deriveVoiceFoodLabel((resolved && resolved.resolvedMessage) || message, se);
+    const derived_label = deriveVoiceFoodLabel(message, se);
 
     const raw_extraction = {
       source: "voice",
@@ -438,7 +275,7 @@ Rules:
       description: derived_label,
       food_name: derived_label,
       item: derived_label,
-      notes: String((se && (se.notes || se.description)) || (resolved && resolved.contextHint ? `${derived_label} | ${resolved.contextHint}` : derived_label)).slice(0, 180),
+      notes: derived_label,
       raw_user_message: String(message || "").slice(0, 180)
     };
 
@@ -486,7 +323,7 @@ Rules:
     thread_id: threadId,
     reply,
     needs_follow_up: !!data.needs_follow_up,
-    suggested_entry: data.suggested_entry ? { ...data.suggested_entry, notes: data.suggested_entry.notes || data.suggested_entry.description || '' } : null,
+    suggested_entry: data.suggested_entry || null,
     logged_entry,
     audio_base64,
     audio_mime_type: audio_base64 ? "audio/mpeg" : null

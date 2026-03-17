@@ -8,35 +8,23 @@ const OPENAI_AUDIO_URL = "https://api.openai.com/v1/audio/speech";
 
 async function createVoiceAudio(text) {
   const key = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_TTS_MODEL || "gpt-4o-mini-tts";
-  const voice = process.env.OPENAI_TTS_VOICE || "alloy";
   if (!key || !text) return null;
-
-  async function tryRequest(body) {
-    try {
-      const r = await fetch(OPENAI_AUDIO_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${key}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body)
-      });
-      if (!r.ok) return null;
-      const arr = await r.arrayBuffer();
-      const b64 = Buffer.from(arr).toString("base64");
-      return b64 || null;
-    } catch {
-      return null;
-    }
-  }
-
-  const clipped = String(text).slice(0, 900);
-  return (
-    await tryRequest({ model, voice, response_format: "mp3", input: clipped }) ||
-    await tryRequest({ model, voice, format: "mp3", input: clipped }) ||
-    await tryRequest({ model: "tts-1", voice, response_format: "mp3", input: clipped })
-  );
+  const r = await fetch(OPENAI_AUDIO_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini-tts",
+      voice: "alloy",
+      format: "mp3",
+      input: text.slice(0, 800)
+    })
+  });
+  if (!r.ok) return null;
+  const arr = await r.arrayBuffer();
+  return Buffer.from(arr).toString("base64");
 }
 
 exports.handler = async (event, context) => {
@@ -73,8 +61,7 @@ Return ONLY JSON with this exact shape:
 }
 Rules:
 - Ask follow-up when meal details are too vague to estimate calories confidently.
-- Ask at most TWO follow-up questions total across the exchange; if followups_used >= 2, provide your best estimate.
-- Use available search/tooling for branded or restaurant foods when it materially improves accuracy.
+- You may ask AT MOST (followups_limit - followups_used) follow-up questions this turn.
 - If enough detail exists, provide a best-effort estimate.
 - Keep calories between 50 and 2500.
 - Keep macro grams between 0 and 300.
@@ -83,7 +70,7 @@ Rules:
 - If followups_used >= followups_limit, you MUST set needs_follow_up=false and provide suggested_entry.`;
 
   const resp = await responsesCreate({
-    model: process.env.OPENAI_FOOD_MODEL || "gpt-4.1",
+    model: "gpt-4o-mini",
     input: [
       {
         role: "user",

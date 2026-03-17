@@ -14,32 +14,20 @@ function hoursBetween(a, b) {
 
 async function createCoachAudio(text) {
   const key = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_TTS_MODEL || "gpt-4o-mini-tts";
-  const voice = process.env.OPENAI_TTS_VOICE || "alloy";
   if (!key || !text) return null;
-
-  async function tryRequest(body) {
-    try {
-      const r = await fetch(OPENAI_AUDIO_URL, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-      if (!r.ok) return null;
-      const arr = await r.arrayBuffer();
-      const b64 = Buffer.from(arr).toString("base64");
-      return b64 || null;
-    } catch {
-      return null;
-    }
-  }
-
-  const clipped = String(text).slice(0, 900);
-  return (
-    await tryRequest({ model, voice, response_format: "mp3", input: clipped }) ||
-    await tryRequest({ model, voice, format: "mp3", input: clipped }) ||
-    await tryRequest({ model: "tts-1", voice, response_format: "mp3", input: clipped })
-  );
+  const r = await fetch(OPENAI_AUDIO_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "gpt-4o-mini-tts",
+      voice: "alloy",
+      format: "mp3",
+      input: text.slice(0, 900)
+    })
+  });
+  if (!r.ok) return null;
+  const arr = await r.arrayBuffer();
+  return Buffer.from(arr).toString("base64");
 }
 
 async function getThreadForUser(userId, threadId) {

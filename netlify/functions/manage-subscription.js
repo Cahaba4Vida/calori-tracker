@@ -46,5 +46,10 @@ exports.handler = async (event, context) => {
   }
 
   if (fallbackUrl) return json(200, { url: fallbackUrl, source: 'configured_link' });
+
+  if (customerId) {
+    return json(409, { error: 'Subscription found but billing portal could not be opened right now.', has_customer: true });
+  }
+
   return json(404, { error: 'Manage subscription is not configured yet.' });
 };
