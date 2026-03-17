@@ -3929,15 +3929,15 @@ function bindUI() {
     if (!node) return;
     node.onchange = () => uploadUnifiedPhotoFromInput(id).catch((e) => setStatus(e.message));
   });
-  el('saveWeightBtn').onclick = () => saveWeight().catch(e => setStatus(e.message));
-  el('finishDayBtn').onclick = () => finishDay().catch(e => setStatus(e.message));
-  el('sendChatBtn').onclick = () => {
+  { const n = el('saveWeightBtn'); if (n) n.onclick = () => saveWeight().catch(e => setStatus(e.message)); }
+  { const n = el('finishDayBtn'); if (n) n.onclick = () => finishDay().catch(e => setStatus(e.message)); }
+  { const n = el('sendChatBtn'); if (n) n.onclick = () => {
     const input = el('chatInput');
     const msg = input ? String(input.value || '') : '';
     if (input) input.value = '';
     return sendChat({ message: msg, from_voice: false }).catch(e => setStatus(e.message));
-  };
-el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
+  }; }
+  { const n = el('feedbackSubmitBtn'); if (n) n.onclick = () => submitFeedbackResponse(); }
 
   // Tabs
   const tabs = el('tabs');
@@ -4071,13 +4071,13 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
     };
   }
 
-  el('onboardingContinueBtn').onclick = () => {
+  { const n = el('onboardingContinueBtn'); if (n) n.onclick = () => {
     if (aiGoalFlowMode === 'onboarding') {
       startOnboardingV2();
     } else {
       showOnboardingScreen('inputs');
     }
-  };
+  }; }
   const onboardingSignInBtn = el('onboardingSignInBtn');
   if (onboardingSignInBtn) onboardingSignInBtn.onclick = () => {
     skipOnboardingAfterLogin = true;
@@ -4089,12 +4089,12 @@ el('feedbackSubmitBtn').onclick = () => submitFeedbackResponse();
     if (!node) return;
     node.onblur = () => { validateAiGoalFields(); };
   });
-  el('aiGetPlanBtn').onclick = () => submitAiGoalInputs().catch(e => { el('aiGoalFlowError').innerText = e.message + ' Try again.'; });
-  el('aiAcceptPlanBtn').onclick = () => acceptAiPlan().catch(e => { el('aiSuggestionError').innerText = e.message; });
-  el('aiDeclinePlanBtn').onclick = () => declineAiPlan().catch(e => { el('aiSuggestionError').innerText = e.message; });
-  el('aiEditPlanBtn').onclick = () => { const b = el('aiEditPlanBlock'); if (b) b.classList.toggle('hidden'); };
-  el('aiEditPlanSubmitBtn').onclick = () => submitAiPlanEdit().catch(e => { el('aiSuggestionError').innerText = e.message; });
-  el('settingsAiGoalBtn').onclick = () => openAiGoalFlow('settings');
+  { const n = el('aiGetPlanBtn'); if (n) n.onclick = () => submitAiGoalInputs().catch(e => { const err = el('aiGoalFlowError'); if (err) err.innerText = e.message + ' Try again.'; }); }
+  { const n = el('aiAcceptPlanBtn'); if (n) n.onclick = () => acceptAiPlan().catch(e => { const err = el('aiSuggestionError'); if (err) err.innerText = e.message; }); }
+  { const n = el('aiDeclinePlanBtn'); if (n) n.onclick = () => declineAiPlan().catch(e => { const err = el('aiSuggestionError'); if (err) err.innerText = e.message; }); }
+  { const n = el('aiEditPlanBtn'); if (n) n.onclick = () => { const b = el('aiEditPlanBlock'); if (b) b.classList.toggle('hidden'); }; }
+  { const n = el('aiEditPlanSubmitBtn'); if (n) n.onclick = () => submitAiPlanEdit().catch(e => { const err = el('aiSuggestionError'); if (err) err.innerText = e.message; }); }
+  { const n = el('settingsAiGoalBtn'); if (n) n.onclick = () => openAiGoalFlow('settings'); }
 
   // Initialize UI state
   el('weightInput').placeholder = unitSuffix();
