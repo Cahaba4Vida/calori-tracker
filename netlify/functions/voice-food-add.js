@@ -61,7 +61,8 @@ Return ONLY JSON with this exact shape:
 }
 Rules:
 - Ask follow-up when meal details are too vague to estimate calories confidently.
-- You may ask AT MOST (followups_limit - followups_used) follow-up questions this turn.
+- Ask at most TWO follow-up questions total across the exchange; if followups_used >= 2, provide your best estimate.
+- Use any available search/tooling for branded or restaurant foods when it materially improves accuracy.
 - If enough detail exists, provide a best-effort estimate.
 - Keep calories between 50 and 2500.
 - Keep macro grams between 0 and 300.
@@ -70,7 +71,7 @@ Rules:
 - If followups_used >= followups_limit, you MUST set needs_follow_up=false and provide suggested_entry.`;
 
   const resp = await responsesCreate({
-    model: "gpt-4o-mini",
+    model: process.env.OPENAI_FOOD_MODEL || "gpt-4.1",
     input: [
       {
         role: "user",
