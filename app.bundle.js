@@ -3301,11 +3301,27 @@ function showAddFoodPanel(panelId = null) {
   activeAddFoodPanel = panelId;
 }
 
+function resetVoiceInputState() {
+  try { voiceAutoSendPending = false; } catch (e) {}
+  try { voiceIsListening = false; } catch (e) {}
+  try { updateVoiceToggleLabel(); } catch (e) {}
+  try { setStatus(''); } catch (e) {}
+  try {
+    const out = el('voiceFoodOutput');
+    if (out && /^Listening…\s*$/i.test(String(out.innerText || '').trim())) out.innerText = '';
+  } catch (e) {}
+}
+
 function stopVoiceRecognition() {
-  if (!voiceRecognition) return;
-  voiceIsListening = false;
-  updateVoiceToggleLabel();
-  try { voiceRecognition.stop(); } catch {}
+  try { voiceAutoSendPending = false; } catch (e) {}
+  if (!voiceRecognition) {
+    resetVoiceInputState();
+    return;
+  }
+  try { voiceRecognition.onend = null; } catch (e) {}
+  try { voiceRecognition.onerror = null; } catch (e) {}
+  try { voiceRecognition.stop(); } catch (e) {}
+  resetVoiceInputState();
 }
 
 function updateVoiceToggleLabel() {
@@ -3399,7 +3415,8 @@ async function sendVoiceFoodMessage() {
   if (!message) return;
 
   const out = el('voiceFoodOutput');
-  out.innerText = `${out.innerText ? `${out.innerText}\n\n` : ''}You: ${message}`;
+  const cleanedVoiceOut = String(out.innerText || '').replace(/^Listening…\s*/,'').trim();
+  out.innerText = `${cleanedVoiceOut ? `${cleanedVoiceOut}\n\n` : ''}You: ${message}`;
   input.value = '';
 
   // Queue the request so history is always up-to-date and replies never overlap/out-of-order
@@ -4154,12 +4171,12 @@ function bindUI() {
   bindClick('settingsSignUpBtn', () => openIdentityModal('signup'));
   bindClick('settingsSignInBtn', () => openIdentityModal('login'));
 
-  bindClick('addFoodPhotoBtn', () => showAddFoodPanel('addFoodPhotoPanel'));
+  bindClick('addFoodPhotoBtn', () => { try { stopVoiceRecognition(); } catch (e) {} resetVoiceInputState(); showAddFoodPanel('addFoodPhotoPanel'); });
   bindClick('addFoodVoiceBtn', () => { try { stopVoiceRecognition(); } catch (e) {} voiceAutoSendPending = false; voiceIsListening = false; updateVoiceToggleLabel(); voiceFollowUpCount = 0; showAddFoodPanel('addFoodVoicePanel'); });
-  bindClick('addFoodQuickFillBtn', () => showAddFoodPanel('addFoodQuickFillPanel'));
-  bindClick('addFoodManualBtn', () => showAddFoodPanel('addFoodManualPanel'));
-  bindClick('addFoodOverlay', () => showAddFoodPanel(null));
-  document.querySelectorAll('.addFoodModalCloseBtn').forEach((n) => { n.onclick = () => showAddFoodPanel(null); });
+  bindClick('addFoodQuickFillBtn', () => { try { stopVoiceRecognition(); } catch (e) {} resetVoiceInputState(); showAddFoodPanel('addFoodQuickFillPanel'); });
+  bindClick('addFoodManualBtn', () => { try { stopVoiceRecognition(); } catch (e) {} resetVoiceInputState(); showAddFoodPanel('addFoodManualPanel'); });
+  bindClick('addFoodOverlay', () => { try { stopVoiceRecognition(); } catch (e) {} resetVoiceInputState(); showAddFoodPanel(null); });
+  document.querySelectorAll('.addFoodModalCloseBtn').forEach((n) => { n.onclick = () => { try { stopVoiceRecognition(); } catch (e) {} resetVoiceInputState(); showAddFoodPanel(null); }; });
 
   bindClick('todayPrevBtn', () => { if (!viewSpanEnabled) return; selectedDayOffset = Math.max(-viewSpanPastDays, selectedDayOffset - 1); renderTodayDateNavigator(); refresh().catch(e => setStatus(e.message)); });
   bindClick('todayNextBtn', () => { if (!viewSpanEnabled) return; selectedDayOffset = Math.min(viewSpanFutureDays, selectedDayOffset + 1); renderTodayDateNavigator(); refresh().catch(e => setStatus(e.message)); });
@@ -4202,18 +4219,17 @@ function bindUI() {
       try {
         const out = el('voiceFoodOutput');
         if (out && !out.innerText.trim()) out.innerText = 'Listening…';
-        const text = await captureVoiceOnce();
-        voiceIsListening = false;
-        updateVoiceToggleLabel();
-        setStatus('');
+        const text = await Promise.race([
+          captureVoiceOnce(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Voice input timed out. Try again.')), 20000))
+        ]);
+        resetVoiceInputState();
         if (!text) return;
         const input = el('voiceFoodInput');
         if (input) input.value = String(text || '').trim();
         await sendVoiceFoodMessage();
       } catch (e) {
-        voiceIsListening = false;
-        voiceAutoSendPending = false;
-        updateVoiceToggleLabel();
+        resetVoiceInputState();
         setStatus(`Unable to start voice input: ${e && e.message ? e.message : e}`);
       }
       return;
@@ -4264,6 +4280,8 @@ function bindUI() {
   // Coach chat is now opened/closed via a floating button (bottom-right).
   // Keep the existing "Hide" button as a close control.
   bindClick('chatToggleBtn', () => {
+    try { stopVoiceRecognition(); } catch (e) {}
+    resetVoiceInputState();
     const card = el('coachChatCard');
     if (card) card.classList.remove('open');
     const fab = el('coachFab');
