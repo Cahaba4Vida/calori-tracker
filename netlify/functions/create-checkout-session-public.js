@@ -44,7 +44,6 @@ exports.handler = async (event) => {
       mode: 'subscription',
       success_url: successUrl,
       cancel_url: cancelUrl,
-      customer_creation: 'always',
       allow_promotion_codes: 'true',
       billing_address_collection: 'auto',
       'line_items[0][price_data][currency]': 'usd',
