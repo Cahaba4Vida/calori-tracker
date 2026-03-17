@@ -38,7 +38,6 @@ function countRecentAssistantFoodFollowUps(history) {
 function shouldTrySearchForFood(message, history) {
   const text = String(message || "").trim();
   if (!text) return false;
-  const lower = text.toLowerCase();
   const recent = Array.isArray(history) ? history.slice(-6).map(h => String(h.text || "").toLowerCase()).join(" ") : "";
 
   const brandish =
@@ -51,7 +50,6 @@ function shouldTrySearchForFood(message, history) {
     /\d/.test(text) ||
     /\b(small|medium|large|venti|grande|tall|oz|ounce|ounces|gram|grams|serving|servings|scoop|scoops)\b/i.test(text);
 
-  // Don't web-search the tiny answer itself if it's clearly just answering a quantity follow-up.
   const looksLikeFollowupAnswerOnly =
     text.split(/\s+/).length <= 4 &&
     !brandish &&
@@ -59,7 +57,6 @@ function shouldTrySearchForFood(message, history) {
 
   return brandish && enoughSpecificity && !looksLikeFollowupAnswerOnly;
 }
-
 
 function extractFoodContextHint(history) {
   const recent = Array.isArray(history) ? history.slice(-8) : [];
@@ -83,7 +80,7 @@ function extractFoodContextHint(history) {
   for (const c of candidates) {
     const s = String(c || "").trim();
     if (!s) continue;
-    if (!uniq.some(u => u.toLowerCase() === s.toLowerCase())) uniq.push(s);
+    if (!uniq.some(u => u.toLowerCase() == s.toLowerCase())) uniq.push(s);
   }
   return uniq.slice(-3).join(" | ");
 }
@@ -95,8 +92,6 @@ function buildFoodResolutionMessage(message, history) {
 
   if (!hint) return { resolvedMessage: text, contextHint: "" };
 
-  // For short follow-up answers, make the context explicit so the model/search
-  // resolves to the restaurant/brand item instead of a generic food.
   if (shortAnswer && !/\b(chick|chipotle|starbucks|subway|mcdonald|taco|wendy|burger king|panera|costa vida|cafe rio|core power|fairlife|quest|premier|muscle milk)\b/i.test(text)) {
     return {
       resolvedMessage: `${text}\nEarlier established food context: ${hint}`,
@@ -119,7 +114,6 @@ async function runFoodExtraction({ prompt, history, message, useSearch = false }
     text: { format: { type: "json_object" } }
   };
 
-  // Optional search-assisted pass for branded / restaurant items.
   if (useSearch) {
     payload.tools = [{ type: "web_search_preview" }];
     payload.tool_choice = "auto";
@@ -155,14 +149,13 @@ async function createVoiceAudio(text) {
       const arr = await r.arrayBuffer();
       const b64 = Buffer.from(arr).toString("base64");
       return b64 || null;
-    } catch (e) {
+    } catch {
       return null;
     }
   }
 
   const clipped = String(text).slice(0, 900);
 
-  // Preferred payload
   let audio = await tryRequest({
     model,
     voice,
@@ -171,7 +164,6 @@ async function createVoiceAudio(text) {
   });
   if (audio) return audio;
 
-  // Compatibility fallback for older builds/projects
   audio = await tryRequest({
     model,
     voice,
@@ -180,7 +172,6 @@ async function createVoiceAudio(text) {
   });
   if (audio) return audio;
 
-  // Final compatibility fallback to a broadly supported TTS model
   audio = await tryRequest({
     model: "tts-1",
     voice,
@@ -411,7 +402,6 @@ Rules:
     data = await runFoodExtraction({ prompt, history, message: resolved.resolvedMessage, useSearch });
   } catch (e) {
     try {
-      // Graceful fallback if the search tool/model is unavailable in this OpenAI project.
       const resolved = buildFoodResolutionMessage(message, history);
       data = await runFoodExtraction({ prompt, history, message: resolved.resolvedMessage, useSearch: false });
     } catch {

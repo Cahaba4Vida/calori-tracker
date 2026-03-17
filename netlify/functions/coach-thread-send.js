@@ -22,49 +22,24 @@ async function createCoachAudio(text) {
     try {
       const r = await fetch(OPENAI_AUDIO_URL, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${key}`,
-          "Content-Type": "application/json"
-        },
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
       if (!r.ok) return null;
       const arr = await r.arrayBuffer();
       const b64 = Buffer.from(arr).toString("base64");
       return b64 || null;
-    } catch (e) {
+    } catch {
       return null;
     }
   }
 
   const clipped = String(text).slice(0, 900);
-
-  // Preferred payload
-  let audio = await tryRequest({
-    model,
-    voice,
-    response_format: "mp3",
-    input: clipped
-  });
-  if (audio) return audio;
-
-  // Compatibility fallback for older builds/projects
-  audio = await tryRequest({
-    model,
-    voice,
-    format: "mp3",
-    input: clipped
-  });
-  if (audio) return audio;
-
-  // Final compatibility fallback to a broadly supported TTS model
-  audio = await tryRequest({
-    model: "tts-1",
-    voice,
-    response_format: "mp3",
-    input: clipped
-  });
-  return audio;
+  return (
+    await tryRequest({ model, voice, response_format: "mp3", input: clipped }) ||
+    await tryRequest({ model, voice, format: "mp3", input: clipped }) ||
+    await tryRequest({ model: "tts-1", voice, response_format: "mp3", input: clipped })
+  );
 }
 
 async function getThreadForUser(userId, threadId) {
