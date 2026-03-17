@@ -992,6 +992,8 @@ let feedbackGateState = { required: false, campaign: null };
 let billingController = null;
 const ONBOARDING_FREE_PLAN_SIGNUP_KEY = 'onboardingFreePlanSignup';
 const ONBOARDING_FREE_PLAN_SNAPSHOT_KEY = 'onboardingFreePlanSnapshotV1';
+const ONBOARDING_PAID_CHECKOUT_KEY = 'onboardingPaidCheckoutPendingV1';
+const ONBOARDING_PAID_CHECKOUT_EMAIL_KEY = 'onboardingPaidCheckoutEmailV1';
 
 function _numOrNull(v) {
   if (v == null || v === '') return null;
@@ -2171,7 +2173,7 @@ function _renderOnboardingV2() {
 
     const monthlyBtn = _onbBtn('Start Trial — $5/mo', { kind: 'secondary', onClick: () => {
       try {
-        if (!currentUser) { try { openIdentityModal('signup'); } catch (_) {} return; }
+        if (!currentUser) { startPaidOnboardingCheckout('month'); return; }
         if (typeof window.startTrial === 'function') window.startTrial('month');
         else if (billingController) billingController.startUpgradeCheckout('monthly');
         else finish();
@@ -2179,7 +2181,7 @@ function _renderOnboardingV2() {
     }});
     const yearlyBtn = _onbBtn('Start Trial — $49/year', { kind: 'primary', onClick: () => {
       try {
-        if (!currentUser) { try { openIdentityModal('signup'); } catch (_) {} return; }
+        if (!currentUser) { startPaidOnboardingCheckout('year'); return; }
         if (typeof window.startTrial === 'function') window.startTrial('year');
         else if (billingController) billingController.startUpgradeCheckout('yearly');
         else finish();
@@ -3947,12 +3949,70 @@ async function saveManualEntry() {
   }
 }
 
+async function deleteProfileFlow() {
+  const input = el('deleteProfileConfirmInput');
+  const status = el('deleteProfileStatus');
+  const btn = el('deleteProfileBtn');
+  const confirmation = String(input?.value || '').trim();
+
+  if (confirmation !== 'Delete') {
+    if (status) status.innerText = 'Type "Delete" exactly to confirm.';
+    return;
+  }
+
+  const proceed = window.confirm('This permanently deletes profile data tied to this user in the database. Continue?');
+  if (!proceed) return;
+
+  if (btn) btn.disabled = true;
+  if (status) status.innerText = 'Deleting profile…';
+
+  try {
+    const res = await api('delete-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmation })
+    });
+
+    if (!res || !res.ok) {
+      throw new Error((res && res.error) || 'Could not delete profile.');
+    }
+
+    try {
+      localStorage.removeItem('caloriTrackerMockStateV1');
+    } catch (e) {}
+
+    if (status) status.innerText = 'Profile deleted. Signing out…';
+
+    try {
+      if (typeof netlifyIdentity !== 'undefined') netlifyIdentity.logout();
+    } catch (e) {}
+
+    setTimeout(() => {
+      window.location.href = '/delete-account.html?deleted=1';
+    }, 700);
+  } catch (e) {
+    if (status) status.innerText = e.message || 'Could not delete profile.';
+    if (btn) btn.disabled = false;
+  }
+}
+
 function bindUI() {
   setThinking(false);
   const loginBtn = el('loginBtn');
   const logoutBtn = el('logoutBtn');
+  const deleteProfileBtn = el('deleteProfileBtn');
+  const deleteProfileConfirmInput = el('deleteProfileConfirmInput');
   if (loginBtn) loginBtn.onclick = () => openIdentityModal('login');
   if (logoutBtn) logoutBtn.onclick = () => { if (typeof netlifyIdentity !== 'undefined') netlifyIdentity.logout(); };
+  if (deleteProfileBtn) deleteProfileBtn.onclick = () => deleteProfileFlow();
+  if (deleteProfileConfirmInput) {
+    deleteProfileConfirmInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        deleteProfileFlow();
+      }
+    });
+  }
   const enterMockBtn = el('enterMockBtn');
   const resetMockBtn = el('resetMockBtn');
   if (enterMockBtn) enterMockBtn.onclick = () => initAuthedSession().catch(e => setStatus(e.message));
@@ -4120,6 +4180,10 @@ function bindUI() {
     setOnboardingVisible(false);
     openIdentityModal('login');
   };
+  const postCheckoutCreateAccountBtn = el('postCheckoutCreateAccountBtn');
+  if (postCheckoutCreateAccountBtn) postCheckoutCreateAccountBtn.onclick = () => submitPostCheckoutSignup();
+  const postCheckoutBackToAppBtn = el('postCheckoutBackToAppBtn');
+  if (postCheckoutBackToAppBtn) postCheckoutBackToAppBtn.onclick = () => setPostCheckoutSignupVisible(false);
   ['aiCurrentWeightInput','aiGoalWeightInput','aiGoalDateInput'].forEach((id) => {
     const node = el(id);
     if (!node) return;
@@ -4652,6 +4716,157 @@ async function completePendingFreePlanSignup() {
   }
 }
 
+
+function stashPendingPaidCheckout(email, interval) {
+  try {
+    stashPendingFreePlanSnapshot();
+  } catch (_) {}
+  try {
+    localStorage.setItem(ONBOARDING_PAID_CHECKOUT_KEY, JSON.stringify({
+      interval: interval === 'year' || interval === 'yearly' ? 'year' : 'month',
+      created_at: Date.now()
+    }));
+    localStorage.setItem(ONBOARDING_PAID_CHECKOUT_EMAIL_KEY, String(email || '').trim().toLowerCase());
+  } catch (_) {}
+}
+
+function clearPendingPaidCheckout() {
+  try { localStorage.removeItem(ONBOARDING_PAID_CHECKOUT_KEY); } catch (_) {}
+  try { localStorage.removeItem(ONBOARDING_PAID_CHECKOUT_EMAIL_KEY); } catch (_) {}
+}
+
+function setPostCheckoutSignupVisible(visible) {
+  const overlay = el('postCheckoutSignupOverlay');
+  if (!overlay) return;
+  overlay.classList.toggle('hidden', !visible);
+  overlay.style.display = visible ? 'flex' : 'none';
+  overlay.style.pointerEvents = visible ? 'auto' : 'none';
+  overlay.style.opacity = visible ? '1' : '0';
+  if (visible) hideAllBlockingOverlays();
+}
+
+async function completePendingPaidCheckoutSignup() {
+  try {
+    const pending = localStorage.getItem(ONBOARDING_PAID_CHECKOUT_KEY);
+    if (!pending) return false;
+    let replayed = false;
+    try { replayed = await replayPendingFreePlanSnapshot(); } catch (_) { replayed = false; }
+    if (!replayed) {
+      await api('profile-set', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ onboarding_completed: true })
+      });
+    }
+    clearPendingPaidCheckout();
+    await loadProfile();
+    setOnboardingVisible(false);
+    setPostCheckoutSignupVisible(false);
+    hideAllBlockingOverlays();
+    await refresh();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function maybeOpenPostCheckoutSignupFromUrl() {
+  try {
+    if (currentUser) return false;
+    const pending = localStorage.getItem(ONBOARDING_PAID_CHECKOUT_KEY);
+    const email = localStorage.getItem(ONBOARDING_PAID_CHECKOUT_EMAIL_KEY);
+    if (!pending || !email) return false;
+    const params = new URLSearchParams(window.location.search || '');
+    if (params.get('checkout') !== 'success') return false;
+    const emailInput = el('postCheckoutEmailInput');
+    const status = el('postCheckoutSignupStatus');
+    if (emailInput) emailInput.value = email;
+    if (status) status.innerText = 'Checkout complete. Create your password to finish.';
+    setPostCheckoutSignupVisible(true);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function submitPostCheckoutSignup() {
+  const email = String(el('postCheckoutEmailInput')?.value || localStorage.getItem(ONBOARDING_PAID_CHECKOUT_EMAIL_KEY) || '').trim().toLowerCase();
+  const password = String(el('postCheckoutPasswordInput')?.value || '');
+  const confirm = String(el('postCheckoutPasswordConfirmInput')?.value || '');
+  const status = el('postCheckoutSignupStatus');
+  if (!email) { if (status) status.innerText = 'Missing email for account setup.'; return; }
+  if (!password || password.length < 8) { if (status) status.innerText = 'Password must be at least 8 characters.'; return; }
+  if (password !== confirm) { if (status) status.innerText = 'Passwords do not match.'; return; }
+  if (typeof netlifyIdentity === 'undefined') { if (status) status.innerText = 'Account setup is not available right now.'; return; }
+
+  try {
+    if (status) status.innerText = 'Creating account…';
+    await new Promise((resolve, reject) => {
+      try {
+        netlifyIdentity.signup(email, password, {}, (err) => err ? reject(err) : resolve(true));
+      } catch (e) { reject(e); }
+    }).catch(async (e) => {
+      // If the account already exists, try logging in directly.
+      const msg = String(e && e.message || e || '');
+      if (/already|exists|registered/i.test(msg)) return true;
+      throw e;
+    });
+
+    if (status) status.innerText = 'Signing you in…';
+    await new Promise((resolve, reject) => {
+      try {
+        netlifyIdentity.login(email, password, true, (err) => err ? reject(err) : resolve(true));
+      } catch (e) { reject(e); }
+    });
+
+    try { localStorage.removeItem(ONBOARDING_FREE_PLAN_SIGNUP_KEY); } catch (_) {}
+    await completePendingPaidCheckoutSignup();
+    if (status) status.innerText = 'Success.';
+  } catch (e) {
+    if (status) status.innerText = String(e && e.message || e || 'Could not create account.');
+  }
+}
+
+async function startPaidOnboardingCheckout(interval) {
+  try {
+    let email = '';
+    const existing = (localStorage.getItem(ONBOARDING_PAID_CHECKOUT_EMAIL_KEY) || '').trim();
+    const typed = window.prompt('Enter your email for checkout and account setup:', existing);
+    email = String(typed || '').trim().toLowerCase();
+    if (!email) return;
+    const okEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!okEmail) {
+      setStatus('Enter a valid email address to continue.');
+      return;
+    }
+
+    stashPendingPaidCheckout(email, interval);
+    setStatus('Opening checkout…');
+
+    const deviceId = localStorage.getItem("device_id") || (crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+    localStorage.setItem("device_id", deviceId);
+
+    const res = await api('create-checkout-session-public', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        device_id: deviceId,
+        interval: interval === 'year' || interval === 'yearly' ? 'year' : 'month',
+        email,
+        onboarding_checkout: true
+      })
+    });
+
+    if (res && res.url) {
+      window.location.href = res.url;
+      return;
+    }
+    throw new Error((res && (res.error || res.message)) || 'Could not start checkout.');
+  } catch (e) {
+    setStatus(e && e.message ? e.message : 'Could not start checkout.');
+  }
+}
+
 function openIdentityModal(mode = 'login') {
   if (typeof netlifyIdentity === 'undefined') {
     setStatus('Sign in is not available in this environment yet.');
@@ -4725,6 +4940,7 @@ if (typeof netlifyIdentity !== 'undefined') {
       initAuthedSession({ skipOnboarding: true })
         .then(async () => {
           await completePendingFreePlanSignup();
+          await completePendingPaidCheckoutSignup();
           await claimPendingReferralIfSignedIn();
           await maybeOpenPendingReferralShare();
         })
@@ -4735,7 +4951,7 @@ if (typeof netlifyIdentity !== 'undefined') {
     // Logged-out: continue as a device session. If onboarding isn't complete for this device,
     // initAuthedSession will open the AI goal flow (settings mode).
     setFeedbackOverlay(false, null);
-    initAuthedSession({ skipOnboarding: false, onboardingMode: 'onboarding' }).catch(e => setStatus(e.message));
+    initAuthedSession({ skipOnboarding: false, onboardingMode: 'onboarding' }).then(() => { try { maybeOpenPostCheckoutSignupFromUrl(); } catch (_) {} }).catch(e => setStatus(e.message));
   });
   netlifyIdentity.on('login', (user) => {
   currentUser = user;
@@ -4750,6 +4966,7 @@ if (typeof netlifyIdentity !== 'undefined') {
   initAuthedSession({ skipOnboarding: true })
     .then(async () => {
       await completePendingFreePlanSignup();
+      await completePendingPaidCheckoutSignup();
       await claimPendingReferralIfSignedIn();
       await maybeOpenPendingReferralShare();
     })

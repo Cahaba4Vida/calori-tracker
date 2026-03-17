@@ -7,7 +7,7 @@
 <style>
 body {
   font-family: Arial, sans-serif;
-  max-width: 800px;
+  max-width: 860px;
   margin: 40px auto;
   padding: 20px;
   line-height: 1.6;
@@ -19,20 +19,83 @@ h1, h2 {
 a {
   color: #0077cc;
 }
+.notice {
+  background: #eef8ee;
+  border: 1px solid #b8ddb8;
+  padding: 14px 16px;
+  border-radius: 12px;
+  margin: 18px 0;
+}
+.warn {
+  background: #fff6f6;
+  border: 1px solid #f0caca;
+  padding: 14px 16px;
+  border-radius: 12px;
+  margin: 18px 0;
+}
+code {
+  background: #f4f4f4;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
 </style>
 </head>
 <body>
 
 <h1>Delete Your Account – Aethon Fuel</h1>
 
+<div id="deletedNotice" class="notice" style="display:none;">
+  Your profile deletion request completed. If you were signed in, you were signed out after deletion.
+</div>
+
 <p>
-This page explains how users of <strong>Aethon Fuel</strong>, operated by <strong>Zach Edwards LLC</strong>, can request deletion of their account and associated data.
+This page explains how users of <strong>Aethon Fuel</strong>, operated by <strong>Zach Edwards LLC</strong>, can delete their profile and associated in-app data.
 </p>
 
-<h2>How to Request Account Deletion</h2>
+<h2>Delete Directly Inside the App</h2>
 
 <p>
-To request deletion of your account and associated data, please email:
+If you can still sign in, the fastest option is inside <strong>Settings</strong> in the app:
+</p>
+
+<ol>
+  <li>Open <strong>Settings</strong></li>
+  <li>Go to the <strong>System</strong> tab</li>
+  <li>Find <strong>Delete profile</strong></li>
+  <li>Type <code>Delete</code> exactly</li>
+  <li>Tap <strong>Delete Profile</strong></li>
+</ol>
+
+<div class="warn">
+  This permanently deletes database records tied to your signed-in profile and cannot be undone.
+  If you have an active paid subscription, cancel/manage it first before deleting your profile.
+</div>
+
+<h2>What Data Will Be Deleted</h2>
+
+<p>In-app deletion removes database records tied to your signed-in profile, including:</p>
+
+<ul>
+<li>Your profile information stored in the app database</li>
+<li>Email association stored in the app database</li>
+<li>Meal logs and food entries</li>
+<li>Weight logs and daily summaries</li>
+<li>Voice input history, coach history, and related thread data</li>
+<li>Linked device records associated with your profile</li>
+<li>AI usage history and related in-app profile settings</li>
+</ul>
+
+<h2>What May Not Be Deleted Automatically</h2>
+
+<ul>
+<li>Payment processor records retained by Stripe for legal, tax, fraud, or accounting reasons</li>
+<li>Identity-provider records outside the app database unless separately removed by that provider/platform</li>
+</ul>
+
+<h2>If You Cannot Sign In</h2>
+
+<p>
+If you cannot access the app, email:
 </p>
 
 <p>
@@ -44,33 +107,14 @@ Include the email address associated with your account (if applicable) and the p
 <strong>"Account Deletion Request"</strong> in the subject line.
 </p>
 
-<h2>What Data Will Be Deleted</h2>
-
-Upon verified request, we will permanently delete:
-
-<ul>
-<li>Your account profile information</li>
-<li>Email address (if registered)</li>
-<li>Meal logs and food entries</li>
-<li>Uploaded food images</li>
-<li>Voice input data</li>
-<li>AI-generated analysis history</li>
-<li>Subscription status associated with your account</li>
-</ul>
-
-<h2>Data Retention</h2>
-
-We do not retain personal account data after deletion is completed.
-
-Certain transactional records related to payments may be retained by our payment processor (Stripe) for legal, tax, or accounting purposes in accordance with applicable law.
-
 <h2>Processing Time</h2>
 
-Deletion requests are processed within 7 business days.
+<p>
+If you delete inside the app while signed in, the database deletion happens immediately.
+Manual email requests are typically processed within 7 business days.
+</p>
 
 <h2>Contact</h2>
-
-If you have any questions regarding account deletion or data handling, contact:
 
 <p>
 <strong>Zach Edwards LLC</strong><br>
@@ -79,6 +123,18 @@ Twin Falls, Idaho 83301<br>
 United States<br>
 Email: zach@zachedwardsllc.com
 </p>
+
+<script>
+(function () {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('deleted') === '1') {
+      var notice = document.getElementById('deletedNotice');
+      if (notice) notice.style.display = 'block';
+    }
+  } catch (e) {}
+})();
+</script>
 
 </body>
 </html>

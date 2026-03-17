@@ -5,7 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>Calorie &amp; Weight Tracker</title>
-<link href="styles.css?v=1017" rel="stylesheet"/>
+<link href="styles.css?v=1019" rel="stylesheet"/>
 
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -386,6 +386,26 @@
 <div class="deviceList muted" id="deviceList">Loading devices…</div>
 <div class="muted" id="deviceSettingsStatus" style="margin-top:8px;"></div>
 </section></div>
+
+<div class="settingsSection" data-tab="system" id="deleteProfileSettings">
+  <section class="card" style="margin-top:16px; border-color:#ffb4b4;">
+    <h3 style="margin:0;">Delete profile</h3>
+    <p class="muted" style="margin-top:8px;">
+      Permanently deletes data tied to your signed-in profile from the database, including meal logs, weights, voice/coaching history, linked devices, and profile settings.
+      This cannot be undone.
+    </p>
+    <p class="muted" style="margin-top:8px;">
+      Type <strong>Delete</strong> exactly to confirm.
+      If you have an active paid subscription, manage/cancel it first before deleting your profile.
+    </p>
+    <div class="row" style="margin-top:10px; align-items:center; gap:10px; flex-wrap:wrap;">
+      <input id="deleteProfileConfirmInput" type="text" placeholder="Type Delete" style="max-width:220px;" />
+      <button id="deleteProfileBtn" style="background:#7f1d1d; color:#fff;">Delete Profile</button>
+      <a href="/delete-account.html" class="btnMini" target="_blank" rel="noopener">Delete data page</a>
+    </div>
+    <div class="muted" id="deleteProfileStatus" style="margin-top:10px;"></div>
+  </section>
+</div>
 <!-- Cheat Day + Autopilot Readiness (tabbed settings sections) -->
 <div class="settingsSection" data-tab="autopilot" id="cheatDaySettings">
   <div class="settingsHeaderRow"><h3 style="margin:0;">Cheat Day</h3><button id="cheatDaySaveBtn" class="btnMini">Save</button></div>
@@ -588,6 +608,24 @@
 </div>
 </div>
 </div>
+<div class="onboardingOverlay hidden" id="postCheckoutSignupOverlay">
+<div class="onboardingModal">
+<div class="onboardingStep">Finish setup</div>
+<h2>Set your password</h2>
+<p class="muted">Your checkout is complete. Create your password to finish setting up your account with the same email you used at checkout.</p>
+<label>Email</label>
+<input id="postCheckoutEmailInput" type="email" readonly />
+<label style="margin-top:10px;">Password</label>
+<input id="postCheckoutPasswordInput" type="password" placeholder="Create a password" />
+<label style="margin-top:10px;">Confirm password</label>
+<input id="postCheckoutPasswordConfirmInput" type="password" placeholder="Confirm password" />
+<div class="row" style="margin-top:12px;">
+<button id="postCheckoutCreateAccountBtn" type="button">Create Account</button>
+<button class="linkMiniBtn" id="postCheckoutBackToAppBtn" type="button">Back</button>
+</div>
+<div class="muted" id="postCheckoutSignupStatus" style="margin-top:10px;"></div>
+</div>
+</div>
 <div class="onboardingOverlay hidden" id="feedbackOverlay">
 <div class="onboardingModal">
 <div class="onboardingStep">Feedback required</div>
@@ -688,7 +726,7 @@
   window.addEventListener('pageshow', hide);
 })();
 </script>
-<script src="app.bundle.js?v=1017"></script>
+<script src="app.bundle.js?v=1019"></script>
 
 <div id="aiGlobalLoading" class="aiGlobalLoading hidden" role="status" aria-live="polite" aria-label="AI is working">
   <div class="aiGlobalLoadingCard">

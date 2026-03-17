@@ -24,7 +24,10 @@ exports.handler = async (event) => {
     const body = JSON.parse(event.body || '{}');
     const interval = body.interval === 'year' || body.interval === 'yearly' ? 'year' : 'month';
     const deviceId = body.device_id || getHeader(event, 'x-device-id') || getHeader(event, 'X-Device-Id');
+    const email = String(body.email || '').trim().toLowerCase();
+    const onboardingCheckout = !!body.onboarding_checkout;
     if (!deviceId) return json({ ok: false, error: 'Missing device_id' }, 400);
+    if (onboardingCheckout && !email) return json({ ok: false, error: 'Email is required to continue to checkout.' }, 400);
 
     const pricing = await getPlanConfig();
     const amount = interval === 'year'
@@ -34,8 +37,8 @@ exports.handler = async (event) => {
     if (!amount || amount < 50) return json({ ok: false, error: 'Invalid pricing' }, 400);
 
     const base = pickBaseUrl(event);
-    const successUrl = process.env.CHECKOUT_SUCCESS_URL || (base ? `${base}/?checkout=success` : '/?checkout=success');
-    const cancelUrl = process.env.CHECKOUT_CANCEL_URL || (base ? `${base}/?checkout=cancel` : '/?checkout=cancel');
+    const successUrl = body.success_url || process.env.CHECKOUT_SUCCESS_URL || (base ? `${base}/?checkout=success${onboardingCheckout ? '&setup_account=1' : ''}` : `/?checkout=success${onboardingCheckout ? '&setup_account=1' : ''}`);
+    const cancelUrl = body.cancel_url || process.env.CHECKOUT_CANCEL_URL || (base ? `${base}/?checkout=cancel${onboardingCheckout ? '&setup_account=1' : ''}` : `/?checkout=cancel${onboardingCheckout ? '&setup_account=1' : ''}`);
 
     const params = new URLSearchParams({
       mode: 'subscription',
@@ -51,9 +54,11 @@ exports.handler = async (event) => {
       'line_items[0][price_data][unit_amount]': String(amount),
       'line_items[0][quantity]': '1',
       client_reference_id: String(deviceId),
+      ...(email ? { customer_email: email } : {}),
       'metadata[device_id]': String(deviceId),
       'metadata[interval]': interval,
-      'metadata[source]': 'public_checkout'
+      'metadata[source]': onboardingCheckout ? 'onboarding_checkout' : 'public_checkout',
+      ...(email ? { 'metadata[email]': email } : {})
     });
 
     const sessionResp = await fetch('https://api.stripe.com/v1/checkout/sessions', {
