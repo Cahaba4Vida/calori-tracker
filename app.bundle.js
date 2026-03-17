@@ -1,39 +1,23 @@
 
 window.startTrial = async function(interval="month"){
   const which = interval === "year" || interval === "yearly" ? "yearly" : "monthly";
+  const DEFAULT_MONTHLY = 'https://buy.stripe.com/eVqbIUci9aZidBB9qg8bS0b';
+  const DEFAULT_YEARLY = 'https://buy.stripe.com/aFadR22Hz7N6app1XO8bS0c';
 
-  // First choice: use the already-working Stripe upgrade links from billing-status.
+  // Prefer links returned by billing-status if available
   try {
     const billing = await api('billing-status');
     const direct = billing && billing.upgrade_links
       ? (which === "yearly" ? billing.upgrade_links.yearly : billing.upgrade_links.monthly)
-      : "";
+      : '';
     if (direct) {
       window.location.href = direct;
       return;
     }
   } catch (_) {}
 
-  // Fallback: try public checkout session creation.
-  const deviceId = localStorage.getItem("device_id") || (crypto && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
-  localStorage.setItem("device_id", deviceId);
-  try {
-    const res = await fetch("/.netlify/functions/create-checkout-session-public",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({device_id:deviceId, interval: which === "yearly" ? "year" : "month"})
-    });
-    const data = await res.json().catch(()=>({}));
-    if(data && data.url){ window.location.href=data.url; return; }
-    const msg = (data && (data.error || data.message)) || "Could not start checkout.";
-    try {
-      const statusEl = document.getElementById('status');
-      if (statusEl) statusEl.innerText = msg;
-    } catch (_) {}
-    alert(msg);
-  } catch (e) {
-    alert("Could not start checkout.");
-  }
+  // Hard fallback to known Stripe links
+  window.location.href = which === "yearly" ? DEFAULT_YEARLY : DEFAULT_MONTHLY;
 };
 
 (function initAppBilling(global) {
@@ -373,13 +357,29 @@ global.playAssistantAudio = playAssistantAudio;
 
     async function startUpgradeCheckout(interval) {
       try {
-        setStatus('Creating Stripe checkout link…');
-        trackEvent('upgrade_click', { interval });
-        const out = await api('create-checkout-session-public', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interval, device_id: getOrCreateDeviceId() }) });
-        if (out?.url) {
-          window.location.href = out.url;
-          return;
-        }
+        setStatus('Opening checkout…');
+        try { trackEvent('upgrade_click', { interval }); } catch (_) {}
+
+        const which = interval === 'year' || interval === 'yearly' ? 'yearly' : 'monthly';
+        const DEFAULT_MONTHLY = 'https://buy.stripe.com/eVqbIUci9aZidBB9qg8bS0b';
+        const DEFAULT_YEARLY = 'https://buy.stripe.com/aFadR22Hz7N6app1XO8bS0c';
+
+        try {
+          const billing = await api('billing-status');
+          const direct = billing && billing.upgrade_links
+            ? (which === 'yearly' ? billing.upgrade_links.yearly : billing.upgrade_links.monthly)
+            : '';
+          if (direct) {
+            window.location.href = direct;
+            return;
+          }
+        } catch (_) {}
+
+        window.location.href = which === 'yearly' ? DEFAULT_YEARLY : DEFAULT_MONTHLY;
+      } catch (e) {
+        setStatus((e && e.message) ? e.message : 'Could not start checkout');
+      }
+    }
         setStatus('Upgrade link unavailable. Please try again.');
       } catch (e) {
         setStatus(e.message || 'Could not start checkout');
