@@ -3375,7 +3375,8 @@ async function sendVoiceFoodMessage() {
   if (!message) return;
 
   const out = el('voiceFoodOutput');
-  out.innerText = `${out.innerText ? `${out.innerText}\n\n` : ''}You: ${message}`;
+  const cleanedVoiceOut = String(out.innerText || '').replace(/^Listening…\s*/,'').trim();
+  out.innerText = `${cleanedVoiceOut ? `${cleanedVoiceOut}\n\n` : ''}You: ${message}`;
   input.value = '';
 
   // Queue the request so history is always up-to-date and replies never overlap/out-of-order
