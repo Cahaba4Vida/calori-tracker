@@ -380,11 +380,6 @@ global.playAssistantAudio = playAssistantAudio;
         setStatus((e && e.message) ? e.message : 'Could not start checkout');
       }
     }
-        setStatus('Upgrade link unavailable. Please try again.');
-      } catch (e) {
-        setStatus(e.message || 'Could not start checkout');
-      }
-    }
 
     async function openManageSubscription() {
       try {
