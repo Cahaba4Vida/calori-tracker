@@ -60,6 +60,53 @@ function shouldTrySearchForFood(message, history) {
   return brandish && enoughSpecificity && !looksLikeFollowupAnswerOnly;
 }
 
+
+function extractFoodContextHint(history) {
+  const recent = Array.isArray(history) ? history.slice(-8) : [];
+  const joined = recent
+    .filter(h => h && h.role === "user")
+    .map(h => String(h.text || "").trim())
+    .filter(Boolean)
+    .join(" \n ");
+
+  const candidates = [];
+  const brandMatches = joined.match(/\b(Chick-fil-A|Chipotle|Starbucks|Subway|McDonald's|McDonalds|Taco Bell|Wendy's|Wendys|Burger King|Panera|Costa Vida|Cafe Rio|Mo'Betta|MoBetta|Core Power|Fairlife|Premier Protein|Quest|Muscle Milk)\b/gi) || [];
+  for (const m of brandMatches) candidates.push(m);
+
+  const fromAtMatches = joined.match(/\b(?:from|at)\s+([A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+){0,3})/g) || [];
+  for (const m of fromAtMatches) candidates.push(m.replace(/^\b(?:from|at)\s+/i, ''));
+
+  const categoryMatches = joined.match(/\b(grilled chicken sandwich|deluxe sandwich|spicy chicken sandwich|burrito bowl|protein shake|sandwich|burger|fries|nuggets|wrap|salad|latte|drink)\b/gi) || [];
+  for (const m of categoryMatches) candidates.push(m);
+
+  const uniq = [];
+  for (const c of candidates) {
+    const s = String(c || "").trim();
+    if (!s) continue;
+    if (!uniq.some(u => u.toLowerCase() === s.toLowerCase())) uniq.push(s);
+  }
+  return uniq.slice(-3).join(" | ");
+}
+
+function buildFoodResolutionMessage(message, history) {
+  const text = String(message || "").trim();
+  const hint = extractFoodContextHint(history);
+  const shortAnswer = text.split(/\s+/).length <= 6;
+
+  if (!hint) return { resolvedMessage: text, contextHint: "" };
+
+  // For short follow-up answers, make the context explicit so the model/search
+  // resolves to the restaurant/brand item instead of a generic food.
+  if (shortAnswer && !/\b(chick|chipotle|starbucks|subway|mcdonald|taco|wendy|burger king|panera|costa vida|cafe rio|core power|fairlife|quest|premier|muscle milk)\b/i.test(text)) {
+    return {
+      resolvedMessage: `${text}\nEarlier established food context: ${hint}`,
+      contextHint: hint
+    };
+  }
+
+  return { resolvedMessage: text, contextHint: hint };
+}
+
 async function runFoodExtraction({ prompt, history, message, useSearch = false }) {
   const input = [
     { role: "system", content: prompt },
@@ -297,6 +344,9 @@ Return ONLY JSON with this exact shape:
 Context:
 ${lastLoggedSummary}
 recent_follow_up_questions_asked=${followUpCount}
+- IMPORTANT: If the user's latest answer is a short follow-up answer, combine it with restaurant/brand/menu context already established earlier in the thread.
+- Example: earlier context says Chick-fil-A, and the current answer is grilled chicken sandwich -> resolve it as Chick-fil-A grilled chicken sandwich, not a generic sandwich.
+- When earlier thread context gives the restaurant/brand, preserve that in suggested_entry.description and notes.
 
 Rules:
 - Main goal: accurately log the user's food with as little friction as possible.
@@ -322,12 +372,14 @@ Rules:
 
   let data;
   try {
-    const useSearch = shouldTrySearchForFood(message, history);
-    data = await runFoodExtraction({ prompt, history, message, useSearch });
+    const resolved = buildFoodResolutionMessage(message, history);
+    const useSearch = shouldTrySearchForFood(resolved.resolvedMessage, history) || !!resolved.contextHint;
+    data = await runFoodExtraction({ prompt, history, message: resolved.resolvedMessage, useSearch });
   } catch (e) {
     try {
       // Graceful fallback if the search tool/model is unavailable in this OpenAI project.
-      data = await runFoodExtraction({ prompt, history, message, useSearch: false });
+      const resolved = buildFoodResolutionMessage(message, history);
+      data = await runFoodExtraction({ prompt, history, message: resolved.resolvedMessage, useSearch: false });
     } catch {
       return json(502, { error: "Model did not return valid JSON" });
     }
@@ -352,7 +404,8 @@ Rules:
     const limit = await enforceFoodEntryLimit(userId, entry_date);
     if (!limit.ok) return limit.response;
 
-    const derived_label = deriveVoiceFoodLabel(message, se);
+    const resolved = buildFoodResolutionMessage(message, history);
+    const derived_label = deriveVoiceFoodLabel((resolved && resolved.resolvedMessage) || message, se);
 
     const raw_extraction = {
       source: "voice",
@@ -361,7 +414,7 @@ Rules:
       description: derived_label,
       food_name: derived_label,
       item: derived_label,
-      notes: String((se && (se.notes || se.description)) || derived_label).slice(0, 180),
+      notes: String((se && (se.notes || se.description)) || (resolved && resolved.contextHint ? `${derived_label} | ${resolved.contextHint}` : derived_label)).slice(0, 180),
       raw_user_message: String(message || "").slice(0, 180)
     };
 
