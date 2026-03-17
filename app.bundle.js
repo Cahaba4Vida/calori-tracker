@@ -4271,11 +4271,17 @@ function bindUI() {
     return false;
   }
 }
-window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;catch (e) {
-      return false;
-    }
+function getAutoPlaybackEnabled() {
+  try {
+    if (typeof getCoachVoiceMode === 'function') return !!getCoachVoiceMode();
+  } catch (e) {}
+  try {
+    return localStorage.getItem('coachVoiceMode') === '1';
+  } catch (e) {
+    return false;
   }
-  window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
+}
+window.getAutoPlaybackEnabled = getAutoPlaybackEnabled;
   
   function setCoachListeningOverlay(isOn) {
     const overlay = document.getElementById('coachListeningOverlay');
